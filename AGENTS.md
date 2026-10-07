@@ -957,9 +957,10 @@ run locally exactly as the CI runs it, beside others:
 
 **The actions,** `tools/ci/actions/`, each a script beside its `action.yml`:
 
-- `boost` downloads `boost_1_92_0.tar.bz2` from
+- `boost` downloads `boost_1_92_0.tar.gz` from
   `https://archives.boost.io/release/1.92.0/source/`, checked against the
-  SHA-256 it records. It builds b2 with `bootstrap`, installs Boost's headers
+  SHA-256 it records: the gzip archive, since Windows Server 2022's `tar.exe`
+  has no bzip2. It builds b2 with `bootstrap`, installs Boost's headers
   (`--with-headers`, since no library links a compiled Boost library) and
   that b2 into a prefix cached per image, writes the `using boost` line of
   `.local/user-config.jam`, and puts b2 on `PATH`, on Linux, macOS and

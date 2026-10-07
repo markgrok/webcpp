@@ -22,9 +22,11 @@
 set -euo pipefail
 
 version=1.92.0
-archive=boost_1_92_0.tar.bz2
+# The gzip archive, which every runner's tar reads by itself: Windows Server 2022's tar.exe has no
+# bzip2, and hangs on the bzip2 archive.
+archive=boost_1_92_0.tar.gz
 url="https://archives.boost.io/release/${version}/source/${archive}"
-sha256=5c1d40cb8e19adbf740a4ec2da35b3e58f3f5804b1dce44deb53df72193cbc6c
+sha256=c4a3b310ddd2472416e091067166b0713be97c63f38c212c484ada022fd296ce
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -77,11 +79,10 @@ install() {
     "${here}/../../download.sh" "${url}" "${sha256}" "${work}/${archive}"
     cd "${work}"
     if [ "${RUNNER_OS}" = Windows ]; then
-        # Windows's own tar, libarchive, reads bzip2 itself; Git's GNU tar needs a bzip2
-        # program and reads a drive letter as a host name.
-        "$(cygpath -u "${SYSTEMROOT}")/System32/tar.exe" -xf "${archive}"
+        # Windows's own tar, libarchive: Git's GNU tar reads a drive letter as a host name.
+        "$(cygpath -u "${SYSTEMROOT}")/System32/tar.exe" -xzf "${archive}"
     else
-        tar -xjf "${archive}"
+        tar -xzf "${archive}"
     fi
     rm "${archive}"
     cd "boost_${version//./_}"

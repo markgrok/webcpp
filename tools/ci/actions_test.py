@@ -141,15 +141,15 @@ fi
 
 
 def boost_archive(scratch: Path) -> Path:
-    """A boost_1_92_0.tar.bz2 whose bootstrap.sh writes the stand-in b2."""
+    """A boost_1_92_0.tar.gz whose bootstrap.sh writes the stand-in b2."""
     tree = scratch / 'archive/boost_1_92_0'
     (tree / 'tools/build').mkdir(parents=True)
     (tree / 'b2.in').write_text(FAKE_B2)
     bootstrap = tree / 'bootstrap.sh'
     bootstrap.write_text('#!/bin/sh\ncp b2.in b2 && chmod +x b2\n')
     bootstrap.chmod(0o755)
-    archive = scratch / 'boost_1_92_0.tar.bz2'
-    with tarfile.open(archive, 'w:bz2') as tar:
+    archive = scratch / 'boost_1_92_0.tar.gz'
+    with tarfile.open(archive, 'w:gz') as tar:
         tar.add(tree, arcname='boost_1_92_0')
     return archive
 
@@ -157,7 +157,15 @@ def boost_archive(scratch: Path) -> Path:
 def test_boost_installs_b2_in_the_prefix_bin(scratch: Path) -> None:
     script = boost_tree(scratch)
     archive = boost_archive(scratch)
-    (scratch / 'tools/ci/download.sh').write_text(f'#!/bin/sh\ncp "{archive}" "$3"\n')
+    # Boost's gzip archive, the one every runner's tar reads by itself: Windows Server 2022's
+    # tar.exe has no bzip2, and hung on the bzip2 archive until the job timed out.
+    (scratch / 'tools/ci/download.sh').write_text(
+        '#!/bin/sh\n'
+        'case "$1" in\n'
+        '    https://archives.boost.io/release/1.92.0/source/boost_1_92_0.tar.gz) ;;\n'
+        '    *) echo "download.sh: not the archive: $1" >&2; exit 1 ;;\n'
+        'esac\n'
+        f'cp "{archive}" "$3"\n')
     prefix = scratch / 'prefix'
     runner = {'RUNNER_OS': 'Linux', 'RUNNER_TEMP': str(scratch / 'temp'),
               'GITHUB_PATH': str(scratch / 'path')}
