@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<build format="1.0" version="5.5.3"> 
+  <directory><![CDATA[/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch wxpx9aw1]]></directory> 
+  <command><![CDATA["b2" "--user-config=/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch wxpx9aw1/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=native-dependency.xml" "toolset=clang" "libs/demo/test//pass-noexcept"]]></command> 
+  <targets> 
+    <target> 
+      <name><![CDATA[.//boost_version.o]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[.//tools/test/boost_version.cpp]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
+      <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>boost_version.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[.//throw_exception.o]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[.//tools/throw_exception.cpp]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
+      <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>throw_exception.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/demo/test//pass.o]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/demo/test//pass.cpp]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/demo/test//pass-noexcept]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/demo/test//pass.o]]></dependency> 
+        <dependency><![CDATA[.//throw_exception.o]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass-noexcept]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/demo/test//pass-noexcept.run]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/demo/test//pass-noexcept]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass-noexcept.run]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/demo/test//pass-noexcept.test]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/demo/test//pass-noexcept.run]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass-noexcept.test]]></jam-target> 
+    </target> 
+  </targets> 
+  <test type="RUN" name="demo/pass"> 
+    <target><![CDATA[libs/demo/test//pass.test]]></target> 
+    <source><![CDATA[libs/demo/test/pass.cpp]]></source> 
+  </test> 
+  <test type="RUN" name="demo/pass-noexcept"> 
+    <target><![CDATA[libs/demo/test//pass-noexcept.test]]></target> 
+    <source><![CDATA[libs/demo/test/pass.cpp]]></source> 
+  </test> 
+  <test type="RUN_FAIL" name="demo/fails"> 
+    <target><![CDATA[libs/demo/test//fails.test]]></target> 
+    <source><![CDATA[libs/demo/test/fails.cpp]]></source> 
+  </test> 
+  <test type="COMPILE_FAIL" name="demo/rejects"> 
+    <target><![CDATA[libs/demo/test//rejects.test]]></target> 
+    <source><![CDATA[libs/demo/test/rejects.cpp]]></source> 
+  </test> 
+  <test type="RUN" name="demo/native_only"> 
+    <target><![CDATA[libs/demo/test//native_only.test]]></target> 
+    <source><![CDATA[libs/demo/test/native_only.cpp]]></source> 
+  </test> 
+  <test type="RUN" name="demo/native_only-noexcept"> 
+    <target><![CDATA[libs/demo/test//native_only-noexcept.test]]></target> 
+    <source><![CDATA[libs/demo/test/native_only.cpp]]></source> 
+  </test> 
+  <test type="COMPILE" name="demo/native_only_compiles"> 
+    <target><![CDATA[libs/demo/test//native_only_compiles.test]]></target> 
+    <source><![CDATA[libs/demo/test/native_only.cpp]]></source> 
+  </test> 
+  <test type="COMPILE" name="demo/alone-demo"> 
+    <target><![CDATA[libs/demo/test//alone-demo.test]]></target> 
+  </test> 
+  <test type="COMPILE" name="demo/alone-demo-answer"> 
+    <target><![CDATA[libs/demo/test//alone-demo-answer.test]]></target> 
+  </test> 
+  <action status="1" start="2026-10-07 10:27:54.525166000 +0000" end="2026-10-07 10:27:54.691857000 +0000" user="0.133999" system="0.027776"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>throw_exception.o]]></jam-target> 
+    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o" "tools/throw_exception.cpp"
+]]></command> 
+    <output><![CDATA[tools/throw_exception.cpp:40:2: error: "planted: the handler does not compile"
+   40 | #error "planted: the handler does not compile"
+      |  ^
+1 error generated.
+]]></output> 
+  </action> 
+  <action status="0" start="2026-10-07 10:27:54.572413000 +0000" end="2026-10-07 10:27:54.838577000 +0000" user="0.229866" system="0.031035"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass.o" "libs/demo/test/pass.cpp"
+]]></command> 
+  </action> 
+</build>

@@ -58,7 +58,8 @@ def run_b2(root: Path, *args: str, env_extra: dict | None = None) -> subprocess.
     """Runs b2 in root and returns what it printed, stdout and stderr together, in stdout.
 
     env_extra adds variables to b2's environment after CPATH and its kin are removed; a value
-    of None removes that variable instead.
+    of None removes that variable instead. A byte that is not UTF-8, which b2 passes on from a
+    test's output, is read as U+FFFD.
     """
     env = {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
     for name, value in (env_extra or {}).items():
@@ -68,7 +69,8 @@ def run_b2(root: Path, *args: str, env_extra: dict | None = None) -> subprocess.
             env[name] = value
     command = ['b2', f'--user-config={user_config(root)}', *args]
     return subprocess.run(command, cwd=root, env=env, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, text=True, check=False, timeout=TIMEOUT)
+                          stderr=subprocess.STDOUT, text=True, errors='replace', check=False,
+                          timeout=TIMEOUT)
 
 
 def built(_: str, names: list[str]) -> set[str]:

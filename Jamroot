@@ -323,4 +323,16 @@ rule declared-targets ( targets * : sources * : properties * )
 }
 notfile declared-targets : @declared-targets : : <webcpp-boost-check>off ;
 
+# A lane builds and runs one library's tests and examples for one target,
+# from scratch, and writes what b2 built and ran, which
+# tools/report/report.py turns into the test matrix:
+#
+#     b2 -a --dump-tests --out-xml=<lane>.xml toolset=<toolset> \
+#         libs/<library>/test libs/<library>/example
+#     python3 tools/report/report.py --lane <lane>=<lane>.xml ... --out <dir>
+#
+# A wasip2 or wasip3 lane adds testing.launcher=wasmtime. --dump-tests lists
+# every test, those the lane skips included. With --out-xml, b2 exits 0 even
+# when a test fails: the report's exit status is the verdict.
+
 explicit boost_version throw_exception test example doc install $(.install) declared-targets ;

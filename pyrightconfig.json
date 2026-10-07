@@ -2,6 +2,7 @@
     "extraPaths": [
         "tools/example",
         "tools/lint",
+        "tools/report",
         "tools/test"
     ],
     "pythonVersion": "3.9",
