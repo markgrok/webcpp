@@ -8,8 +8,10 @@
 """Checks the shell steps of tools/ci/actions: download.sh keeps a file only when its SHA-256 is
 the pinned one, exits 1 and leaves no file when the digest differs or the download fails; and the
 Boost action's install.sh refuses an empty or relative prefix before it downloads anything, since
-b2 given an empty --prefix installs into /usr/local, and installs b2 in <prefix>/bin on every
-runner, Windows's included, where b2's default layout would put it in <prefix> itself. Nothing is
+b2 given an empty --prefix installs into /usr/local, installs b2 in <prefix>/bin and the headers
+in <prefix>/include/boost on every runner, Windows's included, where the default layouts would put
+b2 in <prefix> itself and the headers in <prefix>/include/boost-1_92, and fails, before the prefix
+is cached, when the prefix holds no headers or no b2 after the install. Nothing is
 fetched from the network: the downloads are file:// URLs, and install.sh runs against a
 download.sh that only says it was called, or that hands it a stand-in Boost archive. Run with the
 names of some cases to run only those."""
@@ -114,24 +116,30 @@ def test_boost_refuses_an_empty_or_relative_prefix(scratch: Path) -> None:
 
 
 # A stand-in for b2, as bootstrap.sh builds it: --version, the headers' install, and the install
-# of b2 itself from tools/build, where the layout decides where b2 goes. b2's Jamroot defaults to
-# the portable layout on Windows, which puts b2 in --prefix and ignores --bindir; the standard
-# layout, the default elsewhere, puts it in --bindir. The stand-in takes the portable default,
-# Windows's, so that only an install that names its layout finds b2 in <prefix>/bin.
+# of b2 itself from tools/build, where the layout decides where b2 goes. On Windows, Boost's
+# boostcpp.jam defaults to --layout=versioned, which installs the headers in
+# <prefix>/include/boost-1_92/boost, and b2's Jamroot to the portable layout, which puts b2 in
+# --prefix and ignores --bindir; the system and standard layouts, the defaults elsewhere, put them
+# in <prefix>/include/boost and --bindir. The stand-in takes Windows's defaults, so that only an
+# install that names both layouts finds the headers and b2 where configure looks for them. With
+# STAND_IN_INSTALLS_NOTHING set, it installs nothing and succeeds.
 FAKE_B2 = r'''#!/usr/bin/env bash
 set -euo pipefail
-prefix='' bindir='' layout=portable
+prefix='' bindir='' layout=portable headers=boost-1_92
 for argument in "$@"; do
     case "$argument" in
         --version) echo 'B2 5.5.3 (stand-in)'; exit 0 ;;
         --prefix=*) prefix="${argument#--prefix=}" ;;
         --bindir=*) bindir="${argument#--bindir=}" ;;
+        --layout=system) headers=. ;;
         b2-install-layout=*) layout="${argument#b2-install-layout=}" ;;
     esac
 done
-if [ -z "$bindir" ]; then
-    mkdir -p "$prefix/include/boost"
-    echo '#define BOOST_VERSION 109200' > "$prefix/include/boost/version.hpp"
+if [ -n "${STAND_IN_INSTALLS_NOTHING-}" ]; then
+    exit 0
+elif [ -z "$bindir" ]; then
+    mkdir -p "$prefix/include/$headers/boost"
+    echo '#define BOOST_VERSION 109200' > "$prefix/include/$headers/boost/version.hpp"
 elif [ "$layout" = standard ]; then
     mkdir -p "$bindir" && cp "$0" "$bindir/b2"
 else
@@ -154,7 +162,9 @@ def boost_archive(scratch: Path) -> Path:
     return archive
 
 
-def test_boost_installs_b2_in_the_prefix_bin(scratch: Path) -> None:
+def boost_install_tree(scratch: Path) -> tuple[Path, dict[str, str]]:
+    """install.sh beside a download.sh that serves the stand-in archive, and a runner's
+    variables."""
     script = boost_tree(scratch)
     archive = boost_archive(scratch)
     # Boost's gzip archive, the one every runner's tar reads by itself: Windows Server 2022's
@@ -166,17 +176,32 @@ def test_boost_installs_b2_in_the_prefix_bin(scratch: Path) -> None:
         '    *) echo "download.sh: not the archive: $1" >&2; exit 1 ;;\n'
         'esac\n'
         f'cp "{archive}" "$3"\n')
-    prefix = scratch / 'prefix'
-    runner = {'RUNNER_OS': 'Linux', 'RUNNER_TEMP': str(scratch / 'temp'),
-              'GITHUB_PATH': str(scratch / 'path')}
     (scratch / 'temp').mkdir()
+    return script, {'RUNNER_OS': 'Linux', 'RUNNER_TEMP': str(scratch / 'temp'),
+                    'GITHUB_PATH': str(scratch / 'path')}
+
+
+def test_boost_installs_b2_and_the_headers_where_configure_finds_them(scratch: Path) -> None:
+    script, runner = boost_install_tree(scratch)
+    prefix = scratch / 'prefix'
     result = run(script, 'install', prefix, env=runner)
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
-    assert (prefix / 'bin/b2').is_file(), sorted(str(p) for p in prefix.rglob('*'))
+    installed = sorted(str(p.relative_to(prefix)) for p in prefix.rglob('*'))
+    assert (prefix / 'bin/b2').is_file(), installed
+    assert (prefix / 'include/boost/version.hpp').is_file(), installed
     result = subprocess.run(['bash', str(script), 'configure', str(prefix)], capture_output=True,
                             text=True, check=False, cwd=scratch, env={**os.environ, **runner})
     assert result.returncode == 0, (result.returncode, result.stderr)
     assert (scratch / 'path').read_text() == f'{prefix}/bin\n'
+
+
+def test_boost_install_fails_when_the_prefix_is_incomplete(scratch: Path) -> None:
+    script, runner = boost_install_tree(scratch)
+    prefix = scratch / 'prefix'
+    result = run(script, 'install', prefix, env={**runner, 'STAND_IN_INSTALLS_NOTHING': '1'})
+    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
+    assert f'install.sh: {prefix} holds no Boost headers or no b2' in result.stderr, (
+        result.stderr)
 
 
 CASES: list[Callable[[Path], None]] = [
@@ -185,7 +210,8 @@ CASES: list[Callable[[Path], None]] = [
     test_a_failed_download_exits_1_and_leaves_no_file,
     test_a_usage_error_exits_2,
     test_boost_refuses_an_empty_or_relative_prefix,
-    test_boost_installs_b2_in_the_prefix_bin,
+    test_boost_installs_b2_and_the_headers_where_configure_finds_them,
+    test_boost_install_fails_when_the_prefix_is_incomplete,
 ]
 
 

@@ -14,7 +14,8 @@
 #   install.sh key                writes the prefix and the cache key to GITHUB_OUTPUT;
 #   install.sh install <prefix>   downloads the archive, checks its SHA-256, builds b2 with
 #                                 bootstrap, and installs the headers (--with-headers) and b2 in
-#                                 <prefix>;
+#                                 <prefix>, and fails when <prefix> then lacks either, before the
+#                                 action caches it;
 #   install.sh configure <prefix> writes .local/user-config.jam with the `using boost` line of
 #                                 <prefix>, and puts <prefix>/bin, where b2 is, on PATH.
 #
@@ -94,9 +95,11 @@ install() {
         ./bootstrap.sh || { cat bootstrap.log; exit 1; }
     fi
     "${b2}" --version
-    # Each file installed is a line of b2's output, so only a failure's last lines are shown.
-    "${b2}" --prefix="${prefix}" --with-headers install > "${work}/headers.log" 2>&1 \
-        || { tail -n 50 "${work}/headers.log"; exit 1; }
+    # Each file installed is a line of b2's output, so only a failure's last lines are shown. The
+    # system layout, <prefix>/include/boost, on every runner: Boost's default on Windows is the
+    # versioned layout, which puts the headers in <prefix>/include/boost-1_92/boost.
+    "${b2}" --prefix="${prefix}" --layout=system --with-headers install \
+        > "${work}/headers.log" 2>&1 || { tail -n 50 "${work}/headers.log"; exit 1; }
     # The standard layout, <prefix>/bin/b2 and its build system in <prefix>/share/b2, on every
     # runner: b2's default on Windows is the portable layout, which ignores --bindir and puts b2
     # in <prefix> itself.
@@ -105,10 +108,13 @@ install() {
         > "${work}/b2.log" 2>&1 || { tail -n 50 "${work}/b2.log"; exit 1; }
     cd "${temp}"
     rm -rf "${work}"
+    check "${prefix}"
     "${prefix}/bin/${b2#./}" --version
 }
 
-configure() {
+# Whether prefix holds what configure uses: Boost's headers in <prefix>/include/boost, and b2 in
+# <prefix>/bin.
+check() {
     local prefix="$1"
     local b2="${prefix}/bin/b2"
     [ "${RUNNER_OS}" != Windows ] || b2="${b2}.exe"
@@ -116,6 +122,11 @@ configure() {
         printf 'install.sh: %s holds no Boost headers or no b2\n' "${prefix}" >&2
         exit 1
     fi
+}
+
+configure() {
+    local prefix="$1"
+    check "${prefix}"
     mkdir -p .local
     {
         printf '# Written by tools/ci/actions/boost: Boost %s, installed in %s.\n' \
