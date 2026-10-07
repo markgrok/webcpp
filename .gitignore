@@ -3,3 +3,4 @@ bin/
 node_modules/
 doc/html/
 __pycache__/
+.DS_Store
