@@ -74,8 +74,10 @@ feature.feature webcpp-include : : free incidental ;
 
 if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 
-# This directory, absolute.
+# This directory, absolute, and the superproject's, its parent: the root
+# every path this module and webcpp-oracle record is relative to.
 .tools = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
+.root = [ path.parent $(.tools) ] ;
 
 # The example runner, beside this file, as an absolute native path: the
 # action that runs it starts in the directory b2 was started in.
@@ -150,15 +152,27 @@ local rule jamfile ( )
     return [ $(current).project-module ] ;
 }
 
-# The library a Jamfile belongs to: the directory of libs/ that holds it.
-# A Jamfile outside libs/ is named by its directory, relative to the Jamroot.
-local rule library-of ( jamfile )
+# Where the Jamfile being loaded is: its project; its directory, absolute in
+# b2's form; that directory relative to the superproject; the Jamfile
+# itself, relative to the superproject; and the superproject's directory.
+local rule where ( )
 {
-    local root = [ path.root [ project.attribute $(jamfile) project-root ] [ path.pwd ] ] ;
+    local current = [ project.current ] ;
+    local jamfile = [ $(current).project-module ] ;
     local location = [ path.root [ project.attribute $(jamfile) location ] [ path.pwd ] ] ;
-    local relative = [ path.relative-to $(root) $(location) ] ;
-    local library = [ MATCH "^libs/([^/]+)" : $(relative) ] ;
-    return $(library:E=$(relative)) ;
+    local file = [ path.root [ path.make [ modules.binding $(jamfile) ] ] [ path.pwd ] ] ;
+    return $(current) $(location) [ path.relative-to $(.root) $(location) ]
+        [ path.relative-to $(.root) $(file) ] $(.root) ;
+}
+
+# The library of the Jamfile being loaded: the directory of libs/ that holds
+# it. A Jamfile outside libs/ is named by its directory, relative to the
+# superproject.
+local rule library-of ( )
+{
+    local found = [ where ] ;
+    local library = [ MATCH "^libs/([^/]+)" : $(found[3]) ] ;
+    return $(library:E=$(found[3])) ;
 }
 
 # Declares the targets of every program its Jamfile declares after it
@@ -188,7 +202,7 @@ local rule program ( targets * )
     targets ?= $(.targets.$(jamfile)) ;
     targets ?= native ;
     .programs.$(jamfile) = true ;
-    local library = [ library-of $(jamfile) ] ;
+    local library = [ library-of ] ;
     .declared += "$(library) $(targets)" ;
     # Qualified by its module, so that it resolves whatever names the
     # Jamfile imported this module's rules under.
@@ -351,23 +365,17 @@ local rule load-jamfiles ( directories * )
 # library's test or example directory, which lanes loads, may declare one.
 rule lane ( name : targets + )
 {
-    local current = [ project.current ] ;
-    local jamfile = [ $(current).project-module ] ;
-    local root = [ path.root [ project.attribute $(jamfile) project-root ] [ path.pwd ] ] ;
-    local location = [ path.root [ project.attribute $(jamfile) location ] [ path.pwd ] ] ;
-    local directory = [ path.relative-to $(root) $(location) ] ;
-    local library = [ MATCH "^libs/([^/]+)/(test|example)(/.*)?$" : $(directory) ] ;
+    local found = [ where ] ;
+    local library = [ MATCH "^libs/([^/]+)/(test|example)(/.*)?$" : $(found[3]) ] ;
     if ! $(library)
     {
-        local file = [ path.root [ path.make [ modules.binding $(jamfile) ] ] [ path.pwd ] ] ;
-        file = [ path.relative-to $(root) $(file) ] ;
-        errors.user-error "webcpp.lane is declared in $(file), which is not a test or an"
+        errors.user-error "webcpp.lane is declared in $(found[4]), which is not a test or an"
             "example Jamfile of a library: only one under libs/<library>/test or"
             "libs/<library>/example declares a lane, so that b2 declared-lanes finds it" ;
     }
     alias $(name) : $(targets) ;
-    $(current).mark-target-as-explicit $(name) ;
-    .lanes += "$(library[1]) $(name) $(directory)" ;
+    $(found[1]).mark-target-as-explicit $(name) ;
+    .lanes += "$(library[1]) $(name) $(found[3])" ;
 }
 
 # The lines "<library> <name> <directory>" of the lanes that the Jamfiles
@@ -400,22 +408,22 @@ rule index ( page )
 }
 
 # How a program of the original's language runs, and the target node-modules
-# (tools/oracle/oracle.jam).
+# (tools/oracle/oracle.jam). Each oracle rule is told where its Jamfile is.
 rule original ( words + )
 {
-    webcpp-oracle.original $(words) ;
+    webcpp-oracle.original [ where ] : $(words) ;
 }
 
 # The target twins, which runs every twin of examples on the original and
 # compares what it prints (tools/oracle/oracle.jam).
 rule twins ( examples : twins : suffix : extra * )
 {
-    webcpp-oracle.twins $(examples) : $(twins) : $(suffix) : $(extra) ;
+    webcpp-oracle.twins [ where ] : $(examples) : $(twins) : $(suffix) : $(extra) ;
 }
 
 # The target cases-<name>, which runs script on the original over cases and
 # compares what it writes with expected (tools/oracle/oracle.jam).
 rule cases ( name : script : cases : expected )
 {
-    webcpp-oracle.cases $(name) : $(script) : $(cases) : $(expected) ;
+    webcpp-oracle.cases [ where ] : $(name) : $(script) : $(cases) : $(expected) ;
 }

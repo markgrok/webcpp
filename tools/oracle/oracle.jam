@@ -25,14 +25,24 @@
 # explicit target update-expected, which writes every expected directory
 # again from the original, and the twins' own outputs (twins.py --update,
 # which refuses one that agrees). Directories are relative to the Jamfile.
+# As the Jamfile loads, webcpp.cases refuses a cases directory that does not
+# exist, and an expected directory whose removal would take what it must
+# not: the oracle's directory or one holding it, or the cases directory, one
+# holding it or one inside it.
 #
 # Every target is explicit, so that only a request by name, or a lane that
-# names it (webcpp.lane), runs Node: `b2 test` never does. Node and npm are
-# looked for on PATH only when an oracle target runs, and the build stops,
-# naming the one that is missing. The targets compile nothing, so they leave
-# the Jamroot's check of Boost out.
+# names it (webcpp.lane), runs Node: `b2 test` never does. npm ci runs again
+# when package-lock.json is newer than its stamp. Node and npm are looked for
+# on PATH only when an oracle target runs, and the build stops, naming the
+# one that is missing. The targets compile nothing, so they leave the
+# Jamroot's check of Boost out.
 #
-# This file is loaded as the module webcpp-oracle, beside webcpp-doc.
+# This file is loaded as the module webcpp-oracle, beside webcpp-doc. Each
+# rule receives first where its Jamfile is, as tools/webcpp.jam's `where`
+# finds it (found): the project, its directory absolute in b2's form, that
+# directory relative to the superproject, which keys what this module records
+# of the Jamfile, the Jamfile relative to the superproject, and the
+# superproject's directory, absolute.
 import alias ;
 import common ;
 import errors ;
@@ -40,14 +50,16 @@ import feature ;
 import make ;
 import modules ;
 import notfile ;
+import numbers ;
 import os ;
 import path ;
 import project ;
+import regex ;
+import sequence ;
 
-# This directory, and the superproject's, absolute: an action starts in the
-# directory b2 was started in.
+# This directory, absolute: an action starts in the directory b2 was
+# started in.
 .here = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
-.root = [ path.parent [ path.parent $(.here) ] ] ;
 
 if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 
@@ -61,19 +73,6 @@ if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 feature.feature webcpp-oracle : : free incidental ;
 feature.feature webcpp-oracle-cases : : free incidental ;
 
-# The project of the Jamfile being loaded, its directory, absolute in b2's
-# form, then relative to the superproject, and the Jamfile itself, relative
-# to the superproject.
-local rule current ( )
-{
-    local current = [ project.current ] ;
-    local jamfile = [ $(current).project-module ] ;
-    local location = [ path.root [ project.attribute $(jamfile) location ] [ path.pwd ] ] ;
-    local file = [ path.root [ path.make [ modules.binding $(jamfile) ] ] [ path.pwd ] ] ;
-    return $(current) $(location) [ path.relative-to $(.root) $(location) ]
-        [ path.relative-to $(.root) $(file) ] ;
-}
-
 # Each of paths, relative to the directory location, absolute and as the
 # system writes it.
 local rule natives ( location : paths * )
@@ -86,8 +85,8 @@ local rule natives ( location : paths * )
     return $(found) ;
 }
 
-# The build stops, naming the Jamfile of found (what current returned), when
-# that Jamfile has not called webcpp.original yet.
+# The build stops, naming the Jamfile of found, when that Jamfile has not
+# called webcpp.original yet.
 local rule original-of ( rule-name : found + )
 {
     if ! $(.original.$(found[3]))
@@ -118,9 +117,8 @@ local rule update-expected ( current : key )
 
 # webcpp.original <word> + ; how a program of the original's language runs,
 # and the explicit target node-modules.
-rule original ( words + )
+rule original ( found + : words + )
 {
-    local found = [ current ] ;
     local key = $(found[3]) ;
     if $(.original.$(key))
     {
@@ -136,19 +134,22 @@ rule original ( words + )
     }
     .original.$(key) = $(words) ;
     .location.$(key) = $(found[2]) ;
-    # npm ci writes node_modules/.package-lock.json, newer than the lockfile
-    # until the lockfile changes.
-    make .package-lock.json : package-lock.json : @webcpp-oracle%npm-ci
-      : <location>node_modules <webcpp-oracle>$(key) <webcpp-boost-check>off ;
-    alias node-modules : .package-lock.json : <webcpp-boost-check>off ;
-    $(found[1]).mark-target-as-explicit .package-lock.json node-modules ;
+    # A stamp of the build directory's, which the action touches once npm ci
+    # has succeeded: newer than the lockfile until the lockfile changes. Not
+    # a file of npm's, which npm may not write. One per Jamfile, whatever the
+    # toolset, as node_modules is; building with -a, or removing the stamp,
+    # installs again.
+    local build-dir = [ path.root [ $(found[1]).build-dir ] [ path.pwd ] ] ;
+    make node-modules.stamp : package-lock.json : @webcpp-oracle%npm-ci
+      : <location>$(build-dir) <webcpp-oracle>$(key) <webcpp-boost-check>off ;
+    alias node-modules : node-modules.stamp : <webcpp-boost-check>off ;
+    $(found[1]).mark-target-as-explicit node-modules.stamp node-modules ;
 }
 
 # webcpp.twins <examples-dir> : <twins-dir> : <suffix> : <extra-word> * ;
 # the explicit target twins.
-rule twins ( examples : twins : suffix : extra * )
+rule twins ( found + : examples : twins : suffix : extra * )
 {
-    local found = [ current ] ;
     local key = $(found[3]) ;
     original-of twins : $(found) ;
     if $(.twins.$(key))
@@ -165,15 +166,16 @@ rule twins ( examples : twins : suffix : extra * )
 
 # webcpp.cases <name> : <script> : <cases-dir> : <expected-dir> ; the
 # explicit target cases-<name>.
-rule cases ( name : script : cases : expected )
+rule cases ( found + : name : script : cases : expected )
 {
-    local found = [ current ] ;
     local key = $(found[3]) ;
     original-of cases : $(found) ;
     if $(name) in $(.cases.$(key))
     {
         errors.user-error "webcpp.cases $(name) is declared twice in $(found[4])" ;
     }
+    guard $(name) : $(found) : [ path.root [ path.make $(cases) ] $(found[2]) ]
+        : [ path.root [ path.make $(expected) ] $(found[2]) ] ;
     .cases.$(key) += $(name) ;
     .case.$(key).$(name) = [ natives $(found[2]) : $(script) $(cases) $(expected) ] ;
     # Where the original writes its results, under the Jamfile's build
@@ -184,6 +186,59 @@ rule cases ( name : script : cases : expected )
       : : [ requirements $(key) ] <webcpp-oracle-cases>$(name) ;
     $(found[1]).mark-target-as-explicit cases-$(name) ;
     update-expected $(found[1]) : $(key) ;
+}
+
+# Whether the directory inner is outer or lies under it, both absolute in
+# b2's form: true when outer's parts begin inner's.
+local rule within ( inner : outer )
+{
+    local inner-parts = [ regex.split $(inner) "/" ] ;
+    local outer-parts = [ regex.split $(outer) "/" ] ;
+    local count = [ sequence.length $(outer-parts) ] ;
+    if ! [ numbers.less [ sequence.length $(inner-parts) ] $(count) ]
+        && $(inner-parts[1-$(count)]:J=/) = $(outer-parts:J=/)
+    {
+        return true ;
+    }
+}
+
+# A directory, absolute in b2's form, as a message names it: relative to the
+# superproject root when it lies under it.
+local rule shown ( directory : root )
+{
+    if [ within $(directory) : $(root) ]
+    {
+        return [ path.relative-to $(root) $(directory) ] ;
+    }
+    return [ path.native $(directory) ] ;
+}
+
+# The build stops, when the Jamfile of found loads, at cases that
+# update-expected would make remove what it must not: an expected directory
+# that is the oracle's own directory or holds it, or that is the cases
+# directory, holds it or lies inside it; and at cases whose directory does
+# not exist. Both directories are absolute, in b2's form.
+local rule guard ( name : found + : cases : expected )
+{
+    local shown = [ shown $(expected) : $(found[5]) ] ;
+    if [ within $(found[2]) : $(expected) ]
+    {
+        errors.user-error "webcpp.cases $(name): $(shown) is the directory of the oracle, or"
+            "one that holds it, which update-expected removes; give another expected"
+            "directory in $(found[4])" ;
+    }
+    if [ within $(expected) : $(cases) ] || [ within $(cases) : $(expected) ]
+    {
+        errors.user-error "webcpp.cases $(name): $(shown) is the cases directory, holds it or"
+            "is inside it, and update-expected removes it; give another expected directory in"
+            "$(found[4])" ;
+    }
+    if ! [ path.exists $(cases) ]
+    {
+        local missing = [ shown $(cases) : $(found[5]) ] ;
+        errors.user-error "webcpp.cases $(name): $(missing) does not exist; it is the cases"
+            "directory that $(found[4]) names" ;
+    }
 }
 
 # The build stops, naming tool, when it is not on PATH.
@@ -213,10 +268,13 @@ rule npm-ci ( targets * : sources * : properties * )
 }
 
 # Installs the packages package-lock.json pins into node_modules, from npm's
-# cache when it holds them.
+# cache when it holds them, then touches the stamp, which is absolute.
 actions npm-ci
 {
-    cd "$(HERE)" && npm ci --no-audit --no-fund --prefer-offline
+    set -e
+    cd "$(HERE)"
+    npm ci --no-audit --no-fund --prefer-offline
+    touch "$(<)"
 }
 
 # The variables of twins.py: the examples, the twins and the suffix, and the

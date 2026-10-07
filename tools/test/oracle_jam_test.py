@@ -15,6 +15,7 @@ some cases to run only those."""
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -30,6 +31,9 @@ UPDATE = f'{ORACLE}//update-expected'
 ORACLE_LANE = 'oracle_demo oracle libs/oracle_demo/test/oracle\n'
 
 PLAIN_SOURCE = 'int main() { return 0; }\n'
+
+# The line b2 prints when it runs npm ci.
+NPM_CI = re.compile(r'^npm-ci ', re.MULTILINE)
 
 
 def without(root: Path, *tools: str) -> dict[str, str]:
@@ -99,6 +103,7 @@ def test_update_expected_rewrites_cases(root):
     before = {path.name: path.read_bytes() for path in expected.iterdir()}
     own = root / ORACLE / 'twins/half.expected'
     own_before = own.read_bytes()
+    own.write_text('Half of 7 is 4.\n')
     (expected / 'three.json').unlink()
     # A file the original does not write goes: the directory is written again whole.
     (expected / 'stale.json').write_text('{}\n')
@@ -106,8 +111,8 @@ def test_update_expected_rewrites_cases(root):
     harness.expect(result, True)
     after = {path.name: path.read_bytes() for path in expected.iterdir()}
     assert after == before, (sorted(after), sorted(before))
-    # The divergent twin's own output is written again from the original, unchanged.
-    assert own.read_bytes() == own_before
+    # The divergent twin's own output is written again from the original.
+    assert own.read_bytes() == own_before, own.read_text()
     # The whole directory, gone, comes back too.
     shutil.rmtree(expected)
     harness.expect(harness.run_b2(root, '-a', UPDATE), True)
@@ -138,6 +143,51 @@ def test_failing_script_leaves_update_red(root):
     assert '...failed' in result.stdout, result.stdout[-4000:]
     # The twins are not updated after the cases failed.
     assert 'update-twins' not in result.stdout.split('...failed', 1)[1], result.stdout[-4000:]
+
+
+def test_npm_ci_runs_again_only_when_the_lockfile_changes(root):
+    result = harness.run_b2(root, LANE)
+    harness.expect(result, True)
+    assert NPM_CI.search(result.stdout), result.stdout[-4000:]
+    result = harness.run_b2(root, LANE)
+    harness.expect(result, True)
+    assert not NPM_CI.search(result.stdout), result.stdout[-4000:]
+    # A lockfile newer than the stamp npm ci left installs again.
+    stamps = sorted((root / 'bin').rglob('node-modules.stamp'))
+    assert len(stamps) == 1, stamps
+    lockfile = root / ORACLE / 'package-lock.json'
+    later = stamps[0].stat().st_mtime + 10
+    os.utime(lockfile, (later, later))
+    result = harness.run_b2(root, LANE)
+    harness.expect(result, True)
+    assert NPM_CI.search(result.stdout), result.stdout[-4000:]
+
+
+def test_expected_directory_is_guarded(root):
+    jamfile = root / ORACLE / 'Jamfile'
+    line = 'webcpp.cases squares : cases.mjs : ../fixtures/cases : ../fixtures/expected ;\n'
+    holds_oracle = ('the directory of the oracle, or one that holds it, which update-expected '
+                    'removes')
+    overlaps = 'is the cases directory, holds it or is inside it, and update-expected removes it'
+    for cases, expected, directory, message in (
+        ('../fixtures/cases', '.', ORACLE, holds_oracle),
+        ('../fixtures/cases', '..', f'{LIBRARY}/test', holds_oracle),
+        ('../fixtures/cases', '../fixtures/cases', f'{LIBRARY}/test/fixtures/cases', overlaps),
+        ('../fixtures/cases', '../fixtures', f'{LIBRARY}/test/fixtures', overlaps),
+        ('../fixtures/cases', '../fixtures/cases/out', f'{LIBRARY}/test/fixtures/cases/out',
+         overlaps),
+        ('../fixtures/missing', '../fixtures/expected', f'{LIBRARY}/test/fixtures/missing',
+         'does not exist'),
+    ):
+        declared = f'webcpp.cases squares : cases.mjs : {cases} : {expected} ;\n'
+        harness.replace(jamfile, line, declared)
+        result = harness.run_b2(root, '-d0', 'declared-lanes')
+        harness.expect(result, False, f'webcpp.cases squares: {directory} ', message,
+                       f'{ORACLE}/Jamfile')
+        harness.replace(jamfile, declared, line)
+    # Nothing was removed.
+    assert sorted(path.name for path in (root / LIBRARY / 'test/fixtures/expected').iterdir()) == [
+        'seven.json', 'three.json']
 
 
 def test_declared_lanes_lists_the_oracle(root):
@@ -240,6 +290,8 @@ CASES = [
     test_case_difference_fails_the_lane,
     test_update_expected_rewrites_cases,
     test_update_expected_refuses_agreeing_twin,
+    test_npm_ci_runs_again_only_when_the_lockfile_changes,
+    test_expected_directory_is_guarded,
     test_failing_script_leaves_update_red,
     test_declared_lanes_lists_the_oracle,
     test_lane_outside_test_or_example_is_refused,
