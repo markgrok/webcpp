@@ -1,0 +1,11 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+self-hosted-runner:
+  # GitHub's image, GA since 2026-09-17 (actions/runner-images#14747), which actionlint 1.7.12
+  # predates.
+  labels:
+    - ubuntu-26.04

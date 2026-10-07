@@ -1,0 +1,46 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: Boost
+description: >-
+  Installs Boost 1.92.0's headers and its b2 in a cached prefix, from the source archive of
+  archives.boost.io checked against its SHA-256, writes the `using boost` line of
+  .local/user-config.jam, and puts b2 on PATH. On Linux, macOS and Windows.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache key
+      id: key
+      shell: bash
+      run: bash tools/ci/actions/boost/install.sh key
+
+    - name: Restore Boost
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.key.outputs.prefix }}
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Build and install Boost 1.92.0
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        PREFIX: ${{ steps.key.outputs.prefix }}
+      run: bash tools/ci/actions/boost/install.sh install "$PREFIX"
+
+    - name: Save Boost
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.key.outputs.prefix }}
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Configure Boost
+      shell: bash
+      env:
+        PREFIX: ${{ steps.key.outputs.prefix }}
+      run: bash tools/ci/actions/boost/install.sh configure "$PREFIX"

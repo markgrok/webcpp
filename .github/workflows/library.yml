@@ -1,0 +1,324 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+# The CI of a webcpp library, which its own .github/workflows/ci.yml calls:
+#
+#     jobs:
+#       ci:
+#         uses: webcpporg/webcpp/.github/workflows/library.yml@main
+#         with:
+#           library: <name>
+#
+# and of the superproject, whose ci.yml calls it without a library: then it builds every library
+# of libs/ at the commit its submodule points to, and the index page with their pages.
+#
+# Every job checks out webcpporg/webcpp with its submodules, then, for a library, the library's
+# commit into libs/<library> in place of its submodule; it runs from the superproject's root,
+# with the b2 and the Boost 1.92.0 of tools/ci/actions/boost. Jobs:
+#
+#   plan        runs b2 declared-targets and writes the matrix of lanes (tools/ci/matrix.py):
+#               a lane per compiler for each target the library declares. The CI never lists a
+#               library's targets by hand, and a target without a lane fails the plan.
+#   lanes       one job per lane, which runs the lane command, b2 -a --dump-tests
+#               --out-xml=<lane>.xml for one toolset, and uploads the XML. With --out-xml, b2
+#               exits 0 even when a test fails: the report gives the verdict.
+#   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64.
+#   lint        tools/lint/lint.sh in four shards, each analysing a quarter of the files with
+#               clang-tidy and running every other rule; with the full history, which the
+#               banned-word rule reads.
+#   actionlint  every workflow of the superproject and of the libraries.
+#   report      merges every lane's XML with tools/report/report.py into the test matrix. Its
+#               exit status is the verdict, and it fails too when a lane's job failed or wrote
+#               no XML.
+#
+# No b2 call passes -j: b2 runs as many jobs as the runner has processors.
+name: Library
+
+on:
+  workflow_call:
+    inputs:
+      library:
+        description: The library of libs/ to build; empty for every library and the index.
+        type: string
+        required: false
+        default: ''
+    outputs:
+      docs:
+        description: Whether the docs job built the pages and uploaded them as the docs artifact.
+        value: ${{ jobs.docs.outputs.built }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      # The superproject is the caller's commit when it calls this workflow itself, and main
+      # when a library does, the branch this workflow is called at.
+      - &superproject
+        name: Check out the superproject
+        if: inputs.library == ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - &superproject-for-library
+        name: Check out the superproject
+        if: inputs.library != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: webcpporg/webcpp
+          ref: main
+          submodules: recursive
+      - &make-room
+        name: Make room for the library
+        if: inputs.library != ''
+        env:
+          LIBRARY: ${{ inputs.library }}
+        run: |
+          [[ "$LIBRARY" =~ ^[a-z][a-z0-9_]*$ ]] || { echo "not a library name: $LIBRARY"; exit 1; }
+          rm -rf "libs/$LIBRARY"
+      # The caller's repository at the commit of its event, a pull request's merge included.
+      - &library
+        name: Check out the library
+        if: inputs.library != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: libs/${{ inputs.library }}
+
+      - &boost
+        uses: ./tools/ci/actions/boost
+
+      - name: Plan the lanes
+        id: plan
+        env:
+          LIBRARY: ${{ inputs.library }}
+        run: |
+          arguments=()
+          if [ -n "$LIBRARY" ]; then
+            arguments=(--library "$LIBRARY")
+          fi
+          matrix="$(python3 tools/ci/matrix.py plan "${arguments[@]}")"
+          python3 -m json.tool <<< "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  lanes:
+    name: ${{ matrix.name }}
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - *superproject
+      - *superproject-for-library
+      - *make-room
+      - *library
+      - *boost
+
+      - if: matrix.wasm
+        uses: ./tools/ci/actions/wasi-sdk
+
+      - if: matrix.wasm
+        uses: ./tools/ci/actions/wasmtime
+
+      # The lane registers its toolset in .local/user-config.jam, prints its b2 command and runs
+      # it; Windows's Python is python.
+      - name: Lane
+        id: lane
+        env:
+          LANE: ${{ toJSON(matrix) }}
+          PYTHON: ${{ runner.os == 'Windows' && 'python' || 'python3' }}
+        run: '"$PYTHON" tools/ci/matrix.py lane "$LANE"'
+
+      - name: Upload the lane's XML
+        if: always() && steps.lane.outputs.xml != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lane-${{ matrix.id }}
+          path: ${{ steps.lane.outputs.xml }}
+          if-no-files-found: error
+          retention-days: 7
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      built: ${{ steps.built.outputs.built }}
+    steps:
+      - *superproject
+      - *superproject-for-library
+      - *make-room
+      - *library
+      - *boost
+
+      - uses: ./tools/ci/actions/node
+
+      - uses: ./tools/ci/actions/mrdocs
+
+      # clang++ reads the headers for tools/doc/doc_comments.py; the Boost check compiles with
+      # the same Clang.
+      - name: Documentation
+        env:
+          LIBRARY: ${{ inputs.library }}
+        run: |
+          echo 'using clang : 18 : clang++-18 ;' >> .local/user-config.jam
+          target=doc
+          if [ -n "$LIBRARY" ]; then
+            target="libs/$LIBRARY/doc"
+          fi
+          env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH \
+            b2 --user-config=.local/user-config.jam -a -sCLANG=/usr/bin/clang++-18 \
+            toolset=clang-18 "$target"
+
+      # The pages where b2 doc writes them, a tree that tools/ci/assemble.py keeps.
+      - name: Upload the pages
+        if: inputs.library == ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs
+          path: |
+            doc/html
+            libs/*/doc/html
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload the page
+        if: inputs.library != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-${{ inputs.library }}
+          path: libs/${{ inputs.library }}/doc/html
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Built
+        id: built
+        run: echo "built=true" >> "$GITHUB_OUTPUT"
+
+  lint:
+    name: Lint (${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      # The whole history, of the superproject and of every library: the banned-word rule reads
+      # every commit, not only the tree.
+      - name: Check out the superproject
+        if: inputs.library == ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Check out the superproject
+        if: inputs.library != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: webcpporg/webcpp
+          ref: main
+          submodules: recursive
+          fetch-depth: 0
+      - *make-room
+      - name: Check out the library
+        if: inputs.library != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: libs/${{ inputs.library }}
+          fetch-depth: 0
+      - *boost
+
+      - uses: ./tools/ci/actions/wasi-sdk
+
+      - uses: ./tools/ci/actions/node
+
+      # The compilation database is what b2 compiles with its default toolset, the first that
+      # user-config.jam registers.
+      - name: Lint
+        env:
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: |
+          echo 'using clang : 18 : clang++-18 ;' >> .local/user-config.jam
+          tools/lint/lint.sh --clang-format .local/wasi-sdk/bin/clang-format \
+            --clang-tidy .local/wasi-sdk/bin/clang-tidy --shard "$SHARD"
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - *superproject
+      - *superproject-for-library
+      - *make-room
+      - *library
+
+      # actionlint runs shellcheck, which the image has, on every run: script.
+      - name: actionlint 1.7.12
+        env:
+          ASSET: actionlint_1.7.12_linux_amd64.tar.gz
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          tools/ci/download.sh \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/$ASSET" \
+            "$SHA256" "$RUNNER_TEMP/$ASSET"
+          tar -xzf "$RUNNER_TEMP/$ASSET" -C "$RUNNER_TEMP" actionlint
+          shopt -s nullglob
+          "$RUNNER_TEMP/actionlint" -config-file .github/actionlint.yaml \
+            .github/workflows/*.yml libs/*/.github/workflows/*.yml
+
+  report:
+    name: Report
+    needs: [plan, lanes]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - *superproject
+      - *superproject-for-library
+      - *make-room
+      - *library
+
+      - name: Download the lanes' XML
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: lane-*
+          path: bin/lanes
+
+      - name: Report
+        env:
+          MATRIX: ${{ needs.plan.outputs.matrix }}
+        run: python3 tools/ci/matrix.py report --plan "$MATRIX" --lanes bin/lanes --out bin/report
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: report
+          path: bin/report
+          if-no-files-found: error
+          retention-days: 7
+
+      # A lane whose job failed after b2 wrote its XML, which the report may read as whole.
+      - name: Every lane's job succeeded
+        env:
+          LANES: ${{ needs.lanes.result }}
+        run: |
+          if [ "$LANES" != success ]; then
+            echo "a lane's job did not succeed: $LANES"
+            exit 1
+          fi

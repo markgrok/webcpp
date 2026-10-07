@@ -1,0 +1,17 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: wasi-sdk
+description: >-
+  Installs wasi-sdk 34.0 in .local/wasi-sdk, checked against its SHA-256: the compiler of the
+  wasip2 and wasip3 lanes, and the clang-format and clang-tidy of the lint.
+
+runs:
+  using: composite
+  steps:
+    - name: Install wasi-sdk 34.0
+      shell: bash
+      run: bash tools/ci/actions/wasi-sdk/install.sh

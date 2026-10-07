@@ -1,0 +1,17 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: wasmtime
+description: >-
+  Installs wasmtime 47.0.3, checked against its SHA-256, and puts it on PATH: it runs the
+  programs of the wasip2 and wasip3 lanes.
+
+runs:
+  using: composite
+  steps:
+    - name: Install wasmtime 47.0.3
+      shell: bash
+      run: bash tools/ci/actions/wasmtime/install.sh

@@ -1,0 +1,21 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: Node
+description: >-
+  Installs Node 26.7.0, the version webcpp is developed with, with npm's cache keyed on the
+  lock files of tools/doc (Asciidoctor.js, highlight.js) and tools/lint (Pyright).
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 26.7.0
+        cache: npm
+        cache-dependency-path: |
+          tools/doc/package-lock.json
+          tools/lint/package-lock.json

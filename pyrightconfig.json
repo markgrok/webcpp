@@ -1,5 +1,6 @@
 {
     "extraPaths": [
+        "tools/ci",
         "tools/doc",
         "tools/example",
         "tools/lint",
