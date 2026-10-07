@@ -20,7 +20,13 @@ url="$1"
 expected="$2"
 file="$3"
 
-curl -fsSL --retry 3 -o "${file}" "${url}"
+# A failed download can leave part of the file, which must not be taken for the whole.
+curl -fsSL --retry 3 -o "${file}" "${url}" || {
+    status=$?
+    rm -f "${file}"
+    printf 'download.sh: could not download %s (curl exit status %s)\n' "${url}" "${status}" >&2
+    exit 1
+}
 # sha256sum is GNU's (Linux, Git for Windows); macOS has shasum.
 if command -v sha256sum >/dev/null 2>&1; then
     actual="$(sha256sum "${file}" | cut -d ' ' -f 1)"

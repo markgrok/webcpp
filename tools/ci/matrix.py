@@ -9,14 +9,15 @@
 
 Usage: matrix.py plan [--library NAME] [--user-config FILE]
        matrix.py lane LANE [--user-config FILE] [--out-dir DIR] [-- B2-ARGUMENT ...]
+       matrix.py register ID [ID ...] [--user-config FILE]
        matrix.py report --plan MATRIX --lanes DIR --out DIR
 
 plan runs `b2 -d0 declared-targets` from the superproject's root and prints the JSON matrix of
 the lanes to run, {"include": [LANE, ...]}: one lane per compiler of LANES for each target a
 library declares, of the library --library names, else of every library. A lane builds the tests
 and examples of the libraries that declare its target, and no other: a lane of a target no
-library declares would build nothing. A target the CI has no lane for (emscripten, today) is a
-failure, never a lane left out.
+library declares would build nothing. A target the CI has no lane for (emscripten, until stage 4
+pins emsdk) is a failure, never a lane left out.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -31,6 +32,9 @@ Apple Clang's version is the image's, so its lane reads it from `clang++ -dumpve
 registers clang under it: clang-darwin-17. With --out-xml, b2 exits 0 even when a test fails;
 the report is the verdict. B2-ARGUMENT is for a local run beside others, such as
 --build-dir=bin/lane-gcc-15; the CI passes none.
+
+register adds the toolsets of the lanes named by id to the user-config.jam, in their order, the
+first being b2's default toolset: what the CI's tools job builds the tests of the tools with.
 
 report merges what the lanes of the matrix MATRIX wrote under DIR, one directory per lane,
 lane-<id>/<lane>.xml (as the CI downloads the lanes' artifacts), with tools/report/report.py into
@@ -62,9 +66,11 @@ COMPILER_PATHS = ('CPATH', 'CPLUS_INCLUDE_PATH', 'C_INCLUDE_PATH')
 # Where tools/ci/actions/wasi-sdk installs wasi-sdk, as the README installs it.
 WASI_SDK = '.local/wasi-sdk'
 
-# MSVC's lanes build 64-bit programs and embed their manifest with the linker, as xstate-cpp's
-# green Windows jobs did.
-MSVC_OPTIONS = ('address-model=64', 'embed-manifest-via=linker')
+# MSVC's lanes build 64-bit programs, embed their manifest with the linker and abbreviate b2's
+# paths against Windows's MAX_PATH, as xstate-cpp's green Windows jobs did. b2 abbreviates each
+# word of the toolset directory too, and msvc-14.3 and msvc-14.5 are their own abbreviations,
+# so the lanes keep their names (tools/ci/matrix_test.py checks it with b2's own rule).
+MSVC_OPTIONS = ('address-model=64', 'embed-manifest-via=linker', '--abbreviate-paths')
 
 
 @dataclass(frozen=True)
@@ -188,8 +194,8 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
     if missing:
         declaring = sorted({name for name, target in pairs if target in missing})
         raise Failure(f'{", ".join(declaring)} declare {", ".join(missing)}, which the CI has '
-                      'no lane for: add one to tools/ci/matrix.py, with a pinned toolchain, '
-                      'rather than leave the target untested', 2)
+                      'no lane for: the emscripten lane comes with stage 4, when emsdk is '
+                      'pinned; a target is never left untested', 2)
     lanes = []
     for lane in LANES:
         libraries = sorted({name for name, target in pairs if target == lane.target})
@@ -272,16 +278,31 @@ def run_lane(lane: Lane, user_config: Path, out_dir: Path, extra: list[str]) -> 
         status = subprocess.run(command, cwd=ROOT, env=environment(), check=False).returncode
     except OSError as error:
         raise Failure(f'cannot run b2: {error.strerror}') from error
+    # The job's outputs: the lane's name, and its XML only when b2 wrote it, so that the upload
+    # step runs only on a file that is there.
     github_output = os.environ.get('GITHUB_OUTPUT')
     if github_output:
         with open(github_output, 'a') as output:
-            output.write(f'lane={lane.lane}\nxml={xml.as_posix()}\n')
+            output.write(f'lane={lane.lane}\n')
+            if xml.is_file():
+                output.write(f'xml={xml.as_posix()}\n')
     if status != 0:
         raise Failure(f'lane {lane.lane}: b2 exited {status}; with --out-xml it does so only when '
                       'it cannot build at all, a test failing is the report\'s to say')
     if not xml.is_file():
         raise Failure(f'lane {lane.lane}: b2 wrote no {xml}')
     return 0
+
+
+def register_lanes(ids: list[str], user_config: Path) -> None:
+    """Registers the toolsets of the lanes ids in user_config, in their order: the first is b2's
+    default toolset."""
+    known = {lane.id: lane for lane in LANES}
+    unknown = [lane_id for lane_id in ids if lane_id not in known]
+    if unknown:
+        raise Failure(f'no lane {", ".join(unknown)}; the lanes are {", ".join(known)}', 2)
+    for lane_id in ids:
+        register(resolved(known[lane_id]), user_config)
 
 
 def lane_files(lanes: list[Lane], directory: Path) -> tuple[list[tuple[str, Path]], list[Lane]]:
@@ -331,6 +352,11 @@ def main(arguments: list[str]) -> int:
     running.add_argument('--user-config', type=Path, default=default_config)
     running.add_argument('--out-dir', type=Path, default=Path('bin/ci'))
 
+    registering = commands.add_parser(
+        'register', help="register lanes' toolsets in user-config.jam, the first the default")
+    registering.add_argument('ids', nargs='+', metavar='ID', help='a lane id: gcc-14, wasip2')
+    registering.add_argument('--user-config', type=Path, default=default_config)
+
     reporting = commands.add_parser('report', help="merge the lanes' XML into the test matrix")
     reporting.add_argument('--plan', required=True, metavar='MATRIX',
                            help='the matrix plan printed, as JSON')
@@ -352,6 +378,9 @@ def main(arguments: list[str]) -> int:
             out_dir = options.out_dir if options.out_dir.is_absolute() else ROOT / options.out_dir
             return run_lane(parsed_lane(options.entry), options.user_config.resolve(), out_dir,
                             extra)
+        if options.command == 'register':
+            register_lanes(options.ids, options.user_config.resolve())
+            return 0
         try:
             planned = json.loads(options.plan)['include']
         except (json.JSONDecodeError, KeyError, TypeError) as error:

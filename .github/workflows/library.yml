@@ -25,7 +25,11 @@
 #   lanes       one job per lane, which runs the lane command, b2 -a --dump-tests
 #               --out-xml=<lane>.xml for one toolset, and uploads the XML. With --out-xml, b2
 #               exits 0 even when a test fails: the report gives the verdict.
-#   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64.
+#   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64;
+#               the index is built with -sWEBCPP_INDEX=site, its links where the site serves
+#               each page (libs/<name>/), and the pages are the artifact ci.yml publishes.
+#   tools       for the superproject only: every tools/**/*_test.py, the tests of the build,
+#               the lint, the report, the documentation and the CI's own scripts.
 #   lint        tools/lint/lint.sh in four shards, each analysing a quarter of the files with
 #               clang-tidy and running every other rule; with the full history, which the
 #               banned-word rule reads.
@@ -72,12 +76,14 @@ jobs:
         if: inputs.library == ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           submodules: recursive
       - &superproject-for-library
         name: Check out the superproject
         if: inputs.library != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           repository: webcpporg/webcpp
           ref: main
           submodules: recursive
@@ -95,6 +101,7 @@ jobs:
         if: inputs.library != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           path: libs/${{ inputs.library }}
 
       - &boost
@@ -170,21 +177,21 @@ jobs:
       - uses: ./tools/ci/actions/mrdocs
 
       # clang++ reads the headers for tools/doc/doc_comments.py; the Boost check compiles with
-      # the same Clang.
+      # the same Clang. The index links each library's page where the site serves it.
       - name: Documentation
         env:
           LIBRARY: ${{ inputs.library }}
         run: |
-          echo 'using clang : 18 : clang++-18 ;' >> .local/user-config.jam
-          target=doc
+          python3 tools/ci/matrix.py register clang-18
+          request=(doc -sWEBCPP_INDEX=site)
           if [ -n "$LIBRARY" ]; then
-            target="libs/$LIBRARY/doc"
+            request=("libs/$LIBRARY/doc")
           fi
           env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH \
             b2 --user-config=.local/user-config.jam -a -sCLANG=/usr/bin/clang++-18 \
-            toolset=clang-18 "$target"
+            toolset=clang-18 "${request[@]}"
 
-      # The pages where b2 doc writes them, a tree that tools/ci/assemble.py keeps.
+      # The pages where b2 doc writes them, which tools/ci/assemble.py lays out as the site.
       - name: Upload the pages
         if: inputs.library == ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -224,12 +231,14 @@ jobs:
         if: inputs.library == ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           submodules: recursive
           fetch-depth: 0
       - name: Check out the superproject
         if: inputs.library != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           repository: webcpporg/webcpp
           ref: main
           submodules: recursive
@@ -239,6 +248,7 @@ jobs:
         if: inputs.library != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           path: libs/${{ inputs.library }}
           fetch-depth: 0
       - *boost
@@ -253,9 +263,45 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
         run: |
-          echo 'using clang : 18 : clang++-18 ;' >> .local/user-config.jam
+          python3 tools/ci/matrix.py register clang-18
           tools/lint/lint.sh --clang-format .local/wasi-sdk/bin/clang-format \
             --clang-tidy .local/wasi-sdk/bin/clang-tidy --shard "$SHARD"
+
+  tools:
+    name: Tests of the tools
+    if: inputs.library == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - *superproject
+      - *boost
+
+      - uses: ./tools/ci/actions/wasi-sdk
+
+      - uses: ./tools/ci/actions/wasmtime
+
+      - uses: ./tools/ci/actions/node
+
+      - uses: ./tools/ci/actions/mrdocs
+
+      # The toolsets the tests build with, Clang 18 the default, and the clang++ that
+      # tools/doc/doc_comments.py finds on PATH. Every test runs, and each failure is named.
+      - name: Tests of the tools
+        run: |
+          python3 tools/ci/matrix.py register clang-18 wasip2 wasip3
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -sf /usr/bin/clang++-18 "$RUNNER_TEMP/bin/clang++"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          failed=()
+          while IFS= read -r test; do
+            echo "::group::$test"
+            python3 "$test" || failed+=("$test")
+            echo "::endgroup::"
+          done < <(find tools -name '*_test.py' -not -path '*/node_modules/*' | sort)
+          if [ "${#failed[@]}" -ne 0 ]; then
+            printf 'failed: %s\n' "${failed[@]}"
+            exit 1
+          fi
 
   actionlint:
     name: actionlint

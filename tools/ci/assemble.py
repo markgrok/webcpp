@@ -10,20 +10,21 @@ that every link in it resolves.
 
 Usage: assemble.py --docs ROOT --report DIR --out DIR
 
-ROOT holds the pages `b2 doc` built, where it builds them: doc/html/ (the index page) and
-libs/<name>/doc/html/ (each library's page), a superproject's root or a copy of those
-directories. DIR is what tools/report/report.py wrote. The site keeps the tree's layout, since
-the index links each page by its path in the tree (../../libs/<name>/doc/html/index.html):
+ROOT holds the pages `b2 doc -sWEBCPP_INDEX=site` built, where it builds them: doc/html/ (the
+index page, whose links that option points at libs/<name>/) and libs/<name>/doc/html/ (each
+library's page), a superproject's root or a copy of those directories. DIR is what
+tools/report/report.py wrote. The site is:
 
-  index.html                  sends a reader to doc/html/index.html, the index page;
-  doc/html/                   the index page;
-  libs/<name>/doc/html/       each library's page;
-  report/                     the test matrix, which the pages link to at /webcpp/report/.
+  index.html          the index page, with what doc/html/ holds beside it;
+  libs/<name>/        each library's page, with what its doc/html/ holds;
+  report/             the test matrix, which the pages link to at /webcpp/report/.
 
-Every href and src of every page that is not a URL (no scheme, not //) must name a file of the
-site, a directory standing for its index.html, and its fragment, if any, an id or a name in
-that page. Exit 0 with the site written; 1 when a page is missing or a link does not resolve,
-each named; 2 on a usage error or when DIR exists and is not empty.
+Every library of ROOT/libs has its page, and the index page links to each. Every href and src of
+every page that is not a URL (no scheme, not //) names a file of the site, a directory standing
+for its index.html, and its fragment, if any, an id or a name in that page: an index built
+without -sWEBCPP_INDEX=site links out of the site, and fails. Exit 0 with the site written; 1
+when a page is missing, unlinked, or a link does not resolve, each named; 2 on a usage error or
+when DIR exists and is not empty.
 """
 
 from __future__ import annotations
@@ -35,31 +36,6 @@ import sys
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
-
-# The page at the site's root, which sends a reader to the index page: the index links the
-# libraries' pages by their paths in the tree, from doc/html/.
-REDIRECT = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0; url=doc/html/index.html">
-<link rel="canonical" href="doc/html/index.html">
-<title>webcpp</title>
-<style>
-:root { color-scheme: light dark; }
-body {
-  margin: 0; padding: 24px 16px;
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
-    sans-serif;
-}
-</style>
-</head>
-<body>
-<p>The libraries of webcpp are on <a href="doc/html/index.html">their index page</a>.</p>
-</body>
-</html>
-"""
 
 
 class Failure(Exception):
@@ -95,17 +71,30 @@ def copy(source: Path, destination: Path) -> None:
     """Copies the directory of pages source to destination, which it requires an index.html."""
     if not (source / 'index.html').is_file():
         raise Failure(f'{source / "index.html"} does not exist; build the pages with b2 doc')
-    shutil.copytree(source, destination, ignore=shutil.ignore_patterns('.*'))
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns('.*'), dirs_exist_ok=True)
 
 
-def assemble(docs: Path, report: Path, out: Path) -> None:
-    """Writes the site into out, which is empty or does not exist."""
-    copy(docs / 'doc/html', out / 'doc/html')
-    for library in sorted((docs / 'libs').glob('*/doc/html')):
-        name = library.parent.parent.name
-        copy(library, out / 'libs' / name / 'doc/html')
+def assemble(docs: Path, report: Path, out: Path) -> list[str]:
+    """Writes the site into out, which is empty or does not exist, and returns the libraries."""
+    libraries = sorted(library.name for library in (docs / 'libs').glob('*') if library.is_dir())
+    if not libraries:
+        raise Failure(f'{docs / "libs"} holds no library')
+    copy(docs / 'doc/html', out)
+    for name in libraries:
+        copy(docs / 'libs' / name / 'doc/html', out / 'libs' / name)
     copy(report, out / 'report')
-    (out / 'index.html').write_text(REDIRECT, encoding='utf-8')
+    return libraries
+
+
+def unlinked(site: Path, libraries: list[str]) -> list[str]:
+    """Each library whose page the index page does not link to."""
+    linked = set()
+    for link in read(site / 'index.html').links:
+        parts = urlsplit(link)
+        if not (parts.scheme or parts.netloc):
+            linked.add(posixpath.normpath(unquote(parts.path)).removesuffix('/index.html'))
+    return [f'index.html: no link to libs/{name}/, the page of the library {name}'
+            for name in libraries if f'libs/{name}' not in linked]
 
 
 def broken_links(site: Path) -> list[str]:
@@ -151,18 +140,19 @@ def main(arguments: list[str]) -> int:
     if out.exists() and (not out.is_dir() or any(out.iterdir())):
         parser.error(f'--out {out} exists and is not an empty directory')
     try:
-        assemble(options.docs, options.report, out)
+        libraries = assemble(options.docs, options.report, out)
     except Failure as failure:
         print(f'assemble.py: {failure}', file=sys.stderr)
         return 1
-    broken = broken_links(out)
+    broken = unlinked(out, libraries) + broken_links(out)
     if broken:
         print('\n'.join(f'assemble.py: {text}' for text in broken), file=sys.stderr)
-        print(f'assemble.py: {len(broken)} link{"s" if len(broken) != 1 else ""} of {out} do not '
-              'resolve', file=sys.stderr)
+        print(f'assemble.py: {len(broken)} fault{"s" if len(broken) != 1 else ""} in the links '
+              f'of {out}', file=sys.stderr)
         return 1
     pages = sum(1 for _ in out.rglob('*.html'))
-    print(f'assemble.py: wrote {out}, {pages} pages, every link resolving')
+    print(f'assemble.py: wrote {out}, {pages} pages, {len(libraries)} '
+          f'librar{"ies" if len(libraries) != 1 else "y"}, every link resolving')
     return 0
 
 

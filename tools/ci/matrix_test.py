@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import stat
 import subprocess
@@ -32,11 +33,15 @@ import matrix
 NATIVE = ['gcc-14', 'gcc-15', 'clang-18', 'clang-22', 'apple-clang', 'msvc-14.3', 'msvc-14.5']
 
 
-def run(root: Path, *arguments: str) -> subprocess.CompletedProcess:
-    """Runs root's matrix.py, without the variables the Jamroot refuses."""
+def run(root: Path, *arguments: str,
+        github_output: Path | None = None) -> subprocess.CompletedProcess:
+    """Runs root's matrix.py, without the variables the Jamroot refuses, and with GITHUB_OUTPUT
+    set to github_output when it is given."""
     environment = {name: value for name, value in os.environ.items()
                    if name not in harness.COMPILER_PATHS}
     environment.pop('GITHUB_OUTPUT', None)
+    if github_output is not None:
+        environment['GITHUB_OUTPUT'] = str(github_output)
     return subprocess.run([sys.executable, str(root / 'tools/ci/matrix.py'), *arguments],
                           cwd=root, env=environment, capture_output=True, text=True,
                           check=False, timeout=harness.TIMEOUT)
@@ -101,6 +106,7 @@ def test_a_target_without_a_lane_fails(root):
     assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
     assert 'browser declare emscripten, which the CI has no lane for' in result.stderr, (
         result.stderr)
+    assert 'comes with stage 4, when emsdk is pinned' in result.stderr, result.stderr
     assert result.stdout == '', result.stdout
     # Not even for another library: the matrix is planned whole, or not at all.
     assert run(root, 'plan', '--library', 'demo').returncode == 0
@@ -146,6 +152,52 @@ def test_a_lane_is_named_by_the_compiler_version(root):
         raise AssertionError('a compiler without a version named a lane')
 
 
+def test_abbreviated_paths_keep_the_lane_name(root):
+    # The MSVC lanes pass --abbreviate-paths, against Windows's MAX_PATH, and b2 then abbreviates
+    # each word of the toolset directory (clang-darwin-21 is clng-drwn-21): the lane's name must
+    # be what b2 makes of it, or the report refuses the lane.
+    abbreviating = [lane for lane in matrix.LANES if '--abbreviate-paths' in lane.options]
+    assert [lane.id for lane in abbreviating] == ['msvc-14.3', 'msvc-14.5'], abbreviating
+    names = [lane.lane for lane in abbreviating]
+    (root / 'probe').mkdir()
+    (root / 'probe/Jamroot').write_text(
+        'import string ;\n'
+        f'for local name in {" ".join(names)}\n'
+        '{\n'
+        '    local words ;\n'
+        '    for local word in [ MATCH "^([^-]*)-(.*)$" : $(name) ]\n'
+        '    {\n'
+        '        words += [ string.abbreviate $(word) ] ;\n'
+        '    }\n'
+        '    ECHO "abbreviated $(name) $(words:J=-)" ;\n'
+        '}\n')
+    result = subprocess.run(['b2', '-n'], cwd=root / 'probe', capture_output=True, text=True,
+                            check=False)
+    found = re.findall(r'^abbreviated (\S+) (\S+)$', result.stdout, re.MULTILINE)
+    assert len(found) == len(names), result.stdout
+    for name, abbreviated in found:
+        assert abbreviated == name, (name, abbreviated)
+    # And it does change another lane's: a clang lane could not take the option as it is.
+    (root / 'probe/Jamroot').write_text('import string ;\nECHO [ string.abbreviate clang ] ;\n')
+    clang = subprocess.run(['b2', '-n'], cwd=root / 'probe', capture_output=True, text=True,
+                           check=False)
+    assert clang.stdout.startswith('clng'), clang.stdout
+
+
+def test_register_writes_the_lanes_toolsets_in_order(root):
+    config = boost_only(root)
+    result = run(root, 'register', 'clang-18', 'wasip2', '--user-config', str(config))
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    lines = config.read_text().splitlines()
+    assert lines[1] == 'using clang : 18 : clang++-18 ;', lines
+    assert lines[2].startswith(f'using clang : wasip2 : {root.resolve().as_posix()}/'
+                               '.local/wasi-sdk/bin/clang++ :'), lines
+    assert len(lines) == 3, lines
+    unknown = run(root, 'register', 'clang-99', '--user-config', str(config))
+    assert unknown.returncode == 2, (unknown.returncode, unknown.stderr)
+    assert 'no lane clang-99; the lanes are gcc-14, gcc-15' in unknown.stderr, unknown.stderr
+
+
 def host_lane(root: Path) -> dict:
     """The demo's lane for the host's clang++, as the plan writes Apple Clang's."""
     system = 'darwin' if sys.platform == 'darwin' else 'linux'
@@ -165,7 +217,10 @@ def boost_only(root: Path) -> Path:
 def test_a_lane_writes_its_xml_and_the_report_merges_it(root):
     entry = host_lane(root)
     config = boost_only(root)
-    result = run(root, 'lane', json.dumps(entry), '--', '--build-dir=bin/lane')
+    output = root / 'github-output'
+    output.write_text('')
+    result = run(root, 'lane', json.dumps(entry), '--', '--build-dir=bin/lane',
+                 github_output=output)
     assert result.returncode == 0, (result.returncode, result.stdout[-4000:], result.stderr)
     version = matrix.major_version('clang++')
     name = entry['lane'].replace('{version}', version)
@@ -176,6 +231,8 @@ def test_a_lane_writes_its_xml_and_the_report_merges_it(root):
     assert result.stdout.startswith(printed), (printed, result.stdout[:2000])
     assert f'using clang : {version} : clang++ ;' in config.read_text().splitlines()
     assert xml.is_file(), xml
+    assert output.read_text().splitlines() == [f'lane={name}', f'xml={xml.as_posix()}'], (
+        output.read_text())
     lanes = root / 'downloaded'
     (lanes / 'lane-apple-clang').mkdir(parents=True)
     xml.rename(lanes / 'lane-apple-clang' / xml.name)
@@ -190,12 +247,19 @@ def test_a_lane_writes_its_xml_and_the_report_merges_it(root):
 
 def test_a_lane_that_cannot_build_fails(root):
     entry = host_lane(root)
-    boost_only(root)
-    # A Jamfile that does not parse: b2 stops before it builds anything.
-    (root / 'libs/demo/test/Jamfile').write_text('webcpp.run [ ;\n')
-    result = run(root, 'lane', json.dumps(entry), '--', '--build-dir=bin/lane')
+    # A user-config.jam that stops b2 as it loads, before it writes any XML.
+    harness.configure(root, 'EXIT "a user-config.jam that stops b2" : 1 ;\n')
+    output = root / 'github-output'
+    output.write_text('')
+    result = run(root, 'lane', json.dumps(entry), '--', '--build-dir=bin/lane',
+                 github_output=output)
     assert result.returncode == 1, (result.returncode, result.stdout[-2000:], result.stderr)
-    assert 'b2 exited' in result.stderr or 'b2 wrote no' in result.stderr, result.stderr
+    assert 'a user-config.jam that stops b2' in result.stdout, result.stdout[-2000:]
+    assert 'b2 exited 1' in result.stderr, result.stderr
+    # The job's outputs name the lane, and no XML: the upload step has nothing to upload.
+    written = output.read_text().splitlines()
+    assert any(line.startswith('lane=clang-') for line in written), written
+    assert not any(line.startswith('xml=') for line in written), written
 
 
 def test_the_report_names_a_planned_lane_that_wrote_nothing(root):
@@ -221,6 +285,8 @@ CASES = [
     test_a_target_without_a_lane_fails,
     test_an_unknown_library_fails,
     test_a_lane_is_named_by_the_compiler_version,
+    test_abbreviated_paths_keep_the_lane_name,
+    test_register_writes_the_lanes_toolsets_in_order,
     test_a_lane_writes_its_xml_and_the_report_merges_it,
     test_a_lane_that_cannot_build_fails,
     test_the_report_names_a_planned_lane_that_wrote_nothing,

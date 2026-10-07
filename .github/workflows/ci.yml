@@ -4,15 +4,15 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-# The superproject's CI: the lanes, the docs, the lint and the report of library.yml, over every
-# library of libs/ at the commit its submodule points to, and the index page with every
-# library's page. On main, it then publishes the site to GitHub Pages,
-# https://webcpporg.github.io/webcpp/, which tools/ci/assemble.py lays out as the tree is:
+# The superproject's CI: the lanes, the docs, the lint, the tests of the tools and the report of
+# library.yml, over every library of libs/ at the commit its submodule points to, and the index
+# page with every library's page. Then tools/ci/assemble.py lays out the site and checks every
+# link of it, on every run, and on main it is published to GitHub Pages,
+# https://webcpporg.github.io/webcpp/:
 #
-#   index.html               sends a reader to the index page;
-#   doc/html/                the index page, which links each library's page by its path;
-#   libs/<name>/doc/html/    each library's page;
-#   report/                  the test matrix, which the pages link to.
+#   index.html          the index page;
+#   libs/<name>/        each library's page;
+#   report/             the test matrix, which the pages link to.
 #
 # The site is published whenever the pages were built, a red matrix included: the matrix is
 # there to show what fails.
@@ -37,29 +37,19 @@ jobs:
     name: CI
     uses: ./.github/workflows/library.yml
 
-  pages:
-    name: Pages
+  site:
+    name: Site
     needs: ci
-    if: >-
-      always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-      && needs.ci.outputs.docs == 'true'
+    if: always() && needs.ci.outputs.docs == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    concurrency:
-      group: pages
-      cancel-in-progress: false
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Download the pages
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -76,11 +66,29 @@ jobs:
       - name: Assemble the site
         run: python3 tools/ci/assemble.py --docs bin/pages --report bin/report --out bin/site
 
-      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: bin/site
+
+  pages:
+    name: Pages
+    needs: site
+    if: >-
+      always() && needs.site.result == 'success' && github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Deploy
         id: deploy
