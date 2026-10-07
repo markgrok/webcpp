@@ -521,6 +521,22 @@ else
     fail 'a Python line is longer than 100 columns'
 fi
 
+# 13. A library's include boundaries: libs/<name>/meta/include-boundaries.json, when a library
+#     has one, names boundaries, each a set of headers (a headers glob, less an except glob,
+#     relative to libs/<name>/, matched the way pathlib matches one: * stays within one path
+#     segment) that must not #include <...> or #include "..." a path starting with one of its
+#     must-not-include prefixes. A violation fails at its line, with the boundary's why; a
+#     malformed file, an unknown key, or a glob that matches no file of the library fails,
+#     naming the file (tools/lint/rules.py). This generalises xstate-cpp's rule 3d, which kept
+#     the machine core free of xactor and of the actor layer; its "replaced documents" rule
+#     guarded a history that does not exist here, and is not carried.
+rule 'include boundaries'
+if python3 tools/lint/rules.py include-boundaries < "${work_directory}/files"; then
+    printf 'every library keeps to its declared include boundaries\n'
+else
+    fail 'a library crosses an include boundary its meta/include-boundaries.json declares'
+fi
+
 printf '\n'
 if [ "${#failed_rules[@]}" -eq 0 ]; then
     printf 'lint: clean\n'

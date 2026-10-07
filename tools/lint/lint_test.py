@@ -504,6 +504,121 @@ def test_raw_rules(root):
                at(root, parsing, 'case run')))
 
 
+def boundaries_config(root, boundaries: list[dict]) -> str:
+    """Writes libs/demo/meta/include-boundaries.json with boundaries, and returns its path."""
+    path = 'libs/demo/meta/include-boundaries.json'
+    write(root, path, json.dumps({'boundaries': boundaries}, indent=4) + '\n')
+    return path
+
+
+def planted_header(root, name: str, comment: str, include: str) -> str:
+    """Writes a header under libs/demo/test/boundaries/, which no Jamfile builds, so that
+    planting an include in it never touches clang-tidy or b2; returns its path."""
+    path = f'libs/demo/test/boundaries/{name}'
+    write(root, path, CPP + f'\n// {comment}\n{include}\n')
+    return path
+
+
+def test_include_boundaries_angle_brackets(root):
+    prepare(root)
+    boundaries_config(root, [{
+        'headers': ['test/boundaries/core.hpp'],
+        'must-not-include': ['webcpp/forbidden'],
+        'why': 'the core must not reach the forbidden module',
+    }])
+    header = planted_header(root, 'core.hpp', 'Planted by lint_test.py: a forbidden include.',
+                            '#include <webcpp/forbidden/thing.hpp>')
+    expect_alone(lint(root), 'include boundaries', [
+        f"{at(root, header, '#include <webcpp/forbidden')} the core must not reach the "
+        'forbidden module',
+    ])
+
+
+def test_include_boundaries_quotes(root):
+    prepare(root)
+    boundaries_config(root, [{
+        'headers': ['test/boundaries/quoted.hpp'],
+        'must-not-include': ['webcpp/forbidden'],
+        'why': 'quotes name a path exactly as angle brackets do',
+    }])
+    header = planted_header(root, 'quoted.hpp',
+                            'Planted by lint_test.py: the same forbidden path, in quotes.',
+                            '#include "webcpp/forbidden/thing.hpp"')
+    needle = at(root, header, '#include "webcpp/forbidden')
+    expect_alone(lint(root), 'include boundaries', [
+        f'{needle} quotes name a path exactly as angle brackets do',
+    ])
+
+
+def test_include_boundaries_except(root):
+    prepare(root)
+    boundaries_config(root, [{
+        'headers': ['test/boundaries/*.hpp'],
+        'except': ['test/boundaries/excepted.hpp'],
+        'must-not-include': ['webcpp/forbidden'],
+        'why': 'the core must not reach the forbidden module',
+    }])
+    core = planted_header(root, 'core.hpp', 'Planted by lint_test.py: a forbidden include.',
+                          '#include <webcpp/forbidden/thing.hpp>')
+    excepted = planted_header(root, 'excepted.hpp',
+                              'Planted by lint_test.py: excepted, so this include passes.',
+                              '#include <webcpp/forbidden/thing.hpp>')
+    expect_alone(lint(root), 'include boundaries', [
+        f"{at(root, core, '#include <webcpp/forbidden')} the core must not reach the forbidden "
+        'module',
+    ], spared=(at(root, excepted, '#include <webcpp/forbidden'),))
+
+
+def test_include_boundaries_prefix_catches_bare_header(root):
+    prepare(root)
+    boundaries_config(root, [{
+        'headers': ['test/boundaries/no_xactor.hpp'],
+        'must-not-include': ['webcpp/xactor'],
+        'why': 'webcpp/xactor is a prefix of webcpp/xactor.hpp, not only of webcpp/xactor/...',
+    }])
+    header = planted_header(root, 'no_xactor.hpp',
+                            'Planted by lint_test.py: the prefix also catches the bare header.',
+                            '#include <webcpp/xactor.hpp>')
+    expect_alone(lint(root), 'include boundaries', [
+        f"{at(root, header, '#include <webcpp/xactor.hpp')} webcpp/xactor is a prefix of "
+        'webcpp/xactor.hpp, not only of webcpp/xactor/...',
+    ])
+
+
+def test_include_boundaries_glob_matches_nothing(root):
+    prepare(root)
+    config = boundaries_config(root, [{
+        'headers': ['test/boundaries/no_such_*.hpp'],
+        'must-not-include': ['webcpp/forbidden'],
+        'why': 'unreachable',
+    }])
+    expect_alone(lint(root), 'include boundaries', [
+        f"{config}:1: the headers glob 'test/boundaries/no_such_*.hpp' matches no file of "
+        'libs/demo/',
+    ])
+
+
+def test_include_boundaries_unknown_key(root):
+    prepare(root)
+    config = boundaries_config(root, [{
+        'headers': ['test/boundaries/core.hpp'],
+        'must-not-include': ['webcpp/forbidden'],
+        'why': 'reason',
+        'typo': True,
+    }])
+    expect_alone(lint(root), 'include boundaries', [
+        f"{config}:1: a boundary names the key 'typo', which is none of ['except', 'headers', "
+        "'must-not-include', 'why']",
+    ])
+
+
+def test_include_boundaries_malformed_json(root):
+    prepare(root)
+    config = 'libs/demo/meta/include-boundaries.json'
+    write(root, config, '{ not json ]\n')
+    expect_alone(lint(root), 'include boundaries', [f'{config}:1: not valid JSON'])
+
+
 def test_doc_comments(root):
     prepare(root)
     header = 'libs/demo/include/webcpp/demo/answer.hpp'
@@ -655,6 +770,13 @@ CASES = [
     test_banned_word,
     test_world_rule,
     test_raw_rules,
+    test_include_boundaries_angle_brackets,
+    test_include_boundaries_quotes,
+    test_include_boundaries_except,
+    test_include_boundaries_prefix_catches_bare_header,
+    test_include_boundaries_glob_matches_nothing,
+    test_include_boundaries_unknown_key,
+    test_include_boundaries_malformed_json,
     test_doc_comments,
     test_doc_comment_references,
     test_pyright,

@@ -13,16 +13,20 @@ The paths, relative to the current directory and separated by NUL bytes, come on
 input, and the rule reads those it applies to. Each finding is printed as `path:line: message`.
 Exit 0 when there is none, 1 when there is one, 2 on a usage error.
 
-  licence       every source file opens with the WebCpp.org licence notice;
-  raw-rules     a library's test or example Jamfile declares its programs only with the rules of
-                tools/webcpp.jam;
-  doc-comments  a Doc Comment uses only the commands webcpp allows, no bare @, and no colon after
-                a reference;
-  line-length   no line of a Python file is longer than 100 columns, .clang-format's ColumnLimit.
+  licence             every source file opens with the WebCpp.org licence notice;
+  raw-rules           a library's test or example Jamfile declares its programs only with the
+                      rules of tools/webcpp.jam;
+  doc-comments        a Doc Comment uses only the commands webcpp allows, no bare @, and no
+                      colon after a reference;
+  line-length         no line of a Python file is longer than 100 columns, .clang-format's
+                      ColumnLimit;
+  include-boundaries  a library keeps to the include boundaries its own
+                      libs/<name>/meta/include-boundaries.json declares, when it has one.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from collections.abc import Callable, Iterator
@@ -340,12 +344,123 @@ def line_length(path: str, text: str) -> Iterator[Finding]:
             yield (path, number, f'{len(line)} columns, over the limit of {LINE_LIMIT}')
 
 
-RULES: dict[str, Callable[[str, str], Iterator[Finding]]] = {
+# The config a library's meta/include-boundaries.json may hold, and what each of its boundaries
+# may hold. "except" is the only optional key of a boundary.
+CONFIG_KEYS = {'boundaries'}
+BOUNDARY_KEYS = {'headers', 'except', 'must-not-include', 'why'}
+REQUIRED_BOUNDARY_KEYS = BOUNDARY_KEYS - {'except'}
+
+# libs/<name>/meta/include-boundaries.json.
+BOUNDARIES_CONFIG = re.compile(r'libs/([^/]+)/meta/include-boundaries\.json')
+
+# An #include line, its argument the text between <> or "", whichever delimits it.
+INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]*)[>"]')
+
+
+def glob_matches(paths: list[PurePosixPath], pattern: str) -> list[PurePosixPath]:
+    """The paths, relative to the library, that pattern matches: pathlib's own glob semantics,
+    where * stays within one path segment."""
+    return [path for path in paths if path.match(pattern)]
+
+
+def boundary_findings(config_path: str, boundary: object, library_paths: list[PurePosixPath],
+                      prefix: str) -> Iterator[Finding]:
+    """What is wrong with one boundary of config_path's "boundaries": an unknown or a missing
+    key, a glob that matches no file of the library, or a header it covers, less its except,
+    that includes a path starting with one of its must-not-include prefixes."""
+    if not isinstance(boundary, dict):
+        yield (config_path, 1, 'each boundary must be an object')
+        return
+    unknown = sorted(set(boundary) - BOUNDARY_KEYS)
+    if unknown:
+        yield (config_path, 1, f'a boundary names the key {unknown[0]!r}, which is none of '
+               f'{sorted(BOUNDARY_KEYS)}')
+        return
+    missing = sorted(REQUIRED_BOUNDARY_KEYS - set(boundary))
+    if missing:
+        yield (config_path, 1, f'a boundary is missing {missing[0]!r}')
+        return
+    headers, excepted = boundary['headers'], boundary.get('except', [])
+    must_not_include, why = boundary['must-not-include'], boundary['why']
+    fields = (('headers', headers), ('except', excepted), ('must-not-include', must_not_include))
+    if any(not isinstance(value, list) for _, value in fields) or not isinstance(why, str):
+        yield (config_path, 1, '"headers", "except" and "must-not-include" must be lists of '
+               'strings, and "why" a string')
+        return
+    covered: set[PurePosixPath] = set()
+    for name, patterns in (('headers', headers), ('except', excepted)):
+        for pattern in patterns:
+            matches = glob_matches(library_paths, pattern)
+            if not matches:
+                yield (config_path, 1, f'the {name} glob {pattern!r} matches no file of {prefix}')
+            elif name == 'headers':
+                covered.update(matches)
+    excluded = {path for pattern in excepted for path in glob_matches(library_paths, pattern)}
+    for relative in sorted(covered - excluded, key=str):
+        yield from header_findings(prefix + str(relative), must_not_include, why)
+
+
+def header_findings(path: str, must_not_include: list[str], why: str) -> Iterator[Finding]:
+    """A line of the header at path that #includes a path starting with one of must_not_include,
+    reported with why."""
+    with open(path, encoding='utf-8', errors='replace') as file:
+        lines = file.read().splitlines()
+    for number, line in enumerate(lines, 1):
+        included = INCLUDE.match(line)
+        if included and any(included.group(1).startswith(forbidden)
+                            for forbidden in must_not_include):
+            yield (path, number, why)
+
+
+def library_findings(config_path: str, all_paths: list[str]) -> Iterator[Finding]:
+    """What is wrong with one library's meta/include-boundaries.json, at config_path."""
+    with open(config_path, encoding='utf-8', errors='replace') as file:
+        text = file.read()
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError as error:
+        yield (config_path, 1, f'not valid JSON: {error}')
+        return
+    if not isinstance(document, dict) or set(document) != CONFIG_KEYS:
+        yield (config_path, 1, f'the file must hold exactly one key, {sorted(CONFIG_KEYS)[0]!r}')
+        return
+    boundaries = document['boundaries']
+    if not isinstance(boundaries, list):
+        yield (config_path, 1, '"boundaries" must be a list')
+        return
+    prefix = config_path[:-len('meta/include-boundaries.json')]
+    library_paths = sorted(PurePosixPath(path[len(prefix):]) for path in all_paths
+                           if path.startswith(prefix) and path != config_path)
+    for boundary in boundaries:
+        yield from boundary_findings(config_path, boundary, library_paths, prefix)
+
+
+def include_boundaries(paths: list[str]) -> Iterator[Finding]:
+    """Each library of libs/ that declares its own meta/include-boundaries.json is held to it:
+    every header its boundaries' headers glob matches, less its except, is read for its
+    #include <...> and #include "..." lines; one that names a path starting with one of the
+    boundary's must-not-include prefixes fails at its line, with the boundary's why. A library
+    without the file passes silently. A malformed file, an unknown key, or a glob that matches
+    no file of the library fails, naming the file."""
+    for config_path in sorted(paths):
+        if BOUNDARIES_CONFIG.fullmatch(config_path):
+            yield from library_findings(config_path, paths)
+
+
+# Rules that look at one file at a time, each path read and handed to the rule with its text.
+PER_FILE_RULES: dict[str, Callable[[str, str], Iterator[Finding]]] = {
     'licence': licence,
     'raw-rules': raw_rules,
     'doc-comments': doc_comments,
     'line-length': line_length,
 }
+
+# Rules that need every path at once, to find a library's own files from among them.
+WHOLE_TREE_RULES: dict[str, Callable[[list[str]], Iterator[Finding]]] = {
+    'include-boundaries': include_boundaries,
+}
+
+RULES = sorted({*PER_FILE_RULES, *WHOLE_TREE_RULES})
 
 # What a rule prints once after its findings.
 NOTES = {
@@ -357,18 +472,27 @@ def main(arguments: list[str]) -> int:
     if len(arguments) != 1 or arguments[0] not in RULES:
         print(f'usage: rules.py {"|".join(RULES)} < paths', file=sys.stderr)
         return 2
-    rule = RULES[arguments[0]]
+    name = arguments[0]
+    paths = [path for path in sys.stdin.buffer.read().decode().split('\0') if path]
+    findings: Iterator[Finding]
+    if name in WHOLE_TREE_RULES:
+        findings = WHOLE_TREE_RULES[name](paths)
+    else:
+        per_file = PER_FILE_RULES[name]
+
+        def over_every_file() -> Iterator[Finding]:
+            for path in paths:
+                with open(path, encoding='utf-8', errors='replace') as file:
+                    text = file.read()
+                yield from per_file(path, text)
+
+        findings = over_every_file()
     found = False
-    for path in sys.stdin.buffer.read().decode().split('\0'):
-        if not path:
-            continue
-        with open(path, encoding='utf-8', errors='replace') as file:
-            text = file.read()
-        for where, line, message in rule(path, text):
-            print(f'{where}:{line}: {message}')
-            found = True
-    if found and arguments[0] in NOTES:
-        print(NOTES[arguments[0]])
+    for where, line, message in findings:
+        print(f'{where}:{line}: {message}')
+        found = True
+    if found and name in NOTES:
+        print(NOTES[name])
     return 1 if found else 0
 
 
