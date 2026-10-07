@@ -18,8 +18,8 @@ directory, which the script checks no sample names.
 
 | Sample | Lane | Built | What it shows |
 | --- | --- | --- | --- |
-| `native-pass.xml` | `toolset=clang` | `libs/demo/test libs/demo/example` | every kind of test and example passing: run, run-fail, compile, compile-fail, the headers alone, the `-noexcept` variants |
-| `wasip2-pass.xml` | `toolset=clang-wasip2 testing.launcher=wasmtime` | `libs/demo/test libs/demo/example` | the same on wasip2, where the native-only programs, the `-noexcept` variants and `catches` are not built |
+| `native-pass.xml` | `toolset=clang` | `libs/demo/test libs/demo/example` | every kind of test and example passing: run, run-fail, compile, compile-fail, the headers alone, a Boost.Test suite, a program that links Boost.JSON's definitions, the `-noexcept` variants |
+| `wasip2-pass.xml` | `toolset=clang-wasip2 testing.launcher=wasmtime` | `libs/demo/test libs/demo/example` | the same on wasip2, where the native-only programs, the Boost.Test suite, the `-noexcept` variants and `catches` are not built |
 | `native-failures.xml` | `toolset=clang` | demo's `pass` and `rejects`, `libs/planted/test libs/planted/example` | a pass and an expected compile failure beside a test that fails to run, one that fails to compile, one that fails to link, a compile-fail test that compiles, a run-fail test that exits with 0, an example that prints otherwise and one that does not compile |
 | `wasip2-empty.xml` | `toolset=clang-wasip2 testing.launcher=wasmtime` | `libs/nativeonly/test`, a library that declares native only | a lane in which every program is skipped |
 | `native-dependency.xml` | `toolset=clang` | demo's `pass-noexcept`, with `tools/throw_exception.cpp` broken | a failure outside every test, and the test it keeps from running |

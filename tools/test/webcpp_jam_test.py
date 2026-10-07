@@ -7,9 +7,11 @@
 
 """Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, natively
 also without exceptions and RTTI; wasip2 builds without exceptions and wasip3 with them; an example
-is compared with its expected output; every public header compiles alone; and `b2 declared-targets`
-lists what each library declares. Each case builds a scratch superproject with the fixture library
-demo. Run with the names of some cases to run only those."""
+is compared with its expected output; every public header compiles alone; `b2 declared-targets`
+lists what each library declares; a Boost.Test suite is built and run natively only, its framework
+always with exceptions; and Boost.JSON's definitions link on every target. Each case builds a
+scratch superproject with the fixture library demo. Run with the names of some cases to run only
+those."""
 
 from __future__ import annotations
 
@@ -58,9 +60,10 @@ def stand_in_emscripten(root):
 
 
 NATIVE_DEMO = {'pass', 'pass-noexcept', 'fails', 'rejects', 'native_only', 'native_only-noexcept',
-               'native_only_compiles', 'alone-demo', 'alone-demo-answer'}
+               'native_only_compiles', 'alone-demo', 'alone-demo-answer', 'suite', 'suite-noexcept',
+               'parses_json', 'parses_json-noexcept'}
 
-WASM_DEMO = {'pass', 'fails', 'rejects', 'alone-demo', 'alone-demo-answer'}
+WASM_DEMO = {'pass', 'fails', 'rejects', 'alone-demo', 'alone-demo-answer', 'parses_json'}
 
 PLAIN = ('import webcpp ;\n'
          '\n'
@@ -291,6 +294,141 @@ def test_headers_alone_catches_a_missing_include(root):
     assert passed(result) == NATIVE_DEMO, (passed(result), result.stdout[-4000:])
 
 
+def compile_lines(root, *request):
+    """The lines of b2's dry run of request, from scratch, that compile a .cpp file, by the file's
+    name: suite_test.cpp for .../libs/demo/test/suite_test.cpp."""
+    result = harness.run_b2(root, '-n', '-a', *request)
+    harness.expect(result, True)
+    lines = {}
+    for line in result.stdout.splitlines():
+        found = re.search(r'([^/"]+\.cpp)"\s*$', line)
+        if ' -c ' in line and found:
+            lines.setdefault(found.group(1), []).append(line)
+    return lines
+
+
+def test_boost_test_passes_natively_with_noexcept(root):
+    result = harness.run_b2(root, 'libs/demo/test//suite', 'libs/demo/test//suite-noexcept')
+    harness.expect(result, True)
+    assert passed(result) == {'suite', 'suite-noexcept'}, (passed(result), result.stdout[-4000:])
+    # The suite's own sources are built as a webcpp.run's are: the variant -noexcept without
+    # exceptions and without RTTI.
+    assert built_with(exceptions=True, rtti=True) in output_of(root, 'suite.output')
+    assert built_with(exceptions=False, rtti=False) in output_of(root, 'suite-noexcept.output')
+    # The framework is an object of its own, which names the module and is compiled with
+    # exceptions in both variants: without them, a failed BOOST_TEST_REQUIRE never ends the run,
+    # and GCC rejects Boost.Test's unguarded try. The variant -noexcept compiles it without RTTI.
+    lines = compile_lines(root, 'libs/demo/test//suite', 'libs/demo/test//suite-noexcept')
+    framework = lines['boost_test_runner.cpp']
+    assert len(framework) == 2, framework
+    for line in framework:
+        assert '-DBOOST_TEST_MODULE=suite' in line, line
+        assert '-fno-exceptions' not in line and 'BOOST_NO_EXCEPTIONS' not in line, line
+    assert sum('-fno-rtti' in line for line in framework) == 1, framework
+    sources = lines['suite_test.cpp']
+    assert len(sources) == 2, sources
+    assert sum('-fno-exceptions' in line and '-fno-rtti' in line
+               and '-DBOOST_NO_EXCEPTIONS' in line for line in sources) == 1, sources
+    assert not any('BOOST_TEST_MODULE' in line for line in sources), sources
+
+
+RED = ('import webcpp ;\n'
+       '\n'
+       'webcpp.boost-test red-checks : checks_test.cpp ;\n'
+       'webcpp.boost-test red-requires : requires_test.cpp ;\n')
+
+RED_SOURCES = {
+    'checks_test.cpp': ('#include <boost/test/unit_test.hpp>\n'
+                        '\n'
+                        'BOOST_AUTO_TEST_CASE(checks_and_goes_on) {\n'
+                        '    BOOST_TEST(1 + 1 == 3);\n'
+                        '    BOOST_TEST(1 + 1 == 4);\n'
+                        '}\n'),
+    'requires_test.cpp': ('#include <boost/test/unit_test.hpp>\n'
+                          '\n'
+                          'BOOST_AUTO_TEST_CASE(requires_and_stops) {\n'
+                          '    BOOST_TEST_REQUIRE(2 + 2 == 5);\n'
+                          '    BOOST_TEST(2 + 2 == 6);\n'
+                          '}\n'),
+}
+
+
+def test_boost_test_failure_is_red_and_named(root):
+    # A failed check, after which its case goes on, and a failed requirement, which ends its
+    # case: each ends the run red in both variants, never a hang and never a pass, and the output
+    # names the case, the check and the module, whose name has - as _.
+    harness.add_library(root, 'red', RED, RED_SOURCES)
+    result = harness.run_b2(root, 'libs/red/test')
+    harness.expect(result, False, 'checks_and_goes_on', '1 + 1 == 3', '1 + 1 == 4',
+                   'requires_and_stops', '2 + 2 == 5', 'red_checks')
+    assert '2 + 2 == 6' not in result.stdout, result.stdout[-6000:]
+    # Boost.Test writes a terminal's colours even to a file, unless told not to.
+    assert '\x1b' not in result.stdout, result.stdout[-6000:]
+    for name in ('red-checks', 'red-checks-noexcept', 'red-requires', 'red-requires-noexcept'):
+        assert re.search(rf'^\.\.\.failed .*/{name}\.test/.*/{name}\.run\.\.\.$',
+                         result.stdout, re.MULTILINE), (name, result.stdout[-6000:])
+    assert not passed(result), result.stdout[-4000:]
+
+
+SUITES = ('import webcpp ;\n'
+          '\n'
+          'webcpp.targets native wasip2 wasip3 ;\n'
+          '\n'
+          'webcpp.boost-test suite : suite_test.cpp ;\n')
+
+SUITE_SOURCE = ('#ifdef __wasi__\n'
+                '#error "a Boost.Test suite is built for native only"\n'
+                '#endif\n'
+                '\n'
+                '#include <boost/test/unit_test.hpp>\n'
+                '\n'
+                'BOOST_AUTO_TEST_CASE(passes) {\n'
+                '    BOOST_TEST(1 + 1 == 2);\n'
+                '}\n')
+
+
+def test_boost_test_never_built_for_wasm(root):
+    # Its Jamfile declares wasm targets, and the suite is still built for native only: the source
+    # stops with #error for WASI, so a suite the filter should have skipped fails loudly.
+    harness.add_library(root, 'suites', SUITES, {'suite_test.cpp': SUITE_SOURCE})
+    for target in (WASIP2, WASIP3):
+        result = harness.run_b2(root, *target, 'libs/suites/test', 'libs/demo/test//suite')
+        harness.expect(result, True)
+        assert not passed(result), (target, result.stdout[-4000:])
+        assert not (root / 'bin/libs/suites').exists(), target
+        assert 'boost_test_runner' not in result.stdout, (target, result.stdout[-4000:])
+    result = harness.run_b2(root, 'libs/suites/test')
+    harness.expect(result, True)
+    assert passed(result) == {'suite', 'suite-noexcept'}, (passed(result), result.stdout[-4000:])
+    # It is recorded for native alone, whatever its Jamfile declares.
+    result = harness.run_b2(root, '-d0', 'declared-targets')
+    harness.expect(result, True)
+    lines = [line for line in result.stdout.splitlines() if line.startswith('suites ')]
+    assert lines == ['suites native'], result.stdout
+
+
+def test_boost_json_on_every_target(root):
+    programs = ('libs/demo/test//parses_json', 'libs/demo/test//parses_json-noexcept')
+    result = harness.run_b2(root, *programs)
+    harness.expect(result, True)
+    assert passed(result) == {'parses_json', 'parses_json-noexcept'}, (passed(result),
+                                                                       result.stdout[-4000:])
+    # The definitions are a library of their own, compiled once per variant: here two.
+    archives = [path for path in (root / 'bin').rglob('*boost_json.*')
+                if path.suffix in ('.a', '.lib')]
+    assert len(archives) == 2, (archives, result.stdout[-4000:])
+    for target in (WASIP2, WASIP3):
+        result = harness.run_b2(root, *target, programs[0])
+        harness.expect(result, True)
+        assert passed(result) == {'parses_json'}, (target, passed(result), result.stdout[-4000:])
+    # Without the library, a program that parses JSON does not link.
+    harness.replace(root / 'libs/demo/test/Jamfile', ' <library>/webcpp//boost_json', '')
+    result = harness.run_b2(root, '-a', programs[0])
+    harness.expect(result, False)
+    assert re.search(r'^\.\.\.failed .*parses_json', result.stdout, re.MULTILINE), (
+        result.stdout[-4000:])
+
+
 CASES = [
     test_native_builds_declared_and_noexcept_variant,
     test_wasip2_skips_native_only_and_has_no_exceptions,
@@ -303,6 +441,10 @@ CASES = [
     test_a_wrong_declaration_is_refused,
     test_example_mismatch_fails_naming_the_program,
     test_headers_alone_catches_a_missing_include,
+    test_boost_test_passes_natively_with_noexcept,
+    test_boost_test_failure_is_red_and_named,
+    test_boost_test_never_built_for_wasm,
+    test_boost_json_on_every_target,
 ]
 
 

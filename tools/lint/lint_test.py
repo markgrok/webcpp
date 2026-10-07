@@ -201,9 +201,13 @@ def test_compile_database_lists_what_b2_builds(root):
     expected = {root / source for source in ('libs/demo/test/pass.cpp',
                                              'libs/demo/test/fails.cpp',
                                              'libs/demo/test/native_only.cpp',
+                                             'libs/demo/test/suite_test.cpp',
+                                             'libs/demo/test/parses_json.cpp',
                                              'libs/demo/example/hello.cpp',
                                              'libs/demo/example/catches.cpp',
-                                             'tools/throw_exception.cpp')}
+                                             'tools/throw_exception.cpp',
+                                             'tools/boost_test_runner.cpp',
+                                             'tools/boost_json.cpp')}
     assert files == expected | {aggregate}, sorted(map(str, files))
     for entry in entries:
         assert entry['directory'] == str(root), entry
@@ -212,6 +216,10 @@ def test_compile_database_lists_what_b2_builds(root):
     sources = [Path(entry['file']) for entry in entries]
     assert sources.count(root / 'libs/demo/test/pass.cpp') == 2, sources
     assert sources.count(root / 'libs/demo/test/native_only.cpp') == 2, sources
+    # A Boost.Test suite's framework is compiled once per variant, with exceptions in both, and so
+    # are Boost.JSON's definitions.
+    assert sources.count(root / 'tools/boost_test_runner.cpp') == 2, sources
+    assert sources.count(root / 'tools/boost_json.cpp') == 2, sources
     # The aggregate includes every public header, and is compiled as headers-alone compiles one.
     assert aggregate.read_text().splitlines()[-2:] == ['#include <webcpp/demo.hpp>',
                                                        '#include <webcpp/demo/answer.hpp>'], (
@@ -481,7 +489,9 @@ def test_raw_rules(root):
         at(root, test, 'raw_run_fail'),
         at(root, test, 'raw_compile ;'),
         at(root, test, 'raw_compile_fail'),
-        at(root, test, 'raw_unit_test'),
+        f"{at(root, test, 'raw_unit_test')} unit-test is b2's own rule; a test or example "
+        'Jamfile declares its programs with the rules of tools/webcpp.jam, here '
+        'webcpp.boost-test\n',
         at(root, test, 'raw_bracket'),
         at(root, test, 'raw_qualified'),
         at(root, example, 'raw_exe'),

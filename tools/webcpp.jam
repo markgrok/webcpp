@@ -13,6 +13,7 @@
 #     webcpp.run-fail name : sources + : requirements * : targets * ;
 #     webcpp.compile name : sources + : requirements * : targets * ;
 #     webcpp.compile-fail name : sources + : requirements * : targets * ;
+#     webcpp.boost-test name : sources + : requirements * ;
 #     webcpp.example source : requirements * : targets * ;
 #     webcpp.headers-alone library : include-root ;
 #
@@ -82,6 +83,11 @@ if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 # The example runner, beside this file, as an absolute native path: the
 # action that runs it starts in the directory b2 was started in.
 .runner = [ path.native [ path.join $(.tools) example/run_example.py ] ] ;
+
+# The Boost.Test framework of webcpp.boost-test, beside this file, absolute,
+# and the arguments a suite is run with.
+.framework = [ path.join $(.tools) boost_test_runner.cpp ] ;
+.boost-test-arguments = --log_level=error --color_output=no ;
 
 # The documentation's rules, loaded as the module webcpp-doc: b2 has a
 # module named doc of its own, the one of --help, which an import of
@@ -221,6 +227,36 @@ rule run ( name : sources + : requirements * : targets * )
         testing.run $(sources) : : : $(requirements) $(.noexcept) $(.handler)
             <webcpp-targets>native <conditional>@webcpp%filter : $(name)-noexcept ;
     }
+}
+
+# A Boost.Test suite, built from sources and the header-only framework of
+# tools/boost_test_runner.cpp, which passes when every case does. It is built
+# and run natively only, whatever its Jamfile's webcpp.targets says, also as
+# name-noexcept, whose own sources are compiled as a webcpp.run's -noexcept
+# variant. The framework is an object of each suite, which names the module
+# BOOST_TEST_MODULE=name with - as _ (a hyphen in a macro's replacement would
+# read as a subtraction), and is compiled with exceptions on in both
+# variants: built without them, a failed BOOST_TEST_REQUIRE of Boost.Test
+# 1.92 never ends the run, and GCC rejects the unguarded try of
+# unit_test_main.ipp. Its -noexcept object is compiled without RTTI, and with
+# MSVC's standard library without exceptions, as the sources it is linked
+# with are. --log_level=error makes a failure print its case and its check,
+# and --color_output=no keeps out of b2's output and the report's pages the
+# terminal's escape sequences, which Boost.Test writes even to a file.
+rule boost-test ( name : sources + : requirements * )
+{
+    local only = [ program native ] ;
+    local identifier = [ regex.replace $(name) "-" "_" ] ;
+    local framework = <define>BOOST_TEST_MODULE=$(identifier) <exception-handling>on ;
+    local current = [ project.current ] ;
+    obj $(name)-framework : $(.framework) : $(requirements) $(framework) $(only) ;
+    obj $(name)-framework-noexcept : $(.framework)
+      : $(requirements) $(framework) <rtti>off <toolset>msvc:<define>_HAS_EXCEPTIONS=0 $(only) ;
+    $(current).mark-target-as-explicit $(name)-framework $(name)-framework-noexcept ;
+    testing.run $(sources) $(name)-framework : $(.boost-test-arguments)
+        : : $(requirements) $(only) $(.handler) : $(name) ;
+    testing.run $(sources) $(name)-framework-noexcept : $(.boost-test-arguments)
+        : : $(requirements) $(.noexcept) $(only) $(.handler) : $(name)-noexcept ;
 }
 
 # A test that passes when its program, built from sources, exits with a

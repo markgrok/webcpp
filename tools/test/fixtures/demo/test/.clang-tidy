@@ -1,0 +1,10 @@
+# The tests inherit the superproject's configuration and switch off one check.
+#
+# misc-use-internal-linkage reports every BOOST_AUTO_TEST_CASE of a Boost.Test
+# suite: the macro declares the case's struct at namespace scope, where
+# Boost.Test's documentation writes every case, and a suite is not rewritten
+# to dodge the check.
+---
+InheritParentConfig: true
+Checks: >
+  -misc-use-internal-linkage

@@ -272,6 +272,13 @@ always boost_version ;
 # BOOST_NO_EXCEPTIONS, which its definitions need.
 obj throw_exception : tools/throw_exception.cpp ;
 
+# Boost.JSON's definitions, tools/boost_json.cpp, for a header-only build on
+# every target: a library that needs Boost.JSON puts
+# <library>/webcpp//boost_json in its main target's usage requirements.
+# Static, and built once per variant: <exception-handling>off and <rtti>off
+# reach it from the program, as they reach the handler.
+lib boost_json : tools/boost_json.cpp : <link>static ;
+
 # The projects in the directories that pattern matches, each named
 # ./<directory>: b2 takes a directory for the project in it, and a bare doc
 # would name the alias doc itself.
@@ -380,5 +387,5 @@ notfile declared-lanes : @declared-lanes : : <webcpp-boost-check>off ;
 # every test, those the lane skips included. With --out-xml, b2 exits 0 even
 # when a test fails: the report's exit status is the verdict.
 
-explicit boost_version throw_exception test example doc install $(.install) declared-targets
-    declared-lanes ;
+explicit boost_version throw_exception boost_json test example doc install $(.install)
+    declared-targets declared-lanes ;

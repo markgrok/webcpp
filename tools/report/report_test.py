@@ -234,11 +234,16 @@ DEMO_TYPES = {
     'alone-demo-answer': 'compile',
     'hello': 'example',
     'catches': 'example',
+    'suite': 'run',
+    'suite-noexcept': 'run',
+    'parses_json': 'run',
+    'parses_json-noexcept': 'run',
 }
 
 # What wasip2 builds of demo: neither the native-only programs, nor the -noexcept variants, which
-# are native, nor catches, an example that throws.
-WASIP2_DEMO = {'pass', 'fails', 'rejects', 'alone-demo', 'alone-demo-answer', 'hello'}
+# are native, nor the Boost.Test suite, nor catches, an example that throws.
+WASIP2_DEMO = {'pass', 'fails', 'rejects', 'alone-demo', 'alone-demo-answer', 'hello',
+               'parses_json'}
 
 
 def test_all_pass_exits_0_and_matrix_has_cells(root: Path) -> None:

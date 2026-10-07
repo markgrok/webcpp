@@ -14,3 +14,8 @@ webcpp.compile-fail rejects : rejects.cpp : <library>/webcpp/demo//demo ;
 webcpp.run native_only : native_only.cpp : <library>/webcpp/demo//demo : native ;
 webcpp.compile native_only_compiles : native_only.cpp : <library>/webcpp/demo//demo : native ;
 webcpp.headers-alone demo : ../include ;
+# A Boost.Test suite: built and run natively only, also as suite-noexcept.
+webcpp.boost-test suite : suite_test.cpp : <library>/webcpp/demo//demo ;
+# Parses JSON on every target, with the definitions of Boost.JSON.
+webcpp.run parses_json : parses_json.cpp
+  : <library>/webcpp/demo//demo <library>/webcpp//boost_json ;
