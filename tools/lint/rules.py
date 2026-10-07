@@ -16,8 +16,8 @@ Exit 0 when there is none, 1 when there is one, 2 on a usage error.
   licence       every source file opens with the WebCpp.org licence notice;
   raw-rules     a library's test or example Jamfile declares its programs only with the rules of
                 tools/webcpp.jam;
-  doc-comments  a Doc Comment uses only the commands webcpp allows, no bare @, and no reference
-                that a colon or a possessive follows;
+  doc-comments  a Doc Comment uses only the commands webcpp allows, no bare @, and no colon after
+                a reference;
   line-length   no line of a Python file is longer than 100 columns, .clang-format's ColumnLimit.
 """
 
@@ -197,9 +197,6 @@ NUMBER = re.compile(r"[A-Za-z0-9_.']+")
 # the spaces that follow the command, up to the next space.
 REF_ARGUMENT = re.compile(r'\s+(\S+)')
 
-# The apostrophes of a possessive, ASCII and typographic.
-APOSTROPHES = "'\u2019"
-
 # A raw string literal's opening, up to its parenthesis: R"delimiter(.
 RAW_STRING = re.compile(r'(?<![A-Za-z0-9_])(?:u8|[uUL])?R"([^()\\\s]{0,16})\(')
 
@@ -284,21 +281,17 @@ def doc_comments_of(text: str) -> Iterator[list[Character]]:
 
 
 def reference_faults(command: str, argument: str) -> Iterator[str]:
-    """What is wrong with the argument of a reference, @ref or \\ref, which is the name alone: a
-    colon after it, which MrDocs drops from the page, and a possessive, which leaves the name to
-    MrDocs's own trimming of what follows it."""
+    """What is wrong with the argument of a reference, @ref or \\ref: a colon after it, which
+    MrDocs drops from the page without a word."""
     if argument.endswith(':'):
         yield (f'{command} {argument} MrDocs drops the colon that follows a reference; reword the '
                'sentence so that no colon follows it')
-    if any(apostrophe in argument for apostrophe in APOSTROPHES):
-        yield (f'{command} {argument}: a possessive after a reference; write "the <member> of '
-               f'{command} <name>"')
 
 
 def doc_comments(path: str, text: str) -> Iterator[Finding]:
     """Every command of a Doc Comment, @name or \\name, is one of DOC_COMMANDS, and an @ that
-    starts no command is written \\@; a reference, @ref or \\ref, is followed neither by a colon
-    nor by a possessive. What lies between @code and @endcode is verbatim."""
+    starts no command is written \\@; no colon follows a reference, @ref or \\ref. What lies
+    between @code and @endcode is verbatim."""
     if not path.endswith(('.hpp', '.cpp')):
         return
     for comment in doc_comments_of(text):

@@ -532,25 +532,23 @@ def test_doc_comments(root):
 
 def test_doc_comment_references(root):
     prepare(root)
-    # A reference that a colon or a possessive follows, in either form of the command; the
-    # punctuation MrDocs keeps after a reference, and code, which is verbatim, are spared.
+    # A reference that a colon follows, in either form of the command. The punctuation MrDocs keeps
+    # after a reference, a possessive among it, and code, which is verbatim, are spared.
     header = 'libs/demo/include/webcpp/demo/answer.hpp'
     harness.replace(root / header, '    @return 42.\n',
                     '    @return 42.\n'
                     '    @note Unlike @ref twice: it takes nothing.\n'
-                    "    @note What @ref twice's caller gets.\n"
-                    '    @note What \\ref twice: gives,\n'
-                    "    and what \\ref twice’s caller gets.\n"
+                    '    @note What \\ref twice: gives.\n'
+                    "    @note What @ref twice's caller gets, and what \\ref twice\u2019s does.\n"
                     '    @note @ref twice, @ref twice. @ref twice; (@ref twice) and @ref twice!\n'
                     '    @code\n'
-                    "    auto a = twice(1); // @ref twice: and @ref twice's in code\n"
+                    '    auto a = twice(1); // @ref twice: in code\n'
                     '    @endcode\n')
     expect_alone(lint(root), 'Doc Comments', [
         at(root, header, 'Unlike') + ' @ref twice: MrDocs drops the colon',
-        at(root, header, 'What @ref') + " @ref twice's: a possessive",
         at(root, header, 'What \\ref') + ' \\ref twice: MrDocs drops the colon',
-        at(root, header, 'and what') + " \\ref twice’s: a possessive",
-    ], spared=(at(root, header, '@ref twice,'), at(root, header, 'auto a')))
+    ], spared=(at(root, header, 'caller gets'), at(root, header, '@ref twice,'),
+               at(root, header, 'auto a')))
 
 
 def test_pyright(root):
