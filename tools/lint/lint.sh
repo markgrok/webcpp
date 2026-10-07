@@ -20,7 +20,8 @@
 # webcpp's own: the licence notice every source file opens with, the word that must never
 # appear, the em dash, the layout of JSON literals, that a library's test and example Jamfiles
 # declare their programs only with tools/webcpp.jam's rules, that a Doc Comment uses only the
-# commands MrDocs renders, and that every Python file passes Pyright and keeps to 100 columns.
+# commands MrDocs renders and writes its references so that MrDocs keeps what follows them, and
+# that every Python file passes Pyright and keeps to 100 columns.
 #
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
 # for the libraries' tests and examples, natively and with the host's default toolset, plus one
@@ -470,12 +471,13 @@ else
 fi
 
 # 10. A Doc Comment uses only the commands webcpp allows, each of which MrDocs renders; MrDocs
-#     drops the others without a word. A literal @ is written \@ (tools/lint/rules.py).
+#     drops the others without a word. A literal @ is written \@. No colon follows a reference,
+#     @ref or \ref, since MrDocs drops it too, and no possessive (tools/lint/rules.py).
 rule 'Doc Comments'
 if python3 tools/lint/rules.py doc-comments < "${work_directory}/sources"; then
-    printf 'every Doc Comment uses only the allowed commands\n'
+    printf 'every Doc Comment uses only the allowed commands, and its references read whole\n'
 else
-    fail 'a Doc Comment uses a command webcpp does not allow, or a bare @'
+    fail 'a Doc Comment uses a command webcpp does not allow, a bare @, or a misread @ref'
 fi
 
 # 11. Pyright, over every Python file, with the root's pyrightconfig.json: a warning fails as an

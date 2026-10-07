@@ -530,6 +530,29 @@ def test_doc_comments(root):
                at(root, source, '#error'), at(root, source, 'two";')))
 
 
+def test_doc_comment_references(root):
+    prepare(root)
+    # A reference that a colon or a possessive follows, in either form of the command; the
+    # punctuation MrDocs keeps after a reference, and code, which is verbatim, are spared.
+    header = 'libs/demo/include/webcpp/demo/answer.hpp'
+    harness.replace(root / header, '    @return 42.\n',
+                    '    @return 42.\n'
+                    '    @note Unlike @ref twice: it takes nothing.\n'
+                    "    @note What @ref twice's caller gets.\n"
+                    '    @note What \\ref twice: gives,\n'
+                    "    and what \\ref twice’s caller gets.\n"
+                    '    @note @ref twice, @ref twice. @ref twice; (@ref twice) and @ref twice!\n'
+                    '    @code\n'
+                    "    auto a = twice(1); // @ref twice: and @ref twice's in code\n"
+                    '    @endcode\n')
+    expect_alone(lint(root), 'Doc Comments', [
+        at(root, header, 'Unlike') + ' @ref twice: MrDocs drops the colon',
+        at(root, header, 'What @ref') + " @ref twice's: a possessive",
+        at(root, header, 'What \\ref') + ' \\ref twice: MrDocs drops the colon',
+        at(root, header, 'and what') + " \\ref twice’s: a possessive",
+    ], spared=(at(root, header, '@ref twice,'), at(root, header, 'auto a')))
+
+
 def test_pyright(root):
     prepare(root)
     # A warning fails as an error does. lint_test.py itself proves the import paths: it imports
@@ -606,6 +629,7 @@ CASES = [
     test_world_rule,
     test_raw_rules,
     test_doc_comments,
+    test_doc_comment_references,
     test_pyright,
     test_python_line_length,
     test_shards_split_clang_tidy,
