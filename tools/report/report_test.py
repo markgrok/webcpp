@@ -430,6 +430,48 @@ def test_unreadable_xml_exits_2(root: Path) -> None:
     assert f'cannot write {blocked}' in result.stderr, outcome(result)
 
 
+def test_nine_lanes_fit_the_content_width_at_desktop(root: Path) -> None:
+    """A budget on pages.STYLE, standing in for what a real Chrome measured at 1280px wide (the
+    screenshots this change records): the lane header must be free to wrap at a hyphen, since
+    nowrap, the rule every other cell keeps, would hold it to its widest line's full width; and
+    the content width a 1280px window leaves inside .wrap must then hold a sticky name column
+    and 9 lane columns at their minimum width, so the matrix does not need to scroll sideways."""
+    style = pages.STYLE
+    lane_rule = re.search(r'\.matrix \.lane \{([^}]*)\}', style)
+    assert lane_rule and 'white-space: normal' in lane_rule.group(1), style
+    wrap_rule = re.search(r'\.wrap \{([^}]*)\}', style)
+    assert wrap_rule, style
+    max_width_match = re.search(r'max-width:\s*(\d+)px', wrap_rule.group(1))
+    side_padding_match = re.search(r'padding-left:\s*(\d+)px', wrap_rule.group(1))
+    assert max_width_match and side_padding_match, wrap_rule.group(1)
+    content_width = int(max_width_match.group(1)) - 2 * int(side_padding_match.group(1))
+    cell_rule = re.search(r'\.matrix td\.cell \{([^}]*)\}', style)
+    assert cell_rule, style
+    cell_min_width_match = re.search(r'min-width:\s*(\d+)px', cell_rule.group(1))
+    assert cell_min_width_match, cell_rule.group(1)
+    cell_min_width = int(cell_min_width_match.group(1))
+    # A sticky name column at least as wide as a short library name needs, estimated generously
+    # (mono 13px, about 12 characters) at 160px, including its own padding and border.
+    name_column = 160
+    nine_lanes = 9 * cell_min_width
+    assert name_column + nine_lanes <= content_width, (
+        content_width, name_column, cell_min_width, nine_lanes)
+
+
+def test_toolset_line_shown_only_when_it_differs_from_the_lane_name(root: Path) -> None:
+    out = root / 'report'
+    # Clang-Darwin-21 names the same toolset as clang-darwin-21, differing only in case: the
+    # header does not repeat it. wasip2 does not name its toolset, clang-darwin-wasip2: the
+    # header shows it.
+    result = report(out, ('Clang-Darwin-21', sample('native-pass')),
+                    ('wasip2', sample('wasip2-pass')))
+    assert result.returncode == 0, outcome(result)
+    columns = matrix(out / 'index.html').columns
+    assert columns[1].text == 'Clang-Darwin-21', columns
+    assert columns[2].text == 'wasip2clang-darwin-wasip2', columns
+    check_pages(out)
+
+
 def test_a_lane_is_what_its_name_says(root: Path) -> None:
     # A lane named after a target is built for it, so that a slip in CI cannot show a target
     # green that was never built.
@@ -472,8 +514,9 @@ def test_a_lane_is_what_its_name_says(root: Path) -> None:
                     ('clang-darwin-wasip2', sample('wasip2-pass')))
     assert result.returncode == 0, outcome(result)
     columns = matrix(out / 'index.html').columns
-    assert columns[1].text == 'clang-darwin-21clang-darwin-21', columns
-    assert columns[2].text == 'clang-darwin-wasip2clang-darwin-wasip2', columns
+    # The lane's name is already its toolset, so the header does not repeat it.
+    assert columns[1].text == 'clang-darwin-21', columns
+    assert columns[2].text == 'clang-darwin-wasip2', columns
     # A lane that built nothing has no directory to check its name against: the toolset its
     # command line names (clang-wasip2) is not the directory's name (clang-darwin-wasip2). It
     # fails as empty.
@@ -592,6 +635,8 @@ CASES = [
     test_compile_error_and_expected_compile_fail_are_distinguished,
     test_empty_lane_exits_1_naming_it,
     test_two_lanes_merge_into_one_matrix,
+    test_toolset_line_shown_only_when_it_differs_from_the_lane_name,
+    test_nine_lanes_fit_the_content_width_at_desktop,
     test_unreadable_xml_exits_2,
     test_a_lane_is_what_its_name_says,
     test_a_failure_outside_every_test_fails_the_lane,

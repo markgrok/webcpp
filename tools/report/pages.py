@@ -90,7 +90,7 @@ p { margin: 0 0 12px; }
 }
 .matrix { border-collapse: separate; border-spacing: 0; }
 .matrix th, .matrix td {
-  padding: 7px 12px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap;
+  padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap;
 }
 .matrix tbody tr:last-child > * { border-bottom: 0; }
 .matrix thead th {
@@ -110,7 +110,12 @@ p { margin: 0 0 12px; }
   overflow-wrap: anywhere;
 }
 .matrix .type { color: var(--muted); font-size: 13px; }
-.matrix .lane { text-align: center; font-family: var(--mono); color: var(--fg); }
+/* A lane's header wraps at a hyphen when its column is narrower than its name or toolset, so
+   that 9 lanes fit at desktop width without the table scrolling sideways: nowrap, the rule
+   above, would hold every header to its widest line's full width instead. */
+.matrix .lane {
+  text-align: center; font-family: var(--mono); color: var(--fg); white-space: normal;
+}
 .matrix .lane .toolset {
   display: block; font: 400 11px/1.4 var(--mono); color: var(--muted);
 }
@@ -122,10 +127,10 @@ p { margin: 0 0 12px; }
 .matrix .lane.empty::after { content: "empty"; }
 .matrix .lane.outside::after { content: "outside failure"; }
 .matrix td.cell {
-  padding: 0; min-width: 88px; text-align: center; font-size: 13px; font-weight: 600;
+  padding: 0; min-width: 60px; text-align: center; font-size: 13px; font-weight: 600;
   border-left: 1px solid var(--bg);
 }
-.matrix td.cell > * { display: block; padding: 7px 12px; }
+.matrix td.cell > * { display: block; padding: 6px 8px; }
 .matrix td.cell a { color: inherit; }
 .pass { background: var(--pass-bg); color: var(--pass-fg); }
 .fail { background: var(--fail-bg); color: var(--fail-fg); }
@@ -287,7 +292,9 @@ def cell(lane: Lane, verdict: str | None, link: str | None) -> str:
 
 
 def lane_header(lane: Lane) -> str:
-    """A lane's column header: its name, the toolset it was built with, and its mark."""
+    """A lane's column header: its name, the toolset it was built with when that differs from the
+    name (case-insensitively; a native lane is named after its toolset and would otherwise repeat
+    it), and its mark."""
     note = note_of(lane)
     classes, title = 'lane', ''
     if note == 'empty':
@@ -295,7 +302,9 @@ def lane_header(lane: Lane) -> str:
     elif note == OUTSIDE:
         classes, title = 'lane outside', 'an action outside every test and example failed'
     titled = f' title="{e(title)}"' if title else ''
-    toolset = f'<span class="toolset">{e(lane.toolset)}</span>' if lane.toolset else ''
+    toolset = ''
+    if lane.toolset is not None and lane.toolset.lower() != lane.name.lower():
+        toolset = f'<span class="toolset">{e(lane.toolset)}</span>'
     return (f'<th scope="col" role="columnheader" class="{classes}"{titled} '
             f'data-lane="{e(lane.name)}">{e(lane.name)}{toolset}</th>')
 
