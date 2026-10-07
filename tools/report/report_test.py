@@ -8,11 +8,13 @@
 """Checks tools/report/report.py on the samples b2 wrote for lanes over the fixture library demo
 and the libraries record_samples.py plants beside it: a lane that passes, its failures named by
 kind with their output a click away, an expected failure told from a real one, an empty lane
-failed by name, two lanes merged into one matrix, input it cannot read refused before anything is
-written, a failure outside every test, and output that b2's XML cannot hold. A last case records
-every sample afresh, untrimmed, and checks that the report reads it as it reads the committed one.
-Every page written is checked to be self-contained and to link only to github.com/webcpporg. Run
-with the names of some cases to run only those."""
+failed by name, two lanes merged into one matrix, input it cannot read or report truthfully
+refused before anything is written (a lane whose name says another target than its toolset
+builds for, among them), a failure outside every test, and output that b2's XML cannot hold. One
+case uses lanes.py and pages.py alone; a last one records every sample afresh, untrimmed, and
+checks that the report reads it as it reads the committed one. Every page written is checked to
+be self-contained, to link only to github.com/webcpporg, and to name its lane on every lane cell,
+which a phone shows as a chip. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -29,6 +31,8 @@ from urllib.parse import unquote, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'test'))
 
 import harness
+import lanes
+import pages
 import record_samples
 
 HERE = Path(__file__).resolve().parent
@@ -40,21 +44,23 @@ KINDS = {'compile', 'link', 'run', 'compiled', 'linked', 'ran', 'build', 'not ru
 
 FOOTER = 'Copyright (c) 2026 WebCpp.org'
 
+NOT_BUILT = "Not built in this lane, as when it does not declare the lane's target."
+
 # The only site outside the report that a page may link to.
 OWN_SITE = 'https://github.com/webcpporg/'
 
-# U+2014, written as an escape so that this file never contains it.
-EM_DASH = '\u2014'
+# U+2014, written as a code point so that this file never contains it.
+EM_DASH = chr(0x2014)
 
 
 def sample(name: str) -> Path:
     return SAMPLES / f'{name}.xml'
 
 
-def report(out: Path, *lanes: tuple[str, Path | str]) -> subprocess.CompletedProcess:
-    """Runs report.py with one --lane NAME=FILE per pair of lanes, writing into out."""
+def report(out: Path, *given: tuple[str, Path | str]) -> subprocess.CompletedProcess:
+    """Runs report.py with one --lane NAME=FILE per pair given, writing into out."""
     arguments = [sys.executable, str(REPORT)]
-    for name, path in lanes:
+    for name, path in given:
         arguments += ['--lane', f'{name}={path}']
     arguments += ['--out', str(out)]
     return subprocess.run(arguments, capture_output=True, text=True, check=False)
@@ -66,11 +72,20 @@ def outcome(result: subprocess.CompletedProcess) -> str:
 
 @dataclass
 class Cell:
-    """A cell of a page's table: its text, its classes and the first link in it."""
+    """A cell of a page's table: its tag, its attributes, its text and the first link in it."""
 
+    tag: str
+    attributes: dict[str, str | None] = field(default_factory=dict)
     text: str = ''
-    classes: set[str] = field(default_factory=set)
     href: str | None = None
+
+    @property
+    def classes(self) -> set[str]:
+        return set((self.attributes.get('class') or '').split())
+
+    @property
+    def lane(self) -> str | None:
+        return self.attributes.get('data-lane')
 
 
 class Page(HTMLParser):
@@ -97,7 +112,7 @@ class Page(HTMLParser):
         elif tag == 'tr' and self.tables:
             self.tables[-1].append([])
         elif tag in ('td', 'th') and self.tables and self.tables[-1]:
-            self.cell = Cell(classes=set((attributes.get('class') or '').split()))
+            self.cell = Cell(tag, attributes)
             self.tables[-1][-1].append(self.cell)
         elif tag == 'a' and self.cell is not None and self.cell.href is None:
             self.cell.href = attributes.get('href')
@@ -113,6 +128,11 @@ class Page(HTMLParser):
             self.cell.text += data
 
 
+def column_name(column: Cell) -> str:
+    """A column's name: its lane for a lane's column, whose header also shows its toolset."""
+    return column.lane or column.text
+
+
 @dataclass
 class Matrix:
     """The first table of a page: its header cells, and its cells by row name and column name."""
@@ -121,7 +141,7 @@ class Matrix:
     cells: dict[tuple[str, str], Cell]
 
     def names(self) -> list[str]:
-        return [column.text for column in self.columns]
+        return [column_name(column) for column in self.columns]
 
     def rows(self) -> set[str]:
         return {row for row, _ in self.cells}
@@ -134,6 +154,7 @@ class Matrix:
             assert cell.text == 'pass', (row, lane, cell)
         elif 'na' in cell.classes:
             assert cell.text == 'n/a' and cell.href is None, (row, lane, cell)
+            assert cell.attributes.get('title') == NOT_BUILT, (row, lane, cell)
         else:
             assert 'fail' in cell.classes and cell.text in KINDS, (row, lane, cell)
             assert cell.href, ('a failure links to its output', row, lane, cell)
@@ -144,7 +165,7 @@ def matrix(path: Path) -> Matrix:
     page = Page(path)
     assert page.tables, (path, 'no table')
     header, *rows = page.tables[0]
-    names = [column.text for column in header]
+    names = [column_name(column) for column in header]
     cells = {}
     for row in rows:
         for name, cell in zip(names[1:], row[1:]):
@@ -159,11 +180,12 @@ def linked(page: Path, href: str | None) -> Page:
 
 
 def check_pages(out: Path) -> None:
-    """Every page under out is self-contained, carries the footer, and links only to pages that
-    exist beside it or to github.com/webcpporg."""
-    pages = sorted(out.rglob('*.html'))
-    assert out / 'index.html' in pages, pages
-    for path in pages:
+    """Every page under out is self-contained, carries the footer, links only to pages that exist
+    beside it or to github.com/webcpporg, and names its lane on every lane cell of a matrix, the
+    label of the chip a phone shows."""
+    written = sorted(out.rglob('*.html'))
+    assert out / 'index.html' in written, written
+    for path in written:
         page = Page(path)
         lowered = page.source.lower()
         assert lowered.startswith('<!doctype html>'), path
@@ -178,6 +200,12 @@ def check_pages(out: Path) -> None:
                 assert href.startswith(OWN_SITE), (path, href)
             elif parts.path:
                 assert (path.parent / unquote(parts.path)).is_file(), (path, href)
+        for header, *rows in page.tables:
+            lane_names = [column.lane for column in header if column.lane]
+            assert lane_names, (path, 'a matrix without lanes')
+            for row in rows:
+                cells = [cell for cell in row if 'cell' in cell.classes]
+                assert [cell.lane for cell in cells] == lane_names, (path, row)
 
 
 DEMO_TYPES = {
@@ -287,14 +315,21 @@ def test_empty_lane_exits_1_naming_it(root: Path) -> None:
     assert result.stderr.splitlines() == [named], outcome(result)
     index = matrix(out / 'index.html')
     assert index.names() == ['Library', 'native', 'wasip2'], index.names()
-    # The lane's column is marked, so that its grey cells do not read as a pass.
+    # The lane's column is marked, and so is each of its chips, so that its grey cells do not
+    # read as a pass.
     assert 'empty' in index.columns[2].classes, index.columns
     assert 'empty' not in index.columns[1].classes, index.columns
+    assert index.cells[('demo', 'wasip2')].attributes.get('data-note') == 'empty'
+    assert 'data-note' not in index.cells[('demo', 'native')].attributes
+    # The toolset of a lane that built nothing is the one its command line names.
+    assert 'clang-wasip2' in index.columns[2].text, index.columns
     assert index.verdict('demo', 'native') == 'pass'
     assert index.verdict('demo', 'wasip2') == 'n/a'
     assert index.verdict('nativeonly', 'native') == 'n/a'
     assert index.verdict('nativeonly', 'wasip2') == 'n/a'
-    assert 'wasip2: the lane built no test and no example' in Page(out / 'index.html').text
+    # Every page names the empty lane: a library's page, too.
+    for page in ('index.html', 'demo.html', 'nativeonly.html'):
+        assert 'wasip2: the lane built no test and no example' in Page(out / page).text, page
     nativeonly = matrix(out / 'nativeonly.html')
     assert nativeonly.rows() == {'works', 'works-noexcept'}, nativeonly.rows()
     assert nativeonly.verdict('works', 'wasip2') == 'n/a'
@@ -307,6 +342,9 @@ def test_two_lanes_merge_into_one_matrix(root: Path) -> None:
     assert result.returncode == 0, outcome(result)
     index = matrix(out / 'index.html')
     assert index.names() == ['Library', 'native', 'wasip2'], index.names()
+    # Under each lane's name, the toolset b2 built it with.
+    assert index.columns[1].text == 'nativeclang-darwin-21', index.columns
+    assert index.columns[2].text == 'wasip2clang-darwin-wasip2', index.columns
     assert index.verdict('demo', 'native') == 'pass'
     assert index.verdict('demo', 'wasip2') == 'pass'
     demo = matrix(out / 'demo.html')
@@ -336,6 +374,12 @@ def test_unreadable_xml_exits_2(root: Path) -> None:
     (root / 'without-dump-tests.xml').write_text(without)
     # A library whose page would be the summary, on a file system that ignores case.
     (root / 'index-library.xml').write_text(text.replace('libs/demo/', 'libs/Index/'))
+    # Tests outside libs/, in a superproject that is itself under a directory named libs.
+    outside = re.sub(r'<directory><!\[CDATA\[.*?\]\]>',
+                     '<directory><![CDATA[/home/u/libs/webcpp]]>',
+                     text.replace('libs/demo/', 'tools/demo/'))
+    assert '/home/u/libs/webcpp' in outside and 'libs/demo/' not in outside
+    (root / 'outside-libs.xml').write_text(outside)
     unreadable = {
         'missing.xml': 'missing.xml',
         'garbage.xml': 'garbage.xml',
@@ -343,30 +387,67 @@ def test_unreadable_xml_exits_2(root: Path) -> None:
         'html.xml': 'html.xml',
         'without-dump-tests.xml': '--dump-tests',
         'index-library.xml': 'a library named Index',
+        'outside-libs.xml': 'tools/demo/test is not in libs/<library>/',
     }
     for name, named in unreadable.items():
         out = root / f'out-{name}'
-        result = report(out, ('native', passing), ('wasip2', root / name))
+        result = report(out, ('native', passing), ('other', root / name))
         assert result.returncode == 2, (name, outcome(result))
         assert named in result.stderr, (name, named, outcome(result))
         assert not out.exists(), (name, 'nothing is written', sorted(out.rglob('*')))
-    # A lane given without its file, twice, or with a name a file cannot have.
-    for lanes in (['native'], [f'native={passing}', f'native={passing}'], [f'a/b={passing}']):
+    # A lane given without its file, twice (in any case, since a lane names a directory), or
+    # with a name a file cannot have.
+    for given in (['native'], [f'native={passing}', f'native={passing}'],
+                  [f'Native={passing}', f'native={passing}'], [f'a/b={passing}']):
         out = root / 'out-lanes'
         arguments = [sys.executable, str(REPORT)]
-        for lane in lanes:
+        for lane in given:
             arguments += ['--lane', lane]
         result = subprocess.run([*arguments, '--out', str(out)], capture_output=True, text=True,
                                 check=False)
-        assert result.returncode == 2, (lanes, outcome(result))
-        assert '--lane' in result.stderr, (lanes, outcome(result))
-        assert not out.exists(), lanes
+        assert result.returncode == 2, (given, outcome(result))
+        assert '--lane' in result.stderr, (given, outcome(result))
+        assert not out.exists(), given
     # A directory the pages cannot be written into: a file is where it would be.
     blocked = root / 'a file'
     blocked.write_text('')
     result = report(blocked, ('native', passing))
     assert result.returncode == 2, outcome(result)
     assert f'cannot write {blocked}' in result.stderr, outcome(result)
+
+
+def test_a_lane_is_what_its_name_says(root: Path) -> None:
+    # A lane named after a target is built for it, so that a slip in CI cannot show a target
+    # green that was never built.
+    wasip2 = sample('wasip2-pass')
+    refused = {
+        'wasip3': (wasip2, 'built with clang-darwin-wasip2, which builds for wasip2'),
+        'native': (wasip2, 'built with clang-darwin-wasip2, which builds for wasip2'),
+        'Native': (wasip2, 'built with clang-darwin-wasip2, which builds for wasip2'),
+        'wasip2': (sample('native-pass'), 'built with clang-darwin-21, which builds for native'),
+        # A lane that built nothing is checked against the toolset its command line names.
+        'emscripten': (sample('wasip2-empty'), 'built with clang-wasip2, which builds for wasip2'),
+    }
+    for name, (path, named) in refused.items():
+        out = root / f'out-{name}'
+        result = report(out, (name, path))
+        assert result.returncode == 2, (name, outcome(result))
+        assert f'the lane {name} is {named}' in result.stderr, (name, outcome(result))
+        assert not out.exists(), name
+    # A lane is one toolset: here one test was built with another.
+    text = sample('native-pass').read_text(encoding='utf-8')
+    mixed = text.replace('pass.test/clang-darwin-21', 'pass.test/gcc-15')
+    assert mixed != text
+    (root / 'mixed.xml').write_text(mixed)
+    result = report(root / 'out-mixed', ('gcc-and-clang', root / 'mixed.xml'))
+    assert result.returncode == 2, outcome(result)
+    assert 'built with clang-darwin-21, gcc-15; a lane is one toolset' in result.stderr, (
+        outcome(result))
+    # A name that is no target's says nothing to check, and the header shows the toolset.
+    out = root / 'out-named'
+    result = report(out, ('clang-21', sample('native-pass')))
+    assert result.returncode == 0, outcome(result)
+    assert matrix(out / 'index.html').columns[1].text == 'clang-21clang-darwin-21'
 
 
 def test_a_failure_outside_every_test_fails_the_lane(root: Path) -> None:
@@ -379,13 +460,22 @@ def test_a_failure_outside_every_test_fails_the_lane(root: Path) -> None:
     assert 'report: native: demo/pass-noexcept: not run' in lines, outcome(result)
     outside = [line for line in lines if 'throw_exception.o' in line]
     assert len(outside) == 1 and 'compile' in outside[0], outcome(result)
+    full = 'bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/'
+    assert full in outside[0], outcome(result)
+    # The summary names the file; the page it links to, its whole path.
     index = Page(out / 'index.html')
+    assert 'native: throw_exception.o: compile, outside every test' in index.text, index.text
+    assert full not in index.text, index.text
     problem = [href for href in index.links if href.startswith('output/native/')]
     assert len(problem) == 1, index.links
-    assert 'planted: the handler does not compile' in linked(out / 'index.html', problem[0]).text
+    page = linked(out / 'index.html', problem[0])
+    assert 'planted: the handler does not compile' in page.text, page.text
+    assert f'{full}throw_exception.o' in page.text, page.text
     demo = matrix(out / 'demo.html')
     assert demo.verdict('pass-noexcept', 'native') == 'not run'
     assert demo.verdict('pass', 'native') == 'n/a'
+    assert 'outside' in demo.columns[2].classes, demo.columns
+    assert demo.cells[('pass', 'native')].attributes.get('data-note') == 'outside failure'
     output = linked(out / 'demo.html', demo.cells[('pass-noexcept', 'native')].href)
     assert 'throw_exception.o' in output.text, output.text
     check_pages(out)
@@ -402,13 +492,43 @@ def test_output_cdata_cannot_hold_is_shown(root: Path) -> None:
     odd = matrix(out / 'odd.html')
     assert odd.verdict('prints', 'native') == 'run'
     output = linked(out / 'odd.html', odd.cells[('prints', 'native')].href)
-    assert "('<b>]]>&amp;</b>' == '\ufffd')" in output.text, output.text
+    replaced = chr(0xFFFD)
+    assert f"('<b>]]>&amp;</b>' == '{replaced}')" in output.text, output.text
     check_pages(out)
 
 
+def test_lanes_and_pages_work_alone(root: Path) -> None:
+    # lanes.py reads and judges a lane, with no page written.
+    lane = lanes.read_lane('native', sample('native-failures'))
+    assert lane.toolset == 'clang-darwin-21', lane.toolset
+    verdicts = {row_id: row.verdict() for row_id, row in lane.rows.items()}
+    assert verdicts['planted/fails_to_run'] == 'run', verdicts
+    assert verdicts['planted/compiles'] == 'compiled', verdicts
+    assert verdicts['planted/example/prints_otherwise'] == 'run', verdicts
+    assert verdicts['demo/rejects'] == 'pass', verdicts
+    assert verdicts['demo/fails'] is None, verdicts
+    assert lanes.exit_status([lane]) == 1
+    assert lanes.worst([None, 'pass', 'run', 'compile']) == 'compile'
+    assert lanes.worst(['pass', None]) == 'pass'
+    assert lanes.worst([None]) is None
+    # pages.py writes the pages of a lane made by hand, with no b2 file.
+    made = lanes.Lane('wasip3', toolset='clang-linux-wasip3')
+    row = lanes.Row('made', False, 'by_hand', 'run', [lanes.Build('bin/x', 'bin/x/by_hand.test')])
+    made.rows[row.id] = row
+    assert lanes.exit_status([made]) == 0
+    pages.write([made], root / 'pages')
+    page = matrix(root / 'pages' / 'made.html')
+    assert page.verdict('by_hand', 'wasip3') == 'pass'
+    assert page.columns[2].text == 'wasip3clang-linux-wasip3', page.columns
+    check_pages(root / 'pages')
+
+
 def tables(out: Path) -> dict[str, list[list[list[tuple[str, frozenset[str], str | None]]]]]:
-    """The tables of the pages directly in out, by page."""
-    return {page.name: [[[(cell.text, frozenset(cell.classes), cell.href) for cell in row]
+    """The tables of the pages directly in out, by page, a lane's header by its lane: the
+    toolset under it is the machine's (clang-darwin-21 here, clang-linux-22 on a Linux runner)."""
+    def text(cell: Cell) -> str:
+        return column_name(cell) if cell.tag == 'th' else cell.text
+    return {page.name: [[[(text(cell), frozenset(cell.classes), cell.href) for cell in row]
                          for row in table] for table in Page(page).tables]
             for page in sorted(out.glob('*.html'))}
 
@@ -440,8 +560,10 @@ CASES = [
     test_empty_lane_exits_1_naming_it,
     test_two_lanes_merge_into_one_matrix,
     test_unreadable_xml_exits_2,
+    test_a_lane_is_what_its_name_says,
     test_a_failure_outside_every_test_fails_the_lane,
     test_output_cdata_cannot_hold_is_shown,
+    test_lanes_and_pages_work_alone,
     test_samples_read_as_b2_writes_them_today,
 ]
 
