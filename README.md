@@ -43,9 +43,10 @@ builds the index page, `doc/html/index.html`, and each library's page,
 `libs/<name>/doc/html/index.html`, with its API reference from MrDocs;
 `b2 libs/<name>/doc` builds one. A public symbol without a Doc Comment, a
 template parameter without `@tparam` and a `detail` symbol without a brief
-each fail the build, naming the symbol and the file. MrDocs is found at
-`.local/mrdocs/bin/mrdocs`, on `PATH`, or where `-sMRDOCS=<path>` says;
-clang++ on `PATH`, or where `-sCLANG=<path>` says. The Node packages are
+each fail the build, naming the symbol and the file; so does a Doc Comment's
+`@see "<title>"` that names no section of its library's page. MrDocs is
+found at `.local/mrdocs/bin/mrdocs`, on `PATH`, or where `-sMRDOCS=<path>`
+says; clang++ on `PATH`, or where `-sCLANG=<path>` says. The Node packages are
 installed into `tools/doc/node_modules` by `npm ci` on first use. The tests of
 the documentation's tools are `tools/doc/*_test.py` and
 `tools/test/doc_test.py`.

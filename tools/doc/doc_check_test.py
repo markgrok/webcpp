@@ -370,6 +370,44 @@ def check_references(root: Path) -> None:
         expect(result, 1, 'is not a git checkout')
 
 
+def check_see_titles(root: Path) -> None:
+    """A Doc Comment's `@see "<title>"` names a section of the page by its title."""
+    header = root / 'include/see.hpp'
+    # The title of a section, at any level, and the one-sentence form the Doc Comments use; the
+    # backslash form; a @see of a symbol, which names no title.
+    write(header, '/** Brief.\n\n    @see "Machines", in the guide.\n    \\see "Differences"\n'
+          '    @see toggle\n*/\n')
+    expect(check(root), 0, '')
+    write(header, '/** Brief.\n\n    @see "Machines", in the guide.\n'
+          '    @see "Nowhere", in the guide.\n*/\n')
+    expect(check(root), 1, 'see.hpp:4: @see names no section of the page: "Nowhere"')
+    write(header, '/// Brief.\n///\n/// \\see "Elsewhere".\n')
+    expect(check(root), 1, 'see.hpp:3: @see names no section of the page: "Elsewhere"')
+    # Only a section's title counts: not a line of a listing, of a comment or of a comment
+    # block, a block's title or an anchor.
+    write(root / 'doc/page.adoc', PAGE + '\n----\n== Listed\n----\n\n// == Commented\n\n'
+          '////\n== Blocked\n////\n\n.Titled\n[listing]\n----\nx\n----\n')
+    for title in ('Listed', 'Commented', 'Blocked', 'Titled', 'machines'):
+        write(header, f'/** Brief.\n\n    @see "{title}", in the guide.\n*/\n')
+        expect(check(root), 1, f'see.hpp:3: @see names no section of the page: "{title}"')
+    # A section the page does not reach is none of its sections.
+    write(root / 'doc/page.adoc', PAGE)
+    write(root / 'doc/apart.adoc', '[#apart]\n== Apart\n')
+    write(header, '/** Brief.\n\n    @see "Apart", in the guide.\n*/\n')
+    expect(check(root, sections=[root / 'doc/page.adoc', root / 'doc/apart.adoc']), 1,
+           'see.hpp:3: @see names no section of the page: "Apart"')
+    (root / 'doc/apart.adoc').unlink()
+    # A section of an included file counts, at any depth of the include graph.
+    write(root / 'doc/page.adoc', PAGE + '\ninclude::part.adoc[leveloffset=+1]\n')
+    write(root / 'doc/part.adoc', '[#part]\n== Part\n\n[#deeper]\n=== A deeper part\n')
+    write(header, '/** Brief.\n\n    @see "A deeper part", in the guide.\n*/\n')
+    expect(check(root, sections=[root / 'doc/page.adoc', root / 'doc/part.adoc']), 0, '')
+    (root / 'doc/part.adoc').unlink()
+    write(root / 'doc/page.adoc', PAGE)
+    header.unlink()
+    expect(check(root, '--complete'), 0, '')
+
+
 def check_readme(root: Path) -> None:
     """The README's copies: its C++ is an example's region, and its output the example's, each as
     the file holds it now."""
@@ -459,7 +497,7 @@ def main() -> int:
         write(root / 'README.md', README)
         write(root / 'doc/page.adoc', PAGE)
         for part in (check_page, check_reference, check_examples, check_graph, check_references,
-                     check_readme, check_rendered):
+                     check_see_titles, check_readme, check_rendered):
             part(root)
             print(f'{part.__name__}: ok')
     print('doc-check.py: ok')

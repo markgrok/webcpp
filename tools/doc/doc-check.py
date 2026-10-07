@@ -33,7 +33,10 @@ the library that sends its reader to the page, with `doc: #<anchor>`, or a list 
 on one line, `doc: #<a>, #<b> and #<c>` or `doc: #<a> to #<b>`, or with a link
 `index.html#<anchor>`, names anchors a reached section defines, each of them; with
 `--repository`, every file git lists there, those it tracks and those it would track, is read for
-one, skipping what does not decode as UTF-8. With `--readme`, each fenced block of the README
+one, skipping what does not decode as UTF-8. Among those files, a Doc Comment of the library's
+C++ that sends its reader to a section by its title, `@see "<title>"` or `\\see "<title>"`, names
+the title of a section the page reaches, as its heading writes it after its `=` marks: MrDocs
+writes the title as text, which no link checks. With `--readme`, each fenced block of the README
 that a comment `<!-- include::<file>[<attributes>] -->` opens is that file's region, as an include
 with those attributes would give it, and every C++ block of the README is one. With --complete,
 the page is whole: every block's language is one of the page's, C++, JavaScript, JSON or shell,
@@ -89,6 +92,12 @@ PAGE_LINK = re.compile(r'index\.html#([\w-]+)')
 DOC_REFERENCE_CUT = re.compile(
     r'doc: #[\w-]+(?:(?:,| and| or| to) #[\w-]+)*(?:,| and| or| to)\s*$')
 ATTRIBUTE_ENTRY = re.compile(r'^:([\w-]+!?):\s*(.*)$')
+# A section's heading, `== <title>`, at any level; the document's title is `= <title>`.
+HEADING = re.compile(r'^={1,6} +(\S.*?)\s*$')
+# A Doc Comment's reference to a section of the guide by its title, `@see "<title>"` or
+# `\see "<title>"`, in a file of the library's C++.
+SEE_TITLE = re.compile(r'[@\\]see\s+"([^"\n]+)"')
+CPP_SUFFIXES = ('.hpp', '.h', '.hh', '.hxx', '.ipp', '.cpp', '.cc', '.cxx')
 ATTRIBUTE_REFERENCE = re.compile(r'\{([\w-]+)\}')
 
 # The languages of the page's blocks, those highlighter.mjs colours. C++ is the language of a
@@ -431,6 +440,44 @@ def reference_faults(paths: list[Path], defined: set[str]) -> list[str]:
             for anchor in named + PAGE_LINK.findall(line):
                 if anchor not in defined:
                     found.append(f'{path}:{number}: names no anchor of the page: #{anchor}')
+    return found
+
+
+def titles(sections: list[Path]) -> set[str]:
+    """The title of every section of `sections`, as its heading writes it: not a line of a
+    verbatim block or a comment, and not a block's title."""
+    found = set()
+    for section in sections:
+        closing = None
+        for line in section.read_text().split('\n'):
+            stripped = line.rstrip()
+            if closing is not None:
+                closing = None if stripped == closing else closing
+                continue
+            if VERBATIM.match(stripped):
+                closing = stripped
+                continue
+            heading = HEADING.match(stripped)
+            if heading is not None:
+                found.add(heading.group(1))
+    return found
+
+
+def see_faults(paths: list[Path], defined: set[str]) -> list[str]:
+    """Each `@see "<title>"` of a C++ file among `paths` that names no title of `defined`."""
+    found = []
+    for path in paths:
+        if path.suffix not in CPP_SUFFIXES or not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding='utf-8')
+        except UnicodeDecodeError:
+            continue
+        for number, line in enumerate(text.split('\n'), start=1):
+            for title in SEE_TITLE.findall(line):
+                if title not in defined:
+                    found.append(f'{path}:{number}: @see names no section of the page: '
+                                 f'"{title}"')
     return found
 
 
@@ -816,6 +863,7 @@ def main() -> int:
                          'reads')
         else:
             found += reference_faults(files, anchors(reached_sections))
+            found += see_faults(files, titles(reached_sections))
     if arguments.readme is not None:
         found += readme_faults(arguments.readme)
     if arguments.complete:
