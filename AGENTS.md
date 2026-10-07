@@ -8,16 +8,14 @@ only what is specific to that library: the original and its version, how its
 oracle drives the original, its particular cautions. Read this file first,
 then the library's.
 
-Three kinds of paragraph mark what is not in the tree yet, so that each can be
+Two kinds of paragraph mark what is not in the tree yet, so that each can be
 checked when it lands:
 
-- **Pending (Task 11):** the CI, `.github/workflows/` and `tools/ci/`, as
-  stage 1's plan defines it. The commands it runs are in the tree and work
-  today; the workflows that run them are not.
 - **Pending (Task 12):** publishing. `libs/xactor` becomes a submodule when
   its repository is published; until then it is a repository of its own
   inside the checkout, which the build and the lint already treat as a
-  library.
+  library. The CI's workflows are in the tree, and run once the
+  repositories and GitHub Pages exist.
 - **Pending (stage 2):** the shared oracle, `tools/oracle/`, which stage 2
   generalises from xstate's.
 
@@ -83,12 +81,12 @@ webcpp/
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
     test/             the tests of the Jamroot, webcpp.jam and the doc build, their
                       harness, and the fixture library demo
+    ci/               matrix.py (the lanes), assemble.py (the site), download.sh, and
+                      actions/{boost,wasi-sdk,wasmtime,mrdocs,node}/ (chapter 9)
+  .github/            workflows/library.yml, workflows/ci.yml, actionlint.yaml (chapter 9)
   .local/             machine-local, git-ignored (below)
   bin/                b2's build directory, git-ignored
 ```
-
-Pending (Task 11): `.github/workflows/library.yml`, `.github/workflows/ci.yml`
-and `tools/ci/actions/{boost,wasi-sdk,wasmtime,mrdocs,node}/` (chapter 9).
 
 Pending (stage 2): `tools/oracle/` (chapter 5).
 
@@ -109,7 +107,7 @@ libs/<name>/
   LICENSE-<ORIGIN>.txt       the original's notice, for a port that derives from its code
   .gitignore                 doc/html/ at least
   .gitattributes
-  .github/workflows/ci.yml   Pending (Task 11): calls the superproject's library.yml
+  .github/workflows/ci.yml   calls the superproject's library.yml (chapter 9)
 ```
 
 A library has no Jamroot. It is developed inside a checkout of the
@@ -144,7 +142,11 @@ using clang : wasip3 : $(wasi-sdk)/bin/clang++
 ```
 
 When Boost cannot be used, the build stops before it compiles anything and
-prints the exact `using boost` line to add.
+prints the exact `using boost` line to add. The Jamroot reads the version of
+the configured Boost from its `boost/version.hpp`, with `grep`, or with
+`findstr` on Windows, where b2 runs a command with `cmd.exe`, and keys its
+cached check on it; a Boost whose `#define BOOST_VERSION <number>` line it
+cannot read stops the build too, naming the directory.
 
 **Machine-local setup.** `.local/` is git-ignored and holds what one machine
 needs: `.local/user-config.jam`, `.local/wasi-sdk/` and `.local/mrdocs/`. The
@@ -163,6 +165,7 @@ finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
 | `b2 test` | every library's tests, natively |
 | `b2 example` | every library's examples: each is built, run, and its output compared with its `.expected` |
 | `b2 doc` | the index page, `doc/html/index.html`, and every library's page, `libs/<name>/doc/html/index.html` |
+| `b2 doc -sWEBCPP_INDEX=site` | the same, with the index linking each page where the site serves it, `libs/<name>/` (chapter 8) |
 | `b2 libs/<name>/test` | one library's tests; `libs/<name>/example` and `libs/<name>/doc` likewise |
 | `b2 libs/<name>/test//<test>` | one test, while working on it (`scheduler`, `scheduler-noexcept`) |
 | `b2 libs/<name>/doc//reference` | one library's API reference alone, MrDocs strict |
@@ -172,6 +175,8 @@ finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
 | `b2 -a ...` | any of these from scratch; the only build that counts as evidence |
 | `tools/lint/lint.sh --clang-format <wasi-sdk>/bin/clang-format --clang-tidy <wasi-sdk>/bin/clang-tidy` | the lint, of the superproject and every library (chapter 6) |
 | `python3 tools/<dir>/<name>_test.py` | a test of the build or of a tool (chapter 10) |
+| `python3 tools/ci/matrix.py plan`, `lane`, `register`, `report` | the CI's lanes, run the way the CI runs them (chapter 9) |
+| `python3 tools/ci/assemble.py --docs . --report <dir> --out <site>` | the site GitHub Pages serves, every link checked (chapter 9) |
 
 ## 2. Choosing and registering a port
 
@@ -262,8 +267,9 @@ owner's:
    with a link to this file as `../../AGENTS.md`), `.gitattributes`, and a
    `.gitignore` that holds at least `doc/html/`: the superproject's own
    `.gitignore` names only its top-level `doc/html/`.
-7. **CI.** Pending (Task 11): `.github/workflows/ci.yml`, which calls the
-   superproject's reusable workflow:
+7. **CI.** `.github/workflows/ci.yml`, which calls the superproject's
+   reusable workflow (chapter 9), as `libs/xactor/.github/workflows/ci.yml`
+   does:
 
    ```yaml
    jobs:
@@ -692,6 +698,13 @@ introduces webcpp and includes, at `{libraries}`, the table that
 its name, linked to its page, its description, and what it ports, linked to
 the original. `b2 doc` builds it with every library's page.
 
+The table links a page as `{library-pages}<name>/{library-page}`, two
+attributes `tools/doc/doc.jam` converts the index with. By default they point
+where b2 builds the page, `../../libs/<name>/doc/html/index.html` from
+`doc/html/`; with `-sWEBCPP_INDEX=site` they point where the site serves it,
+`libs/<name>/`, beside the index at the site's root (chapter 9). Any other
+value stops the build.
+
 **One doc build at a time.** A doc build writes `doc/html/` and
 `libs/<name>/doc/html/` inside the tree, so two concurrent doc builds would
 write the same files.
@@ -873,49 +886,107 @@ named `index`.
 
 ### CI
 
-Pending (Task 11): none of this is in the tree yet. It runs exactly the
-commands above.
+The CI runs exactly the commands above. It is GitHub Actions, in two
+workflows of the superproject, and every third-party action is pinned by its
+full commit SHA, with its tag in a comment. Pending (Task 12): it runs once
+the repositories are published.
 
 **A library's CI,** `libs/<name>/.github/workflows/ci.yml`, calls the
-superproject's reusable workflow `.github/workflows/library.yml`
-(`on: workflow_call`, input `library`):
+superproject's reusable workflow, `.github/workflows/library.yml@main`
+(`on: workflow_call`, input `library`). **The superproject's CI,**
+`.github/workflows/ci.yml`, calls the same workflow without a library, for
+every library at the commit its submodule points to. Every job checks out
+`webcpporg/webcpp` with its submodules, the caller's commit for the
+superproject and `main` for a library, whose own commit then replaces
+`libs/<library>`; no checkout keeps its credentials. A run on `main` is never
+cancelled by the next; a pull request's newer push cancels its older run. The
+jobs:
 
-- it checks out `webcpporg/webcpp` with its submodules, then the calling
-  library's commit into `libs/<library>`;
-- a `plan` job runs `b2 declared-targets -d0` and emits a JSON matrix of the
-  library's lanes: the CI never lists a library's targets by hand;
-- the lane jobs follow it:
-  - native: Linux GCC 14 and 15, Linux Clang 18 and 22 on libstdc++, macOS
-    Apple Clang, Windows MSVC 14.3 and 14.5. The Clang lanes on libstdc++
-    stay: a regression of xactor's guarantee 28 is caught only there;
-  - `wasip2` and `wasip3`, with wasi-sdk 34 and wasmtime 47.0.3, both
-    blocking;
-  - `emscripten`, only when the library declares it;
-- each lane runs the lane command and uploads its XML;
-- a `docs` job builds `libs/<library>/doc`, with MrDocs on Linux x86-64
-  (MrDocs has no build for Linux arm64 or Intel macOS) and clang++;
-- a `lint` job runs the lint in four shards (`--shard 1/4` to `4/4`), with
-  Node and the full history (`fetch-depth: 0`), since the banned-word rule
-  reads every commit;
-- a `report` job merges every lane's XML with `tools/report/report.py`; its
-  exit status is the CI's verdict.
+- **plan:** `python3 tools/ci/matrix.py plan [--library <name>]` runs
+  `b2 declared-targets -d0` and prints the JSON matrix of lanes: one lane per
+  compiler for each target a library declares, building the libraries that
+  declare it. The CI never lists a library's targets by hand. A target with
+  no lane fails the plan by name: the emscripten lane comes with stage 4,
+  when emsdk is pinned.
+- **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
+  the lane's toolset in `.local/user-config.jam` with its version, prints the
+  lane command and runs it, and the job uploads `<lane>.xml`:
 
-actionlint checks every workflow, as a job of the CI ported from xstate-cpp's,
-and runs clean on `.github/workflows/` before a workflow change is committed.
+  | Lane | Runner | Toolset |
+  | --- | --- | --- |
+  | `gcc-14` | ubuntu-24.04 | `gcc-14` |
+  | `gcc-15` | ubuntu-26.04 | `gcc-15` |
+  | `clang-linux-18` | ubuntu-24.04 | `clang-18`, on libstdc++ |
+  | `clang-linux-22` | ubuntu-26.04 | `clang-22`, on libstdc++ |
+  | `clang-darwin-<version>` | macos-15 | Apple Clang, its version read from `clang++ -dumpversion` |
+  | `msvc-14.3` | windows-2022 | Visual Studio 2022 |
+  | `msvc-14.5` | windows-2025 | Visual Studio 2026 |
+  | `wasip2`, `wasip3` | ubuntu-24.04 | `clang-wasip2`, `clang-wasip3`: wasi-sdk 34 and wasmtime 47.0.3 |
 
-**The Boost action,** `tools/ci/actions/boost/`, downloads
-`boost_1_92_0.tar.bz2` from `https://archives.boost.io/release/1.92.0/source/`
-(its SHA-256 recorded in the action), builds and installs it to a cached
-prefix, writes the `using boost` line, and installs the b2 of that release, on
-Linux, macOS and Windows. The other actions install wasi-sdk, wasmtime,
-MrDocs and Node. Every third-party action is pinned by its full commit SHA,
-with its tag in a comment.
+  The Clang lanes on libstdc++ stay: a regression of xactor's guarantee 28 is
+  caught only there. The MSVC lanes add `address-model=64
+  embed-manifest-via=linker --abbreviate-paths`; b2 abbreviates each word of
+  a toolset directory, and `msvc-14.3` and `msvc-14.5` are their own
+  abbreviations, which `tools/ci/matrix_test.py` checks with b2's own rule.
+- **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
+  Intel macOS) and `clang++-18`, `b2 -a libs/<library>/doc`, or for the
+  superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's.
+- **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
+  with wasi-sdk's clang-format and clang-tidy, Node, Clang 18 as b2's default
+  toolset, and the full history (`fetch-depth: 0`) of the superproject and of
+  the library, since the banned-word rule reads every commit.
+- **tools,** for the superproject only: every `tools/**/*_test.py`, with
+  Clang 18, wasi-sdk, wasmtime, Node and MrDocs, each failure named.
+- **actionlint:** actionlint 1.7.12, downloaded and checked against its
+  SHA-256, on every workflow of the superproject and of `libs/*`, with
+  `.github/actionlint.yaml`. It also runs clean locally before a workflow
+  change is committed.
+- **report:** `matrix.py report` merges every lane's XML with
+  `tools/report/report.py` into the test matrix, uploaded as an artifact. Its
+  exit status is the verdict; a planned lane that wrote no XML fails it by
+  name, and so does a lane's job that failed.
 
-**The superproject's CI,** `.github/workflows/ci.yml`, runs the same lanes
-over every library at the commits its submodules point to, then the docs of
-every library and the index, then the report. On `main` it deploys to GitHub
-Pages, `https://webcpporg.github.io/webcpp/`: `index.html` (the index page),
-`libs/<name>/` (each library's page) and `report/` (the test matrix).
+`matrix.py lane` takes, after `--`, more arguments for b2, so that a lane is
+run locally exactly as the CI runs it, beside others:
+`python3 tools/ci/matrix.py lane '<entry>' -- --build-dir=bin/lane-gcc-15`.
+
+**The actions,** `tools/ci/actions/`, each a script beside its `action.yml`:
+
+- `boost` downloads `boost_1_92_0.tar.bz2` from
+  `https://archives.boost.io/release/1.92.0/source/`, checked against the
+  SHA-256 it records. It builds b2 with `bootstrap`, installs Boost's headers
+  (`--with-headers`, since no library links a compiled Boost library) and
+  that b2 into a prefix cached per image, writes the `using boost` line of
+  `.local/user-config.jam`, and puts b2 on `PATH`, on Linux, macOS and
+  Windows. It refuses an empty or relative prefix: b2 given an empty
+  `--prefix` installs into `/usr/local`.
+- `wasi-sdk` installs wasi-sdk 34 into `.local/wasi-sdk`, `wasmtime`
+  installs wasmtime 47.0.3 on `PATH`, `mrdocs` installs MrDocs 2026.9.29 into
+  `.local/mrdocs`, and `node` sets up Node 26.7.0.
+- `tools/ci/download.sh <url> <sha256> <file>` downloads each pinned file,
+  and leaves no file and exits 1 when the download fails or the digest
+  differs.
+
+`tools/ci/actions_test.py` pins `download.sh` and the Boost action's prefix
+check.
+
+**The site.** On every run of the superproject's CI, `tools/ci/assemble.py`
+lays out the site from the pages and the report, and on `main` it is
+deployed to GitHub Pages, `https://webcpporg.github.io/webcpp/`, a red matrix
+included:
+
+```
+index.html          the index page, built with -sWEBCPP_INDEX=site
+libs/<name>/        each library's page
+report/             the test matrix
+```
+
+It fails, naming each fault, when a library has no page, when the index does
+not link a library's page, or when a link of any page names no file of the
+site or no anchor of its page: an index built without `-sWEBCPP_INDEX=site`
+links out of the site, and fails. Pending (Task 12): the site is live once
+GitHub Pages is enabled.
+
 Submodules are bumped by pull request, merged only when green; `main` is the
 only branch.
 
@@ -942,11 +1013,13 @@ only branch.
     changed: `tools/test/jamroot_test.py`, `tools/test/webcpp_jam_test.py`,
     `tools/test/doc_test.py`, `tools/lint/lint_test.py`,
     `tools/report/report_test.py`, `tools/doc/doc_check_test.py`,
-    `tools/doc/doc_comments_test.py`, `tools/doc/extensions_test.py` and
-    `tools/example/run_example_test.py`, each run as
+    `tools/doc/doc_comments_test.py`, `tools/doc/extensions_test.py`,
+    `tools/example/run_example_test.py`, `tools/ci/matrix_test.py`,
+    `tools/ci/assemble_test.py` and `tools/ci/actions_test.py`, each run as
     `python3 <path>`. They build in scratch copies under `$TMPDIR`, whose
     path holds a space, so they run beside a build of the tree;
-  - CI green: Pending (Task 11).
+  - CI green, the library's and the superproject's (Pending (Task 12): once
+    the repositories are published).
 - **Fix the lint, the failures and the flakiness you meet,** even when they
   are not yours; report what you cannot fix.
 - **A change of the build or of a tool** has a test that fails without it:
