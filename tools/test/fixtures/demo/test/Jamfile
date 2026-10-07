@@ -12,4 +12,5 @@ webcpp.run pass : pass.cpp : <library>/webcpp/demo//demo ;
 webcpp.run-fail fails : fails.cpp : <library>/webcpp/demo//demo ;
 webcpp.compile-fail rejects : rejects.cpp : <library>/webcpp/demo//demo ;
 webcpp.run native_only : native_only.cpp : <library>/webcpp/demo//demo : native ;
+webcpp.compile native_only_compiles : native_only.cpp : <library>/webcpp/demo//demo : native ;
 webcpp.headers-alone demo : ../include ;

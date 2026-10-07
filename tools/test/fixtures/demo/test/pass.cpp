@@ -5,11 +5,11 @@
 // https://www.boost.org/LICENSE_1_0.txt)
 
 // Passes on every target, and prints how it was built, which the tests of tools/test read from
-// its output.
+// its output: whether the compiler defined __cpp_exceptions and __cpp_rtti, which
+// -fno-exceptions and -fno-rtti leave undefined.
 
 #include <webcpp/demo.hpp>
 
-#include <boost/config.hpp>
 #include <boost/core/lightweight_test.hpp>
 #include <boost/throw_exception.hpp>
 
@@ -24,15 +24,15 @@ int main(int argc, char** /*argv*/) {
     if (argc > 1) {
         boost::throw_exception(std::invalid_argument("pass takes no argument"));
     }
-#ifdef BOOST_NO_EXCEPTIONS
-    std::puts("exceptions: off");
+#ifdef __cpp_exceptions
+    std::puts("__cpp_exceptions: defined");
 #else
-    std::puts("exceptions: on");
+    std::puts("__cpp_exceptions: undefined");
 #endif
-#ifdef BOOST_NO_RTTI
-    std::puts("rtti: off");
+#ifdef __cpp_rtti
+    std::puts("__cpp_rtti: defined");
 #else
-    std::puts("rtti: on");
+    std::puts("__cpp_rtti: undefined");
 #endif
     BOOST_TEST_EQ(webcpp::demo::answer(), 42);
     return boost::report_errors();

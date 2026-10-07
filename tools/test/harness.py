@@ -9,14 +9,18 @@
 A scratch superproject is the superproject's own files, without what is local, built or a
 library, plus the fixture libraries a test places under its libs/. It lives under $TMPDIR in a
 directory whose name contains a space, so every test also proves that such a checkout builds.
+run_cases runs a test file's cases, each on a scratch superproject of its own.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -100,3 +104,60 @@ def scratch_superproject(*fixtures: str) -> Path:
     for name in fixtures:
         shutil.copytree(FIXTURES / name, root / 'libs' / name, ignore=built)
     return root
+
+
+# A line of a user-config.jam that configures Boost.
+USING_BOOST = re.compile(r'^\s*using\s+boost\b.*$', re.MULTILINE)
+
+
+def expect(result: subprocess.CompletedProcess, succeeded: bool, *texts: str) -> None:
+    """Asserts that b2 succeeded or failed as expected and printed each text."""
+    output = result.stdout
+    assert (result.returncode == 0) == succeeded, (succeeded, result.returncode, output[-4000:])
+    for text in texts:
+        assert text in output, (text, output[-4000:])
+
+
+def without_boost() -> str:
+    """The user-config of the superproject without its `using boost` line."""
+    return USING_BOOST.sub('', user_config(ROOT).read_text())
+
+
+def configure(root: Path, text: str) -> None:
+    """Makes text the user-config.jam of the scratch superproject root."""
+    (root / '.local').mkdir(exist_ok=True)
+    (root / '.local/user-config.jam').write_text(text)
+
+
+def add_library(root: Path, name: str, jamfile: str, sources: dict[str, str]) -> None:
+    """Adds to the scratch superproject root a library whose test/ holds jamfile and sources."""
+    (root / 'libs' / name / 'test').mkdir(parents=True)
+    (root / 'libs' / name / 'build.jam').write_text(f'project /webcpp/{name} ;\n')
+    (root / 'libs' / name / 'test/Jamfile').write_text(jamfile)
+    for source, text in sources.items():
+        (root / 'libs' / name / 'test' / source).write_text(text)
+
+
+def run_cases(label: str, cases: Sequence[Callable[[Path], None]], argv: Sequence[str]) -> int:
+    """Runs each of cases, or only those argv names, and returns the exit status of the run.
+
+    Each case receives a scratch superproject of its own, with the fixture library demo, which is
+    removed after it. The run prints "<case>: ok" after each case and "<label>: ok" at its end; a
+    case that fails raises, which ends the run there. A name in argv that is no case's makes it
+    print the unknown names and return 2 before any case runs.
+    """
+    unknown = set(argv) - {case.__name__ for case in cases}
+    if unknown:
+        print(f'{label}: no case named {", ".join(sorted(unknown))}', file=sys.stderr)
+        return 2
+    for case in cases:
+        if argv and case.__name__ not in argv:
+            continue
+        root = scratch_superproject('demo')
+        try:
+            case(root)
+        finally:
+            shutil.rmtree(root)
+        print(f'{case.__name__}: ok')
+    print(f'{label}: ok')
+    return 0

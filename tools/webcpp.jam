@@ -11,6 +11,7 @@
 #     webcpp.targets native wasip2 wasip3 ;
 #     webcpp.run name : sources + : requirements * : targets * ;
 #     webcpp.run-fail name : sources + : requirements * : targets * ;
+#     webcpp.compile name : sources + : requirements * : targets * ;
 #     webcpp.compile-fail name : sources + : requirements * : targets * ;
 #     webcpp.example source : requirements * : targets * ;
 #     webcpp.headers-alone library : include-root ;
@@ -70,10 +71,12 @@ local rule target-of ( properties * )
     }
     if $(toolset) = clang
     {
-        local version = [ feature.get-values <toolset-clang:version> : $(properties) ] ;
-        if $(version) in wasip2 wasip3
+        # A switch, since `in` holds for an empty list: a clang without a
+        # version is native.
+        switch [ feature.get-values <toolset-clang:version> : $(properties) ]
         {
-            return $(version) ;
+            case wasip2 : return wasip2 ;
+            case wasip3 : return wasip3 ;
         }
     }
     return native ;
@@ -179,6 +182,12 @@ rule run-fail ( name : sources + : requirements * : targets * )
 {
     testing.run-fail $(sources) : : : $(requirements) [ program $(targets) ] $(.handler)
         : $(name) ;
+}
+
+# A test that passes when sources compile, which builds no program.
+rule compile ( name : sources + : requirements * : targets * )
+{
+    testing.compile $(sources) : $(requirements) [ program $(targets) ] : $(name) ;
 }
 
 # A test that passes when sources do not compile.
