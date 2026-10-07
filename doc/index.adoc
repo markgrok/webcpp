@@ -8,12 +8,46 @@
 :idprefix:
 :sectanchors:
 
-webcpp is a collection of header-only {cpp}20 libraries that bring to {cpp}
-the libraries other languages use for the web. Each is built and tested with
-b2, natively and for WebAssembly, and documented on a page of its own, with
-its API reference.
+webcpp brings to {cpp} the libraries that other languages use for the web.
+Each is a header-only {cpp}20 library, a port of a widely used original at an
+exact version or a library of webcpp's own, built and tested with b2,
+natively and for WebAssembly, and documented on a page of its own, with its
+API reference. webcpp follows Boost's guidelines and model; its source is at
+https://github.com/webcpporg/webcpp[webcpporg/webcpp].
 
 [#libraries]
 == Libraries
 
+Each library's name leads to its page: the guide that teaches it, its
+guarantees, its API reference and how it is tested.
+
 include::{libraries}[]
+
+[#test-matrix]
+== Test matrix
+
+Every library is tested on every target it declares, natively and for
+WebAssembly, on wasm32-wasip2 and wasm32-wasip3 with wasmtime. The
+https://webcpporg.github.io/webcpp/report/[test matrix] shows each test and
+example of each library by lane, with the log of every failure.
+
+[#getting-started]
+== Getting started
+
+With Boost 1.92 or newer and b2 installed, a checkout of the superproject
+builds and tests every library:
+
+[source,bash]
+----
+git clone --recursive https://github.com/webcpporg/webcpp
+cd webcpp
+b2 test
+----
+
+A b2 project uses a library through `/webcpp/<name>//<name>`; CMake or a
+plain compiler uses the headers that `b2 install --prefix=<dir>` copies to
+`<dir>/include/webcpp/`. The
+https://github.com/webcpporg/webcpp/blob/main/README.md[README] lists the
+prerequisites and how to configure them, and
+https://github.com/webcpporg/webcpp/blob/main/AGENTS.md[AGENTS.md] is the
+rulebook for porting a library to webcpp.
