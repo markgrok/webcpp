@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <build format="1.0" version="5.5.3"> 
-  <directory><![CDATA[/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 62p78e_f]]></directory> 
-  <command><![CDATA["b2" "--user-config=/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 62p78e_f/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=native-pass.xml" "toolset=clang" "libs/demo/test" "libs/demo/example"]]></command> 
+  <directory><![CDATA[/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 7luvu2b1]]></directory> 
+  <command><![CDATA["b2" "--user-config=/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 7luvu2b1/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=native-pass.xml" "toolset=clang" "libs/demo/test" "libs/demo/example"]]></command> 
   <targets> 
     <target> 
       <name><![CDATA[.//boost_version.o]]></name> 
@@ -270,7 +270,7 @@
     <target> 
       <name><![CDATA[libs/demo/test//suite-framework.o]]></name> 
       <dependencies> 
-        <dependency><![CDATA[libs/demo/test///private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 62p78e_f/tools/boost_test_runner.cpp]]></dependency> 
+        <dependency><![CDATA[.//tools/boost_test_runner.cpp]]></dependency> 
       </dependencies> 
       <path><![CDATA[bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso]]></path> 
       <jam-target><![CDATA[<pbin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso>suite-framework.o]]></jam-target> 
@@ -319,7 +319,7 @@
     <target> 
       <name><![CDATA[libs/demo/test//suite-framework-noexcept.o]]></name> 
       <dependencies> 
-        <dependency><![CDATA[libs/demo/test///private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 62p78e_f/tools/boost_test_runner.cpp]]></dependency> 
+        <dependency><![CDATA[.//tools/boost_test_runner.cpp]]></dependency> 
       </dependencies> 
       <path><![CDATA[bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/rtti-off]]></path> 
       <jam-target><![CDATA[<pbin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/rtti-off>suite-framework-noexcept.o]]></jam-target> 
@@ -574,23 +574,23 @@
     <target><![CDATA[libs/demo/test//parses_json-noexcept.test]]></target> 
     <source><![CDATA[libs/demo/test/parses_json.cpp]]></source> 
   </test> 
-  <action status="0" start="2026-10-07 21:03:08.514753000 +0000" end="2026-10-07 21:03:08.553516000 +0000" user="0.001776" system="0.005109"> 
+  <action status="0" start="2026-10-07 22:14:08.276360000 +0000" end="2026-10-07 22:14:08.288628000 +0000" user="0.001658" system="0.004258"> 
     <name><![CDATA[webcpp%write-include]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test>alone-demo.cpp]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/alone-demo.cpp]]></path> 
     <command><![CDATA[
-    cat "/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T//jamb0ceb38e.000" > "bin/libs/demo/test/alone-demo.cpp"
+    cat "/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T//jam839ec432.000" > "bin/libs/demo/test/alone-demo.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.518964000 +0000" end="2026-10-07 21:03:08.558654000 +0000" user="0.001851" system="0.004255"> 
+  <action status="0" start="2026-10-07 22:14:08.278501000 +0000" end="2026-10-07 22:14:08.288903000 +0000" user="0.001749" system="0.004985"> 
     <name><![CDATA[webcpp%write-include]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test>alone-demo-answer.cpp]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/alone-demo-answer.cpp]]></path> 
     <command><![CDATA[
-    cat "/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T//jamb0ceb38f.000" > "bin/libs/demo/test/alone-demo-answer.cpp"
+    cat "/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T//jam839ec433.000" > "bin/libs/demo/test/alone-demo-answer.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.586670000 +0000" end="2026-10-07 21:03:08.649447000 +0000" user="0.015933" system="0.015129"> 
+  <action status="0" start="2026-10-07 22:14:08.319918000 +0000" end="2026-10-07 22:14:08.362227000 +0000" user="0.014596" system="0.017584"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso>hello.o]]></jam-target> 
     <path><![CDATA[bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello.o]]></path> 
@@ -598,31 +598,7 @@
     "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello.o" "libs/demo/example/hello.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.629944000 +0000" end="2026-10-07 21:03:08.663055000 +0000" user="0.009635" system="0.012329"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso>alone-demo.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo.o" "bin/libs/demo/test/alone-demo.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.663721000 +0000" end="2026-10-07 21:03:08.693383000 +0000" user="0.001173" system="0.002476"> 
-    <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso>alone-demo.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo.test]]></path> 
-    <command><![CDATA[
-    echo passed > "bin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo.test"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.643956000 +0000" end="2026-10-07 21:03:08.720781000 +0000" user="0.010199" system="0.013448"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-21/debug/cxxstd-20-iso>alone-demo-answer.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo-answer.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/alone-demo-answer.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo-answer.o" "bin/libs/demo/test/alone-demo-answer.cpp"
-]]></command> 
-  </action> 
-  <action status="1" start="2026-10-07 21:03:08.647636000 +0000" end="2026-10-07 21:03:08.721120000 +0000" user="0.009643" system="0.012020"> 
+  <action status="1" start="2026-10-07 22:14:08.333981000 +0000" end="2026-10-07 22:14:08.366844000 +0000" user="0.009364" system="0.012891"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso>rejects.o]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso/rejects.o]]></path> 
@@ -638,15 +614,23 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
 1 error generated.
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.649955000 +0000" end="2026-10-07 21:03:08.751018000 +0000" user="0.032695" system="0.023415"> 
-    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso>hello]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello]]></path> 
+  <action status="0" start="2026-10-07 22:14:08.338350000 +0000" end="2026-10-07 22:14:08.374149000 +0000" user="0.009428" system="0.015023"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-21/debug/cxxstd-20-iso>alone-demo-answer.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo-answer.o]]></path> 
     <command><![CDATA[
-    "clang++"    -o "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello"  "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello.o"       -fPIC -std=c++20 -g 
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/alone-demo-answer.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo-answer.o" "bin/libs/demo/test/alone-demo-answer.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.722979000 +0000" end="2026-10-07 21:03:08.753023000 +0000" user="0.001218" system="0.003256"> 
+  <action status="0" start="2026-10-07 22:14:08.344276000 +0000" end="2026-10-07 22:14:08.379239000 +0000" user="0.009627" system="0.012581"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso>alone-demo.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo.o" "bin/libs/demo/test/alone-demo.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.374549000 +0000" end="2026-10-07 22:14:08.381300000 +0000" user="0.001093" system="0.002663"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-21/debug/cxxstd-20-iso>alone-demo-answer.test]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo-answer.test]]></path> 
@@ -654,7 +638,7 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     echo passed > "bin/libs/demo/test/alone-demo-answer.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo-answer.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.755292000 +0000" end="2026-10-07 21:03:08.764758000 +0000" user="0.001255" system="0.003155"> 
+  <action status="0" start="2026-10-07 22:14:08.375775000 +0000" end="2026-10-07 22:14:08.383095000 +0000" user="0.001110" system="0.002621"> 
     <name><![CDATA[testing%testing.expect-failure]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso>rejects.test]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso/rejects.test]]></path> 
@@ -662,7 +646,7 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     echo passed > "bin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso/rejects.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.754311000 +0000" end="2026-10-07 21:03:08.835762000 +0000" user="0.028475" system="0.024474"> 
+  <action status="0" start="2026-10-07 22:14:08.321032000 +0000" end="2026-10-07 22:14:08.386860000 +0000" user="0.029063" system="0.023183"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso>catches.o]]></jam-target> 
     <path><![CDATA[bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches.o]]></path> 
@@ -670,23 +654,23 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches.o" "libs/demo/example/catches.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.753281000 +0000" end="2026-10-07 21:03:08.867665000 +0000" user="0.035907" system="0.018053"> 
-    <name><![CDATA[webcpp%run-and-compare]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso>hello.output]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello.output]]></path> 
+  <action status="0" start="2026-10-07 22:14:08.379552000 +0000" end="2026-10-07 22:14:08.388240000 +0000" user="0.001125" system="0.002789"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso>alone-demo.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo.test]]></path> 
     <command><![CDATA[
-    "python3" "/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 62p78e_f/tools/example/run_example.py"  --expected "libs/demo/example/hello.expected" --output "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello.output" -- "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello"
+    echo passed > "bin/libs/demo/test/alone-demo.test/clang-darwin-21/debug/cxxstd-20-iso/alone-demo.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.376232000 +0000" end="2026-10-07 21:03:08.879673000 +0000" user="0.240377" system="0.053074"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>throw_exception.o]]></jam-target> 
-    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o]]></path> 
+  <action status="0" start="2026-10-07 22:14:08.362870000 +0000" end="2026-10-07 22:14:08.414266000 +0000" user="0.030861" system="0.021760"> 
+    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso>hello]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello]]></path> 
     <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o" "tools/throw_exception.cpp"
+    "clang++"    -o "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello"  "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello.o"       -fPIC -std=c++20 -g 
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.836112000 +0000" end="2026-10-07 21:03:08.893891000 +0000" user="0.031170" system="0.022980"> 
+  <action status="0" start="2026-10-07 22:14:08.387433000 +0000" end="2026-10-07 22:14:08.436820000 +0000" user="0.036348" system="0.022139"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso>catches]]></jam-target> 
     <path><![CDATA[bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches]]></path> 
@@ -694,23 +678,39 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     "clang++"    -o "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches"  "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches.o"       -fPIC -std=c++20 -g 
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.894200000 +0000" end="2026-10-07 21:03:09.010957000 +0000" user="0.040263" system="0.019992"> 
+  <action status="0" start="2026-10-07 22:14:08.414839000 +0000" end="2026-10-07 22:14:08.519910000 +0000" user="0.035383" system="0.017050"> 
+    <name><![CDATA[webcpp%run-and-compare]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso>hello.output]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello.output]]></path> 
+    <command><![CDATA[
+    "python3" "/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 7luvu2b1/tools/example/run_example.py"  --expected "libs/demo/example/hello.expected" --output "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello.output" -- "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/hello"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.437119000 +0000" end="2026-10-07 22:14:08.543010000 +0000" user="0.036946" system="0.016635"> 
     <name><![CDATA[webcpp%run-and-compare]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso>catches.output]]></jam-target> 
     <path><![CDATA[bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches.output]]></path> 
     <command><![CDATA[
-    "python3" "/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 62p78e_f/tools/example/run_example.py"  --expected "libs/demo/example/catches.expected" --output "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches.output" -- "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches"
+    "python3" "/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 7luvu2b1/tools/example/run_example.py"  --expected "libs/demo/example/catches.expected" --output "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches.output" -- "bin/libs/demo/example/clang-darwin-21/debug/cxxstd-20-iso/catches"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.626560000 +0000" end="2026-10-07 21:03:09.556571000 +0000" user="0.424261" system="0.067038"> 
+  <action status="0" start="2026-10-07 22:14:08.247843000 +0000" end="2026-10-07 22:14:08.557765000 +0000" user="0.238169" system="0.054837"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso>native_only.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.o]]></path> 
+    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>throw_exception.o]]></jam-target> 
+    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o]]></path> 
     <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.o" "libs/demo/test/native_only.cpp"
+    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o" "tools/throw_exception.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.642142000 +0000" end="2026-10-07 21:03:09.599297000 +0000" user="0.432090" system="0.071423"> 
+  <action status="0" start="2026-10-07 22:14:08.336666000 +0000" end="2026-10-07 22:14:08.820455000 +0000" user="0.383818" system="0.063929"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso>native_only_compiles.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso/native_only_compiles.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso/native_only_compiles.o" "libs/demo/test/native_only.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.332738000 +0000" end="2026-10-07 22:14:08.822603000 +0000" user="0.386176" system="0.067183"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso>fails.o]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso/fails.o]]></path> 
@@ -718,15 +718,23 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso/fails.o" "libs/demo/test/fails.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:09.557038000 +0000" end="2026-10-07 21:03:09.622057000 +0000" user="0.037622" system="0.028567"> 
-    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso>native_only]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only]]></path> 
+  <action status="0" start="2026-10-07 22:14:08.328858000 +0000" end="2026-10-07 22:14:08.822937000 +0000" user="0.390327" system="0.067342"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso>native_only.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.o]]></path> 
     <command><![CDATA[
-    "clang++"    -o "bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only"  "bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.o"       -fPIC -std=c++20 -g 
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.o" "libs/demo/test/native_only.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.627675000 +0000" end="2026-10-07 21:03:09.636871000 +0000" user="0.441552" system="0.071424"> 
+  <action status="0" start="2026-10-07 22:14:08.820690000 +0000" end="2026-10-07 22:14:08.827432000 +0000" user="0.001327" system="0.003378"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso>native_only_compiles.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso/native_only_compiles.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso/native_only_compiles.test"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.334769000 +0000" end="2026-10-07 22:14:08.830537000 +0000" user="0.391801" system="0.065892"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso>pass.o]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.o]]></path> 
@@ -734,7 +742,31 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.o" "libs/demo/test/pass.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:09.599711000 +0000" end="2026-10-07 21:03:09.671225000 +0000" user="0.039398" system="0.028383"> 
+  <action status="0" start="2026-10-07 22:14:08.371645000 +0000" end="2026-10-07 22:14:08.856179000 +0000" user="0.386128" system="0.065366"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>native_only.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only.o" "libs/demo/test/native_only.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.359354000 +0000" end="2026-10-07 22:14:08.858088000 +0000" user="0.395085" system="0.064414"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass.o" "libs/demo/test/pass.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.823112000 +0000" end="2026-10-07 22:14:08.868542000 +0000" user="0.032374" system="0.022844"> 
+    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso>native_only]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only]]></path> 
+    <command><![CDATA[
+    "clang++"    -o "bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only"  "bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.o"       -fPIC -std=c++20 -g 
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.824266000 +0000" end="2026-10-07 22:14:08.868945000 +0000" user="0.029400" system="0.021876"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso>fails]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso/fails]]></path> 
@@ -742,7 +774,31 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     "clang++"    -o "bin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso/fails"  "bin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso/fails.o"       -fPIC -std=c++20 -g 
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:09.622459000 +0000" end="2026-10-07 21:03:09.688725000 +0000" user="0.003434" system="0.008812"> 
+  <action status="0" start="2026-10-07 22:14:08.830882000 +0000" end="2026-10-07 22:14:08.877187000 +0000" user="0.033915" system="0.022842"> 
+    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso>pass]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass]]></path> 
+    <command><![CDATA[
+    "clang++"    -o "bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass"  "bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.o"       -fPIC -std=c++20 -g 
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.856630000 +0000" end="2026-10-07 22:14:08.903966000 +0000" user="0.035219" system="0.023677"> 
+    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>native_only-noexcept]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept]]></path> 
+    <command><![CDATA[
+    "clang++"    -o "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept"  "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o"       -fPIC -std=c++20 -g 
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.860682000 +0000" end="2026-10-07 22:14:08.905958000 +0000" user="0.033087" system="0.021255"> 
+    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass-noexcept]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass-noexcept]]></path> 
+    <command><![CDATA[
+    "clang++"    -o "bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass-noexcept"  "bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o"       -fPIC -std=c++20 -g 
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.870495000 +0000" end="2026-10-07 22:14:08.925849000 +0000" user="0.002956" system="0.007584"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso>native_only.run]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.run]]></path> 
@@ -767,47 +823,7 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.734277000 +0000" end="2026-10-07 21:03:09.692624000 +0000" user="0.420185" system="0.070104"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>native_only.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only.o" "libs/demo/test/native_only.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:09.637288000 +0000" end="2026-10-07 21:03:09.696156000 +0000" user="0.035370" system="0.024023"> 
-    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso>pass]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass]]></path> 
-    <command><![CDATA[
-    "clang++"    -o "bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass"  "bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.o"       -fPIC -std=c++20 -g 
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:09.690169000 +0000" end="2026-10-07 21:03:09.698441000 +0000" user="0.001515" system="0.003349"> 
-    <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso>native_only.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.test]]></path> 
-    <command><![CDATA[
-    echo passed > "bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.test"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.740730000 +0000" end="2026-10-07 21:03:09.733972000 +0000" user="0.440489" system="0.072180"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass.o" "libs/demo/test/pass.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.634331000 +0000" end="2026-10-07 21:03:09.738007000 +0000" user="0.443423" system="0.070745"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso>native_only_compiles.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso/native_only_compiles.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso/native_only_compiles.o" "libs/demo/test/native_only.cpp"
-]]></command> 
-  </action> 
-  <action status="1" start="2026-10-07 21:03:09.671859000 +0000" end="2026-10-07 21:03:09.738313000 +0000" user="0.003352" system="0.008926"> 
+  <action status="1" start="2026-10-07 22:14:08.869191000 +0000" end="2026-10-07 22:14:08.927189000 +0000" user="0.002947" system="0.007481"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso>fails.run]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso/fails.run]]></path> 
@@ -839,23 +855,15 @@ EXIT STATUS: 1
 ====== END OUTPUT ======
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:09.693208000 +0000" end="2026-10-07 21:03:09.746153000 +0000" user="0.034693" system="0.022728"> 
-    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>native_only-noexcept]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept]]></path> 
-    <command><![CDATA[
-    "clang++"    -o "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept"  "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o"       -fPIC -std=c++20 -g 
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:09.740819000 +0000" end="2026-10-07 21:03:09.748465000 +0000" user="0.001250" system="0.003226"> 
+  <action status="0" start="2026-10-07 22:14:08.926213000 +0000" end="2026-10-07 22:14:08.932404000 +0000" user="0.001201" system="0.003058"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso>native_only_compiles.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso/native_only_compiles.test]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso>native_only.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.test]]></path> 
     <command><![CDATA[
-    echo passed > "bin/libs/demo/test/native_only_compiles.test/clang-darwin-21/debug/cxxstd-20-iso/native_only_compiles.test"
+    echo passed > "bin/libs/demo/test/native_only.test/clang-darwin-21/debug/cxxstd-20-iso/native_only.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:09.696592000 +0000" end="2026-10-07 21:03:09.756726000 +0000" user="0.003220" system="0.008870"> 
+  <action status="0" start="2026-10-07 22:14:08.877528000 +0000" end="2026-10-07 22:14:08.935476000 +0000" user="0.003110" system="0.007301"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso>pass.run]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.run]]></path> 
@@ -880,7 +888,7 @@ EXIT STATUS: 1
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:09.751315000 +0000" end="2026-10-07 21:03:09.759426000 +0000" user="0.001376" system="0.003656"> 
+  <action status="0" start="2026-10-07 22:14:08.933774000 +0000" end="2026-10-07 22:14:08.941328000 +0000" user="0.001344" system="0.003411"> 
     <name><![CDATA[testing%testing.expect-failure]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso>fails.test]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso/fails.test]]></path> 
@@ -888,7 +896,7 @@ EXIT STATUS: 1
     echo passed > "bin/libs/demo/test/fails.test/clang-darwin-21/debug/cxxstd-20-iso/fails.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:09.757278000 +0000" end="2026-10-07 21:03:09.770022000 +0000" user="0.001375" system="0.003746"> 
+  <action status="0" start="2026-10-07 22:14:08.936030000 +0000" end="2026-10-07 22:14:08.942422000 +0000" user="0.001237" system="0.003004"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso>pass.test]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.test]]></path> 
@@ -896,48 +904,7 @@ EXIT STATUS: 1
     echo passed > "bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:09.734337000 +0000" end="2026-10-07 21:03:09.794717000 +0000" user="0.035759" system="0.026008"> 
-    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass-noexcept]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass-noexcept]]></path> 
-    <command><![CDATA[
-    "clang++"    -o "bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass-noexcept"  "bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o"       -fPIC -std=c++20 -g 
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:09.746578000 +0000" end="2026-10-07 21:03:09.811482000 +0000" user="0.003242" system="0.008157"> 
-    <name><![CDATA[testing%testing.capture-output]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>native_only-noexcept.run]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.run]]></path> 
-    <command><![CDATA[
-    
-     "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept"   > "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output" 2>&1 < /dev/null
-    status=$?
-    echo >> "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output"
-    echo EXIT STATUS: $status >> "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output"
-    if test $status -eq 0 ; then
-        cp "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output" "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.run" >/dev/null
-    fi
-    verbose=0
-    if test $status -ne 0 ; then
-        verbose=1
-    fi
-    if test $verbose -eq 1 ; then
-        echo ====== BEGIN OUTPUT ======
-        cat "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output"
-        echo ====== END OUTPUT ======
-    fi
-    exit $status
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:09.811892000 +0000" end="2026-10-07 21:03:09.819722000 +0000" user="0.001421" system="0.003582"> 
-    <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>native_only-noexcept.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.test]]></path> 
-    <command><![CDATA[
-    echo passed > "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.test"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:09.795141000 +0000" end="2026-10-07 21:03:09.857989000 +0000" user="0.003376" system="0.008970"> 
+  <action status="0" start="2026-10-07 22:14:08.906495000 +0000" end="2026-10-07 22:14:08.958045000 +0000" user="0.002980" system="0.007362"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass-noexcept.run]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass-noexcept.run]]></path> 
@@ -962,106 +929,18 @@ EXIT STATUS: 1
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:09.858416000 +0000" end="2026-10-07 21:03:09.874933000 +0000" user="0.001437" system="0.004224"> 
-    <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass-noexcept.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass-noexcept.test]]></path> 
-    <command><![CDATA[
-    echo passed > "bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass-noexcept.test"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.747040000 +0000" end="2026-10-07 21:03:10.048734000 +0000" user="0.627191" system="0.093970"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>suite_test.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/suite_test.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/suite_test.o" "libs/demo/test/suite_test.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.748294000 +0000" end="2026-10-07 21:03:10.072545000 +0000" user="0.644284" system="0.087250"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>parses_json.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json.o" "libs/demo/test/parses_json.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.640907000 +0000" end="2026-10-07 21:03:10.080175000 +0000" user="0.648972" system="0.095919"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso>suite_test.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite_test.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite_test.o" "libs/demo/test/suite_test.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.651896000 +0000" end="2026-10-07 21:03:10.096224000 +0000" user="0.670888" system="0.083765"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso>parses_json.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.o" "libs/demo/test/parses_json.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.393672000 +0000" end="2026-10-07 21:03:10.655568000 +0000" user="1.347647" system="0.104207"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/link-static>tools/boost_json.o]]></jam-target> 
-    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/tools/boost_json.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/tools/boost_json.o" "tools/boost_json.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:08.399119000 +0000" end="2026-10-07 21:03:10.700092000 +0000" user="1.347963" system="0.111778"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off>tools/boost_json.o]]></jam-target> 
-    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/tools/boost_json.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/tools/boost_json.o" "tools/boost_json.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:10.667930000 +0000" end="2026-10-07 21:03:10.702834000 +0000" user="0.008461" system="0.017368"> 
-    <name><![CDATA[clang-darwin%clang-darwin.archive]]></name> 
-    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/link-static>libboost_json.a]]></jam-target> 
-    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/libboost_json.a]]></path> 
-    <command><![CDATA[
-    "ar"  rsc "bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/libboost_json.a" "bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/tools/boost_json.o"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:10.712043000 +0000" end="2026-10-07 21:03:10.745924000 +0000" user="0.008107" system="0.016054"> 
-    <name><![CDATA[clang-darwin%clang-darwin.archive]]></name> 
-    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off>libboost_json.a]]></jam-target> 
-    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/libboost_json.a]]></path> 
-    <command><![CDATA[
-    "ar"  rsc "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/libboost_json.a" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/tools/boost_json.o"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:10.703343000 +0000" end="2026-10-07 21:03:10.752411000 +0000" user="0.042361" system="0.025034"> 
-    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso>parses_json]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json]]></path> 
-    <command><![CDATA[
-    "clang++"    -o "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json"  "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/libboost_json.a"       -fPIC -std=c++20 -g 
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:10.746326000 +0000" end="2026-10-07 21:03:10.806728000 +0000" user="0.036253" system="0.025738"> 
-    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>parses_json-noexcept]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json-noexcept]]></path> 
-    <command><![CDATA[
-    "clang++"    -o "bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json-noexcept"  "bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/libboost_json.a"       -fPIC -std=c++20 -g 
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 21:03:10.752832000 +0000" end="2026-10-07 21:03:10.828674000 +0000" user="0.004365" system="0.008996"> 
+  <action status="0" start="2026-10-07 22:14:08.904447000 +0000" end="2026-10-07 22:14:08.960676000 +0000" user="0.003106" system="0.007887"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso>parses_json.run]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.run]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>native_only-noexcept.run]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.run]]></path> 
     <command><![CDATA[
     
-     "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json"   > "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output" 2>&1 < /dev/null
+     "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept"   > "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output" 2>&1 < /dev/null
     status=$?
-    echo >> "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output"
-    echo EXIT STATUS: $status >> "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output"
+    echo >> "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output"
+    echo EXIT STATUS: $status >> "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output"
     if test $status -eq 0 ; then
-        cp "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output" "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.run" >/dev/null
+        cp "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output" "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.run" >/dev/null
     fi
     verbose=0
     if test $status -ne 0 ; then
@@ -1069,21 +948,109 @@ EXIT STATUS: 1
     fi
     if test $verbose -eq 1 ; then
         echo ====== BEGIN OUTPUT ======
-        cat "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output"
+        cat "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.output"
         echo ====== END OUTPUT ======
     fi
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:10.829144000 +0000" end="2026-10-07 21:03:10.843159000 +0000" user="0.001439" system="0.003410"> 
+  <action status="0" start="2026-10-07 22:14:08.958391000 +0000" end="2026-10-07 22:14:08.964992000 +0000" user="0.001318" system="0.003232"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso>parses_json.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.test]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>pass-noexcept.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass-noexcept.test]]></path> 
     <command><![CDATA[
-    echo passed > "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.test"
+    echo passed > "bin/libs/demo/test/pass-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/pass-noexcept.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:10.807123000 +0000" end="2026-10-07 21:03:10.900664000 +0000" user="0.004485" system="0.009287"> 
+  <action status="0" start="2026-10-07 22:14:08.961024000 +0000" end="2026-10-07 22:14:08.968790000 +0000" user="0.001487" system="0.003580"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>native_only-noexcept.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/demo/test/native_only-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/native_only-noexcept.test"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.335452000 +0000" end="2026-10-07 22:14:09.047938000 +0000" user="0.584386" system="0.086170"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso>suite_test.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite_test.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite_test.o" "libs/demo/test/suite_test.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.354594000 +0000" end="2026-10-07 22:14:09.076634000 +0000" user="0.600340" system="0.080706"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso>parses_json.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.o" "libs/demo/test/parses_json.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.386101000 +0000" end="2026-10-07 22:14:09.101883000 +0000" user="0.595681" system="0.077963"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>parses_json.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json.o" "libs/demo/test/parses_json.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.423271000 +0000" end="2026-10-07 22:14:09.114429000 +0000" user="0.564525" system="0.080394"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>suite_test.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/suite_test.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/suite_test.o" "libs/demo/test/suite_test.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.256237000 +0000" end="2026-10-07 22:14:09.522451000 +0000" user="1.122459" system="0.097426"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off>tools/boost_json.o]]></jam-target> 
+    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/tools/boost_json.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/tools/boost_json.o" "tools/boost_json.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.254863000 +0000" end="2026-10-07 22:14:09.535233000 +0000" user="1.127849" system="0.096825"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/link-static>tools/boost_json.o]]></jam-target> 
+    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/tools/boost_json.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/tools/boost_json.o" "tools/boost_json.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:09.531504000 +0000" end="2026-10-07 22:14:09.554543000 +0000" user="0.006889" system="0.011822"> 
+    <name><![CDATA[clang-darwin%clang-darwin.archive]]></name> 
+    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off>libboost_json.a]]></jam-target> 
+    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/libboost_json.a]]></path> 
+    <command><![CDATA[
+    "ar"  rsc "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/libboost_json.a" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/tools/boost_json.o"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:09.542542000 +0000" end="2026-10-07 22:14:09.565576000 +0000" user="0.006997" system="0.011801"> 
+    <name><![CDATA[clang-darwin%clang-darwin.archive]]></name> 
+    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/link-static>libboost_json.a]]></jam-target> 
+    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/libboost_json.a]]></path> 
+    <command><![CDATA[
+    "ar"  rsc "bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/libboost_json.a" "bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/tools/boost_json.o"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:09.554852000 +0000" end="2026-10-07 22:14:09.591421000 +0000" user="0.039584" system="0.024650"> 
+    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>parses_json-noexcept]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json-noexcept]]></path> 
+    <command><![CDATA[
+    "clang++"    -o "bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json-noexcept"  "bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/link-static/rtti-off/libboost_json.a"       -fPIC -std=c++20 -g 
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:09.565910000 +0000" end="2026-10-07 22:14:09.603056000 +0000" user="0.042923" system="0.024180"> 
+    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso>parses_json]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json]]></path> 
+    <command><![CDATA[
+    "clang++"    -o "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json"  "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/link-static/libboost_json.a"       -fPIC -std=c++20 -g 
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:09.591822000 +0000" end="2026-10-07 22:14:09.660945000 +0000" user="0.003779" system="0.006701"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>parses_json-noexcept.run]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json-noexcept.run]]></path> 
@@ -1108,7 +1075,7 @@ EXIT STATUS: 1
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:10.900977000 +0000" end="2026-10-07 21:03:10.911318000 +0000" user="0.001435" system="0.003918"> 
+  <action status="0" start="2026-10-07 22:14:09.661245000 +0000" end="2026-10-07 22:14:09.666012000 +0000" user="0.001085" system="0.002118"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>parses_json-noexcept.test]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json-noexcept.test]]></path> 
@@ -1116,15 +1083,48 @@ EXIT STATUS: 1
     echo passed > "bin/libs/demo/test/parses_json-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/parses_json-noexcept.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.621203000 +0000" end="2026-10-07 21:03:12.455325000 +0000" user="2.817343" system="0.185324"> 
+  <action status="0" start="2026-10-07 22:14:09.603446000 +0000" end="2026-10-07 22:14:09.671893000 +0000" user="0.003565" system="0.005589"> 
+    <name><![CDATA[testing%testing.capture-output]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso>parses_json.run]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.run]]></path> 
+    <command><![CDATA[
+    
+     "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json"   > "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output" 2>&1 < /dev/null
+    status=$?
+    echo >> "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output"
+    echo EXIT STATUS: $status >> "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output"
+    if test $status -eq 0 ; then
+        cp "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output" "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.run" >/dev/null
+    fi
+    verbose=0
+    if test $status -ne 0 ; then
+        verbose=1
+    fi
+    if test $verbose -eq 1 ; then
+        echo ====== BEGIN OUTPUT ======
+        cat "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.output"
+        echo ====== END OUTPUT ======
+    fi
+    exit $status
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:09.672180000 +0000" end="2026-10-07 22:14:09.676991000 +0000" user="0.001068" system="0.002083"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso>parses_json.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/demo/test/parses_json.test/clang-darwin-21/debug/cxxstd-20-iso/parses_json.test"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-07 22:14:08.314719000 +0000" end="2026-10-07 22:14:10.564134000 +0000" user="2.030756" system="0.146443"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso>suite-framework.o]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/suite-framework.o]]></path> 
     <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_TEST_MODULE=suite   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/suite-framework.o" "/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 62p78e_f/tools/boost_test_runner.cpp"
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_TEST_MODULE=suite   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/suite-framework.o" "tools/boost_test_runner.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:12.455645000 +0000" end="2026-10-07 21:03:12.513506000 +0000" user="0.056831" system="0.030256"> 
+  <action status="0" start="2026-10-07 22:14:10.564379000 +0000" end="2026-10-07 22:14:10.603389000 +0000" user="0.047465" system="0.027043"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso>suite]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite]]></path> 
@@ -1132,15 +1132,15 @@ EXIT STATUS: 1
     "clang++"    -o "bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite"  "bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite_test.o" "bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/suite-framework.o"       -fPIC -std=c++20 -g 
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:08.733130000 +0000" end="2026-10-07 21:03:12.516083000 +0000" user="2.821399" system="0.184372"> 
+  <action status="0" start="2026-10-07 22:14:08.395061000 +0000" end="2026-10-07 22:14:10.620856000 +0000" user="2.015347" system="0.137304"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/rtti-off>suite-framework-noexcept.o]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/rtti-off/suite-framework-noexcept.o]]></path> 
     <command><![CDATA[
-    "clang++"   -std=c++20 -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_TEST_MODULE=suite   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/rtti-off/suite-framework-noexcept.o" "/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 62p78e_f/tools/boost_test_runner.cpp"
+    "clang++"   -std=c++20 -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_TEST_MODULE=suite   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/rtti-off/suite-framework-noexcept.o" "tools/boost_test_runner.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:12.516594000 +0000" end="2026-10-07 21:03:12.571937000 +0000" user="0.053793" system="0.030433"> 
+  <action status="0" start="2026-10-07 22:14:10.621146000 +0000" end="2026-10-07 22:14:10.658752000 +0000" user="0.051238" system="0.025518"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>suite-noexcept]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/suite-noexcept]]></path> 
@@ -1148,7 +1148,7 @@ EXIT STATUS: 1
     "clang++"    -o "bin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/suite-noexcept"  "bin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/suite_test.o" "bin/libs/demo/test/clang-darwin-21/debug/cxxstd-20-iso/rtti-off/suite-framework-noexcept.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o"       -fPIC -std=c++20 -g 
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:12.513976000 +0000" end="2026-10-07 21:03:12.595896000 +0000" user="0.005976" system="0.009700"> 
+  <action status="0" start="2026-10-07 22:14:10.603838000 +0000" end="2026-10-07 22:14:10.687460000 +0000" user="0.004612" system="0.005940"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso>suite.run]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite.run]]></path> 
@@ -1173,7 +1173,7 @@ EXIT STATUS: 1
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:12.596287000 +0000" end="2026-10-07 21:03:12.603204000 +0000" user="0.001410" system="0.003257"> 
+  <action status="0" start="2026-10-07 22:14:10.687777000 +0000" end="2026-10-07 22:14:10.692216000 +0000" user="0.000977" system="0.001997"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso>suite.test]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite.test]]></path> 
@@ -1181,7 +1181,7 @@ EXIT STATUS: 1
     echo passed > "bin/libs/demo/test/suite.test/clang-darwin-21/debug/cxxstd-20-iso/suite.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:12.572344000 +0000" end="2026-10-07 21:03:12.651679000 +0000" user="0.005877" system="0.009844"> 
+  <action status="0" start="2026-10-07 22:14:10.659087000 +0000" end="2026-10-07 22:14:10.744418000 +0000" user="0.005491" system="0.007194"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>suite-noexcept.run]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/suite-noexcept.run]]></path> 
@@ -1206,7 +1206,7 @@ EXIT STATUS: 1
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 21:03:12.652008000 +0000" end="2026-10-07 21:03:12.660603000 +0000" user="0.001473" system="0.004481"> 
+  <action status="0" start="2026-10-07 22:14:10.744719000 +0000" end="2026-10-07 22:14:10.749561000 +0000" user="0.001049" system="0.001845"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>suite-noexcept.test]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/suite-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/suite-noexcept.test]]></path> 
