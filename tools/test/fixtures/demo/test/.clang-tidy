@@ -1,10 +1,12 @@
-# The tests inherit the superproject's configuration and switch off one check.
+# The tests inherit the superproject's configuration and narrow one check.
 #
-# misc-use-internal-linkage reports every BOOST_AUTO_TEST_CASE of a Boost.Test
-# suite: the macro declares the case's struct at namespace scope, where
-# Boost.Test's documentation writes every case, and a suite is not rewritten
-# to dodge the check.
+# misc-use-internal-linkage would report every BOOST_AUTO_TEST_CASE of a
+# Boost.Test suite: the macro defines a struct per case at namespace scope,
+# where Boost.Test's documentation writes every case. AnalyzeTypes off leaves
+# those structs alone, and the check still reports a free function or a
+# variable that should have internal linkage.
 ---
 InheritParentConfig: true
-Checks: >
-  -misc-use-internal-linkage
+CheckOptions:
+  - key: misc-use-internal-linkage.AnalyzeTypes
+    value: 'false'
