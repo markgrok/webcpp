@@ -11,7 +11,9 @@ its own under `libs/<name>`, and everything is built and tested with b2.
 - b2;
 - a C++20 compiler;
 - Python 3.9 or newer, which compares the examples with their expected output
-  and runs the tests of the build itself.
+  and runs the tests of the build itself;
+- for the lint, wasi-sdk 34, whose clang-format and clang-tidy it runs, and
+  Node, with which it installs Pyright.
 
 If Boost is not on the compiler's default include path, tell b2 where it is
 in `user-config.jam`. For Homebrew's Boost:
@@ -30,3 +32,12 @@ set, since the compiler would read another Boost from them.
 `b2 libs/<name>/test` tests one library, and
 `b2 install --prefix=<dir>` copies every library's headers to
 `<dir>/include/webcpp/`.
+
+## Linting
+
+    tools/lint/lint.sh --clang-format <wasi-sdk>/bin/clang-format --clang-tidy <wasi-sdk>/bin/clang-tidy
+
+lints the superproject and every library under `libs/`, and names each rule
+that fails. `--shard K/N` analyses one of N slices of the files with
+clang-tidy, which takes most of the time, and runs every other rule.
+`python3 tools/lint/lint_test.py` tests the lint itself.

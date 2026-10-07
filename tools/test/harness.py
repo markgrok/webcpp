@@ -129,6 +129,13 @@ def configure(root: Path, text: str) -> None:
     (root / '.local/user-config.jam').write_text(text)
 
 
+def replace(path: Path, old: str, new: str) -> None:
+    """Replaces the one occurrence of old in the file at path with new."""
+    text = path.read_text()
+    assert text.count(old) == 1, (path, old)
+    path.write_text(text.replace(old, new))
+
+
 def add_library(root: Path, name: str, jamfile: str, sources: dict[str, str]) -> None:
     """Adds to the scratch superproject root a library whose test/ holds jamfile and sources."""
     (root / 'libs' / name / 'test').mkdir(parents=True)

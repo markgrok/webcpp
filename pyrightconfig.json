@@ -1,0 +1,9 @@
+{
+    "extraPaths": [
+        "tools/example",
+        "tools/lint",
+        "tools/test"
+    ],
+    "pythonVersion": "3.9",
+    "typeCheckingMode": "standard"
+}

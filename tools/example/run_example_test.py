@@ -26,7 +26,8 @@ def main():
         with open(expected, 'w', newline='') as out:
             out.write('one\ntwo\n')
         output = os.path.join(scratch, 'output')
-        printer = [sys.executable, '-c', 'import sys; sys.stdout.buffer.write(b"one\\r\\ntwo\\r\\n")']
+        printer = [sys.executable, '-c',
+                   'import sys; sys.stdout.buffer.write(b"one\\r\\ntwo\\r\\n")']
         same = run(['--expected', expected, '--output', output, '--'] + printer)
         assert same.returncode == 0, same.stderr
         assert open(output).read() == 'one\ntwo\n'
@@ -37,10 +38,12 @@ def main():
                        '--output', output, '--', 'prog'])
         assert missing.returncode == 2 and 'no-such-launcher' in missing.stderr, missing.stderr
         output2 = os.path.join(scratch, 'output2')
-        exits_bad = [sys.executable, '-c', 'import sys; sys.stdout.write("one\\ntwo\\n"); sys.exit(3)']
+        exits_bad = [sys.executable, '-c',
+                     'import sys; sys.stdout.write("one\\ntwo\\n"); sys.exit(3)']
         bad_status = run(['--expected', expected, '--output', output2, '--'] + exits_bad)
         assert bad_status.returncode == 1 and '3' in bad_status.stderr, bad_status.stderr
-        assert not os.path.exists(output2), 'the output file must not be written on a nonzero exit status'
+        assert not os.path.exists(output2), (
+            'the output file must not be written on a nonzero exit status')
         module = os.path.join(scratch, 'example.wasm')
         with open(module, 'wb') as out:
             out.write(b'\0asm')
@@ -49,7 +52,8 @@ def main():
         assert unstartable.stderr.count('\n') == 1, unstartable.stderr
         assert module in unstartable.stderr, unstartable.stderr
         assert 'testing.launcher=wasmtime' in unstartable.stderr, unstartable.stderr
-        assert not os.path.exists(output2), 'the output file must not be written when the program cannot start'
+        assert not os.path.exists(output2), (
+            'the output file must not be written when the program cannot start')
     print('run_example.py: ok')
 
 

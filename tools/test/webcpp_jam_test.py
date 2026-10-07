@@ -46,13 +46,6 @@ def built_with(exceptions, rtti):
             f'__cpp_rtti: {"defined" if rtti else "undefined"}\n')
 
 
-def replace(path, old, new):
-    """Replaces the one occurrence of old in the file at path with new."""
-    text = path.read_text()
-    assert text.count(old) == 1, (path, old)
-    path.write_text(text.replace(old, new))
-
-
 def stand_in_emscripten(root):
     """Configures the scratch superproject root with b2's toolset emscripten, whose emcc is a
     stand-in that runs clang++: enough to see what b2 builds for emscripten without Emscripten."""
@@ -113,7 +106,8 @@ def test_wasip2_skips_native_only_and_has_no_exceptions(root):
     assert passed(result) == {'aborts'}, (passed(result), result.stdout[-4000:])
     assert 'throw_exception: planted' in output_of(root, 'aborts.output')
     # A program that throws does not compile for wasip2.
-    replace(root / 'libs/demo/example/Jamfile', ': : native wasip3 ;', ': : native wasip2 wasip3 ;')
+    harness.replace(root / 'libs/demo/example/Jamfile', ': : native wasip3 ;',
+                    ': : native wasip2 wasip3 ;')
     harness.expect(harness.run_b2(root, *WASIP2, 'libs/demo/example'), False,
                    "cannot use 'throw' with exceptions disabled")
 
@@ -127,7 +121,7 @@ def test_wasip3_catches_a_throw(root):
     # The Jamroot's -mllvm -wasm-use-legacy-eh=false is needed: without it, clang encodes the
     # throw with the legacy instructions, which wasmtime refuses to run.
     shutil.rmtree(root / 'bin')
-    replace(root / 'Jamroot', ' -mllvm -wasm-use-legacy-eh=false', '')
+    harness.replace(root / 'Jamroot', ' -mllvm -wasm-use-legacy-eh=false', '')
     result = harness.run_b2(root, *WASIP3, 'libs/demo/example')
     harness.expect(result, False, '-caught: boom')
     assert re.search(r'^\.\.\.failed .*catches\.output', result.stdout, re.MULTILINE), (
@@ -153,7 +147,8 @@ def test_compile_builds_only_where_declared(root):
     assert 'native_only' not in result.stdout, result.stdout[-4000:]
     # Declared for wasip2 too, it is compiled there, and a source that does not compile fails it.
     line = 'webcpp.compile native_only_compiles : native_only.cpp : <library>/webcpp/demo//demo'
-    replace(root / 'libs/demo/test/Jamfile', f'{line} : native ;', f'{line} : native wasip2 ;')
+    harness.replace(root / 'libs/demo/test/Jamfile', f'{line} : native ;',
+                    f'{line} : native wasip2 ;')
     result = harness.run_b2(root, *WASIP2, target)
     harness.expect(result, False, 'native_only is declared for native only')
     assert re.search(r'^\.\.\.failed .*native_only_compiles', result.stdout, re.MULTILINE), (
@@ -284,10 +279,11 @@ def test_headers_alone_catches_a_missing_include(root):
         'inline std::string broken() { return "broken"; }\n'
         '}\n'
         '#endif\n')
-    replace(root / 'libs/demo/include/webcpp/demo.hpp', '#include <webcpp/demo/answer.hpp>\n',
-            '#include <string>\n\n'
-            '#include <webcpp/demo/answer.hpp>\n'
-            '#include <webcpp/demo/broken.hpp>\n')
+    harness.replace(root / 'libs/demo/include/webcpp/demo.hpp',
+                    '#include <webcpp/demo/answer.hpp>\n',
+                    '#include <string>\n\n'
+                    '#include <webcpp/demo/answer.hpp>\n'
+                    '#include <webcpp/demo/broken.hpp>\n')
     result = harness.run_b2(root, 'libs/demo/test')
     harness.expect(result, False, 'broken.hpp')
     assert re.search(r'^\.\.\.failed .*alone-demo-broken', result.stdout, re.MULTILINE), (

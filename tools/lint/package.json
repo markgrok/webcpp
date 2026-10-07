@@ -1,0 +1,10 @@
+{
+  "name": "webcpp-lint",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The tools webcpp's lint runs from npm: Pyright, which checks every Python file.",
+  "license": "BSL-1.0",
+  "dependencies": {
+    "pyright": "1.1.414"
+  }
+}

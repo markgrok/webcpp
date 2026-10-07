@@ -13,7 +13,9 @@ namespace webcpp::demo {
 
     @return 42.
 */
-constexpr int answer() noexcept { return 42; }
+constexpr int answer() noexcept {
+    return 42;
+}
 
 }  // namespace webcpp::demo
 
