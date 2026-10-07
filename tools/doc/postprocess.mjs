@@ -17,7 +17,18 @@
 // its own, so the page's style can break a line between the words of
 // `get(a, b)` and never inside one, at the hyphen of `--recursive` or the dot
 // of `xstate.done.state.<id>`: CSS alone breaks text wherever Unicode allows
-// it.
+// it. A word short enough for a phone's line, a span of one word or a word of
+// several, is marked `whole`, which the style keeps on one line at any width;
+// a longer one breaks where it must.
+//
+// A table of three columns or more gives each cell the text of its column's
+// header, `data-label`, which a phone's style shows above the cell once it
+// stacks the table's rows; a table of two columns, a name and what it is,
+// reads stacked without them.
+//
+// The heading of a name of the reference, `webcpp::xactor::scheduler::run_one`,
+// may break after each `::`, so that a phone breaks it between scopes and not
+// inside an identifier.
 
 import { Extensions, Postprocessor } from '@asciidoctor/core';
 
@@ -67,18 +78,80 @@ export function decodeEntities(text, { markup = false } = {}) {
 
 // Inline code is the one `<code>` Asciidoctor writes with no attribute, a
 // block's having its language; that of a page holds no markup.
-const SPACED_CODE = /<code>([^<]*\s[^<]*)<\/code>/g;
+const INLINE_CODE = /<code>([^<]*)<\/code>/g;
+
+// The longest word of inline code that a phone's line holds whole: at 320px,
+// 24 characters of the code font take about 240px of a column of 290px, which
+// a list item or a stacked table cell narrows to about 260px.
+const WHOLE = 24;
+
+// The class of a word of inline code, as a reader reads it: `whole` when it is
+// short enough to stay on one line.
+function classOf(word) {
+  return decodeEntities(word, { markup: true }).length <= WHOLE ? ' class="whole"' : '';
+}
 
 function wordsOfCode(html) {
-  return html.replace(SPACED_CODE, (_code, text) => {
-    const words = text.replace(/\S+/g, (word) => `<span>${word}</span>`);
+  return html.replace(INLINE_CODE, (_code, text) => {
+    if (!/\s/.test(text)) {
+      return `<code${classOf(text)}>${text}</code>`;
+    }
+    const words = text.replace(/\S+/g, (word) => `<span${classOf(word)}>${word}</span>`);
     return `<code class="words">${words}</code>`;
+  });
+}
+
+// A table of Asciidoctor's, which holds no other table.
+const TABLE = /<table class="tableblock[^"]*">(?:(?!<table)[\s\S])*?<\/table>/g;
+const HEADER_CELL = /<th\b[^>]*>([\s\S]*?)<\/th>/g;
+const BODY = /<tbody>[\s\S]*?<\/tbody>/;
+const ROW = /<tr>[\s\S]*?<\/tr>/g;
+const CELL = /<(td|th)\b/g;
+
+// The text of a header cell, as an attribute's value: its markup removed, and
+// its references kept, a quote among them.
+function labelOf(cell) {
+  return cell.replace(/<[^>]+>/g, '').trim().replace(/"/g, '&quot;');
+}
+
+function labelledTables(html) {
+  return html.replace(TABLE, (table) => {
+    const head = table.match(/<thead>[\s\S]*?<\/thead>/);
+    if (head === null || /\b(colspan|rowspan)=/.test(table)) {
+      return table;
+    }
+    const labels = [...head[0].matchAll(HEADER_CELL)].map((cell) => labelOf(cell[1]));
+    if (labels.length < 3) {
+      return table;
+    }
+    return table.replace(BODY, (body) =>
+      body.replace(ROW, (row) => {
+        let column = 0;
+        return row.replace(CELL, (cell) => {
+          const label = labels[column++];
+          return label === undefined ? cell : `${cell} data-label="${label}"`;
+        });
+      })
+    );
+  });
+}
+
+// A heading, with what it holds.
+const HEADING = /(<h([1-6])\b[^>]*>)([\s\S]*?)(<\/h\2>)/g;
+
+function scopesOfHeadings(html) {
+  return html.replace(HEADING, (_heading, open, _level, inner, close) => {
+    // Only the text between the heading's tags: never an attribute.
+    const broken = inner.replace(/(^|>)([^<]*)/g, (_text, end, text) =>
+      end + text.replace(/::/g, '::<wbr>')
+    );
+    return open + broken + close;
   });
 }
 
 class Page extends Postprocessor {
   process(_document, output) {
-    return wordsOfCode(decodeEntities(output));
+    return scopesOfHeadings(labelledTables(wordsOfCode(decodeEntities(output))));
   }
 }
 

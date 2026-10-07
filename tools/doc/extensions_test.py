@@ -91,8 +91,8 @@ def test_prose_shows_what_mrdocs_read(_: None) -> None:
                    f'A hyphen MrDocs wrote itself: a{HYPHEN}b.\n\n'
                    'Written in C&plus;&plus; and {cpp}, with a &grave;tick&grave;.\n')
     html = body(page)
-    assert '<p>Returns x-y, <code>a_b</code>, {braces}, an apostrophe\'s and &lt;angle&gt;.</p>' \
-        in html, html
+    assert ('<p>Returns x-y, <code class="whole">a_b</code>, {braces}, an apostrophe\'s and '
+            '&lt;angle&gt;.</p>') in html, html
     assert '<p>A hyphen MrDocs wrote itself: a-b.</p>' in html, html
     assert HYPHEN not in html, html
     assert re.search(r'&(hyphen|lowbar|lcub|rcub|apos|period|plus|grave);', html) is None, html
@@ -139,8 +139,51 @@ def test_plain_listing_shows_what_it_holds(_: None) -> None:
 
 def test_inline_code_breaks_between_words(_: None) -> None:
     html = body(convert('Call `get(a, b)` and `--recursive`.\n'))
-    assert ('<code class="words"><span>get(a,</span> <span>b)</span></code>' in html), html
-    assert '<code>--recursive</code>' in html, html
+    assert ('<code class="words"><span class="whole">get(a,</span> <span class="whole">b)</span>'
+            '</code>' in html), html
+    assert '<code class="whole">--recursive</code>' in html, html
+
+
+def test_short_inline_code_stays_whole(_: None) -> None:
+    # A word of 24 characters or fewer, as a reader reads it, is marked whole, so that a phone's
+    # style keeps it on one line; a longer one may break, as it is wider than a phone's line.
+    long = 'webcpp-xactor-invariant-36'
+    angles = 'a&lt;b&gt;c&lt;d&gt;e&lt;f&gt;g&lt;h&gt;ij'
+    html = body(convert(f'Read `#xactor-invariant-13`, `{long}`, `{angles}`,\n'
+                        f'`one {long}` and link:#x[`linked-name`].\n'))
+    assert '<code class="whole">#xactor-invariant-13</code>' in html, html
+    assert f'<code>{long}</code>' in html, html
+    assert f'<code class="whole">{angles}</code>' in html, html
+    assert (f'<code class="words"><span class="whole">one</span> <span>{long}</span></code>'
+            in html), html
+    assert '<a href="#x"><code class="whole">linked-name</code></a>' in html, html
+
+
+def test_wide_table_labels_its_cells(_: None) -> None:
+    # A table of three columns or more labels each cell with its column's header, which a phone's
+    # style shows above the cell once the header row is hidden; a table of two columns reads
+    # stacked without labels.
+    html = body(convert('[cols="1,1,2",options="header"]\n|===\n'
+                        '| Status | Value | What it "keeps"\n\n'
+                        '| `active`\n| 1\n| Its mailbox.\n\n'
+                        '| `done`\n| 2\n| Its output.\n|===\n\n'
+                        '[cols="1,3",options="header"]\n|===\n| Name | Description\n\n'
+                        '| `x`\n| The x.\n|===\n'))
+    tables = re.findall(r'<table\b.*?</table>', html, flags=re.S)
+    assert len(tables) == 2, html
+    labels = re.findall(r'<td [^>]*data-label="([^"]*)"', tables[0])
+    assert labels == ['Status', 'Value', 'What it &quot;keeps&quot;'] * 2, labels
+    assert 'data-label' not in tables[1], tables[1]
+
+
+def test_reference_headings_break_after_scopes(_: None) -> None:
+    # A name of the reference breaks after a ::, never inside an identifier; the anchor and the
+    # links of the heading are left as they are.
+    html = body(convert('[#webcpp-box-make]\n== webcpp::link:#webcpp-box[box]::make&lowbar;box\n'))
+    heading = re.search(r'<h2 id="webcpp-box-make">(.*?)</h2>', html, flags=re.S)
+    assert heading is not None, html
+    assert heading.group(1).endswith(
+        'webcpp::<wbr><a href="#webcpp-box">box</a>::<wbr>make_box'), heading.group(1)
 
 
 CASES: list[Callable[[None], None]] = [
@@ -148,6 +191,9 @@ CASES: list[Callable[[None], None]] = [
     test_synopsis_keeps_its_links,
     test_plain_listing_shows_what_it_holds,
     test_inline_code_breaks_between_words,
+    test_short_inline_code_stays_whole,
+    test_wide_table_labels_its_cells,
+    test_reference_headings_break_after_scopes,
 ]
 
 

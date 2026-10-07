@@ -35,11 +35,11 @@ pre.highlight > code.hljs { background: none; padding: 0; }
   word-wrap: normal;
   overflow-x: auto;
 }
-/* From 1280px, Asciidoctor sets a listing in 1em while the table of contents takes 20em of the
-   width, so a line of 100 columns would scroll in a window narrower than 1345px. Its size from
-   768px, .90625em, keeps such a line whole from 1280px on. */
+/* From 1280px, Asciidoctor sets a listing in 1em while a table of contents at the side takes
+   20em of the width, so a line of 100 columns would scroll in a window narrower than 1345px. On a
+   page with that table, its size from 768px, .90625em, keeps such a line whole from 1280px on. */
 @media screen and (min-width: 80em) {
-  .literalblock pre, .listingblock > .content > pre { font-size: .90625em; }
+  body.toc2 .literalblock pre, body.toc2 .listingblock > .content > pre { font-size: .90625em; }
 }
 /* Code in a sentence has a box narrow enough that a comma or a period after it stays close, and
    the same box in a table cell, alone in the cell or not. */
@@ -48,8 +48,9 @@ pre.highlight > code.hljs { background: none; padding: 0; }
 /* Inline code breaks between its words (postprocess.mjs), never inside one, at a hyphen as
    `--recursive` would or elsewhere, on a screen wide enough for its longest word. In a table on
    a narrower screen it breaks inside a word only where the word alone is wider than its column
-   can be, so a column keeps room for a name of the reference, `answer`, whole; a table that is
-   still wider than a phone scrolls in its own box (below). */
+   can be, so a column keeps room for a name of the reference, `answer`, whole. A word short enough
+   for a phone's line, which postprocess.mjs marks whole, stays on one line at any width: without
+   it, a phone would break `#xactor-invariant-13` at a hyphen though the word fits the line. */
 @media screen and (min-width: 56.25em) {
   :not(pre):not([class^=L]) > code { white-space: nowrap; }
   :not(pre):not([class^=L]) > code.words { white-space: normal; }
@@ -59,13 +60,30 @@ pre.highlight > code.hljs { background: none; padding: 0; }
   table.tableblock :not(pre):not([class^=L]) > code,
   table.tableblock code.words > span { white-space: normal; overflow-wrap: break-word; }
 }
-/* On a phone, a table wider than the page scrolls in its own box, as a listing does; the box fits
-   the table's rows, so a narrower table keeps its frame around them. */
-@media screen and (max-width: 56.25em) {
-  table.tableblock {
-    display: block; overflow-x: auto; width: fit-content; max-width: 100%;
-    /* The cells draw the frame: the box's own border would double it. */
-    border-width: 0;
+#content code.whole, #content code.words > span.whole { white-space: nowrap; }
+/* On a phone, a table's rows stack: each row is a box with a frame, each cell a block under the
+   one before it, and the row of headers is hidden. A table of three columns or more shows each
+   column's header above its cell, from the data-label postprocess.mjs gives the cell; a table of
+   two columns, a name and what it is, reads stacked without them. */
+@media screen and (max-width: 56.1875em) {
+  table.tableblock, table.tableblock > tbody, table.tableblock > tbody > tr,
+  table.tableblock > tbody > tr > td, table.tableblock > tbody > tr > th {
+    display: block; width: auto;
   }
+  table.tableblock > thead, table.tableblock > colgroup { display: none; }
+  table.tableblock { border-width: 0; }
+  table.tableblock > tbody > tr { border: 1px solid #dedede; margin-bottom: .75em; }
+  table.tableblock > tbody > tr:last-child { margin-bottom: 0; }
+  table.grid-all > tbody > tr > * { border-width: 0; }
+  table.tableblock > tbody > tr > * + * { padding-top: 0; }
+  table.tableblock td[data-label]::before {
+    content: attr(data-label); display: block; font-weight: 600; font-size: .875em;
+    color: rgba(0, 0, 0, .8); margin-bottom: .125em;
+  }
+  /* A note's label stands above its text, which keeps the width of the page. */
+  .admonitionblock > table, .admonitionblock > table > tbody, .admonitionblock > table > tbody > tr,
+  .admonitionblock > table > tbody > tr > td { display: block; width: auto; }
+  .admonitionblock > table td.icon { text-align: left; padding: 0 0 .25em; }
+  .admonitionblock > table td.content { padding: 0 0 0 .75em; }
 }
 </style>

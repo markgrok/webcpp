@@ -92,7 +92,8 @@ def test_page_builds_with_its_reference(root):
     # and of webcpp, which hold one row each, are gone, and nothing links to them.
     assert 'Global namespace' not in html and 'id="index"' not in html, html
     assert 'id="webcpp"' not in html and 'href="#webcpp"' not in html, html
-    assert re.search(r'<h3 id="webcpp-demo">(<a class="anchor"[^>]*></a>)?webcpp::demo</h3>',
+    # A name of the reference may break after each :: (postprocess.mjs).
+    assert re.search(r'<h3 id="webcpp-demo">(<a class="anchor"[^>]*></a>)?webcpp::<wbr>demo</h3>',
                      html), html
     # Its source links to the library's repository, and detail is MrDocs's to hide.
     assert 'https://github.com/webcpporg/demo/blob/main/include/webcpp/demo/answer.hpp#L' in html
@@ -196,7 +197,8 @@ def test_macros_are_documented_and_listed(root):
     assert 'id="WEBCPP_DEMO_UNDOCUMENTED"' in html, html
     assert re.search(r'<h3 id="webcpp-demo-macros">(<a class="anchor"[^>]*></a>)?Macros</h3>',
                      html), html
-    assert '<a href="#WEBCPP_DEMO_UNDOCUMENTED"><code>WEBCPP_DEMO_UNDOCUMENTED</code></a>' in html
+    assert re.search(r'<a href="#WEBCPP_DEMO_UNDOCUMENTED"><code( class="whole")?>'
+                     r'WEBCPP_DEMO_UNDOCUMENTED</code></a>', html), html
     assert 'Global namespace' not in html, html
 
 
