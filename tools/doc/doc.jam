@@ -146,9 +146,26 @@ rule reference ( library )
     alias reference : reference.adoc ;
 }
 
+# Where the index page links each library's page, by -sWEBCPP_INDEX: tree,
+# the default, where b2 builds it (../../libs/<name>/doc/html/index.html from
+# doc/html), or site, where tools/ci/assemble.py publishes it beside the
+# index (libs/<name>/). Each sets the two attributes that libraries.adoc
+# writes its links with: {library-pages}<name>/{library-page}.
+.index-links.tree = library-pages=../../libs/ library-page=doc/html/index.html ;
+.index-links.site = library-pages=libs/ library-page= ;
+
 # webcpp.index <page>.adoc ; the superproject's index page, from doc/Jamfile.
 rule index ( source )
 {
+    local links = [ modules.peek : WEBCPP_INDEX ] ;
+    links ?= tree ;
+    if ! $(.index-links.$(links)) || $(links[2])
+    {
+        errors.user-error "-sWEBCPP_INDEX=$(links:J= ) is neither tree nor site: the index"
+            "links each library's page where b2 builds it (tree, the default) or where the"
+            "site publishes it (site)" ;
+    }
+    .index-links = $(.index-links.$(links)) ;
     local current = [ here index : doc ] ;
     make libraries.adoc : : @webcpp-doc%write-libraries : <webcpp-doc-page>index ;
     $(current).mark-target-as-always libraries.adoc ;
@@ -243,12 +260,11 @@ rule write-libraries ( targets * : sources * : properties * )
     PYTHON on $(targets) = $(.python) ;
     SCRIPT on $(targets) = [ path.native $(.here)/libraries.py ] ;
     ROOT on $(targets) = [ path.native $(.root) ] ;
-    PAGES on $(targets) = [ path.native $(.root)/doc/html ] ;
 }
 
 actions write-libraries
 {
-    "$(PYTHON)" "$(SCRIPT)" --root "$(ROOT)" --pages "$(PAGES)" --output "$(<)"
+    "$(PYTHON)" "$(SCRIPT)" --root "$(ROOT)" --output "$(<)"
 }
 
 # doc-check.py on a library's page, whole, and on the files of its
@@ -296,6 +312,10 @@ rule convert ( targets * : sources * : properties * )
     {
         local examples = [ path.native $(.root)/libs/$(id)/example ] ;
         attributes += examples=$(examples) ;
+    }
+    else
+    {
+        attributes += $(.index-links) ;
     }
     ATTRIBUTES on $(targets) = $(attributes) ;
 }

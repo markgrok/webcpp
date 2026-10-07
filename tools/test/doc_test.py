@@ -9,7 +9,8 @@
 MrDocs; a public function without a Doc Comment, a template parameter without @tparam and a
 detail symbol without a brief each fail it, naming the symbol and the file; doc-check and the
 check of the rendered page run on it; MrDocs is found where the build looks for it, or named when
-it is not there; and `b2 doc` builds the index page from every library's meta/libraries.json.
+it is not there; and `b2 doc` builds the index page from every library's meta/libraries.json,
+linking each page in the tree, or, with -sWEBCPP_INDEX=site, where the site serves it.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is. Run with the
@@ -355,6 +356,20 @@ def test_index_lists_every_library(root):
     assert '<a href="https://github.com/webcpporg/original">original.js 1.2.3</a>' in html, html
     # And each library's page, which the index links to, is built with it.
     assert (root / PAGE).is_file()
+    # For the site, where each library's page is libs/<name>/ beside the index, the same index
+    # links there; tools/ci/assemble.py lays the site out so.
+    result = harness.run_b2(root, 'doc', '-sWEBCPP_INDEX=site')
+    harness.expect(result, True)
+    html = (root / 'doc/html/index.html').read_text()
+    assert '<a href="libs/demo/">demo</a>' in html, html
+    assert '<a href="libs/other/">Other</a>' in html, html
+    assert '../../libs/' not in html, html
+    harness.expect(harness.run_b2(root, 'doc', '-sWEBCPP_INDEX=elsewhere'), False,
+                   '-sWEBCPP_INDEX=elsewhere is neither tree nor site')
+    # Without it, the index links the pages in the tree again.
+    harness.expect(harness.run_b2(root, 'doc'), True)
+    html = (root / 'doc/html/index.html').read_text()
+    assert '<a href="../../libs/demo/doc/html/index.html">demo</a>' in html, html
     # A library without meta/libraries.json is named.
     (other / 'meta/libraries.json').unlink()
     harness.expect(harness.run_b2(root, 'doc'), False,

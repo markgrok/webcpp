@@ -7,15 +7,16 @@
 
 """Writes the table of webcpp's libraries that the index page includes, as AsciiDoc.
 
-Usage: libraries.py --root <superproject> --pages <dir> --output <libraries.adoc>
+Usage: libraries.py --root <superproject> --output <libraries.adoc>
 
 A library is a directory of <root>/libs with a build.jam, as the Jamroot registers it, and
 describes itself in meta/libraries.json, Boost's file: an object, or a list of them, with
 Boost's fields and webcpp's "port-of", which is null for a library of webcpp's own and otherwise
 names the original it ports: {"name", "language", "version", "url", "licence"}. A row of the
-table is an object: the library's name, linked to its page, libs/<library>/doc/html/index.html,
-as a path relative to the directory --pages names, where the index page is; its description;
-and what it ports, linked to the original, or "original".
+table is an object: the library's name, linked to its page, {library-pages}<library>/{library-page},
+two attributes the index page is converted with, so that one table links the pages where b2
+builds them and where the site publishes them (tools/doc/doc.jam); its description; and what it
+ports, linked to the original, or "original".
 
 The text of a cell is written with the character references MrDocs uses in place of each
 character AsciiDoc could read as markup, which postprocess.mjs decodes in the converted page:
@@ -29,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -81,7 +81,7 @@ def ports(entry: dict[str, Any], origin: Path) -> str:
             f'{escaped(fields["language"])} ({escaped(fields["licence"])})')
 
 
-def rows(root: Path, pages: Path) -> list[str]:
+def rows(root: Path) -> list[str]:
     """The rows of the table, one per entry of each library, by the library's directory."""
     found = []
     for build in sorted((root / 'libs').glob('*/build.jam')):
@@ -100,7 +100,7 @@ def rows(root: Path, pages: Path) -> list[str]:
         entries = described if isinstance(described, list) else [described]
         if not entries or not all(isinstance(entry, dict) for entry in entries):
             raise Invalid(f'{origin}: neither an object nor a list of objects')
-        page = Path(os.path.relpath(library / 'doc/html/index.html', pages)).as_posix()
+        page = f'{{library-pages}}{library.name}/{{library-page}}'
         for entry in entries:
             found.append(f'| link:{page}[{escaped(text_field(entry, "name", origin))}]\n'
                          f'| {escaped(text_field(entry, "description", origin))}\n'
@@ -111,11 +111,10 @@ def rows(root: Path, pages: Path) -> list[str]:
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description='Writes the index page\'s table of libraries.')
     parser.add_argument('--root', required=True, type=Path)
-    parser.add_argument('--pages', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     options = parser.parse_args(argv)
     try:
-        found = rows(options.root.resolve(), options.pages.resolve())
+        found = rows(options.root.resolve())
     except Invalid as invalid:
         print(f'libraries.py: {invalid}')
         return 1
