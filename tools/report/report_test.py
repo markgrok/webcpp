@@ -13,7 +13,8 @@ refused before anything is written (a lane whose name says another target than i
 builds for, among them), a failure outside every test, and output that b2's XML cannot hold. One
 case uses lanes.py and pages.py alone; a last one records every sample afresh, untrimmed, and
 checks that the report reads it as it reads the committed one. Every page written is checked to
-be self-contained, to link only to github.com/webcpporg, and to name its lane on every lane cell,
+be self-contained, to link only to the report's own pages, to the site it is served in (its index
+and each library's page) and to github.com/webcpporg, and to name its lane on every lane cell,
 which a phone shows as a chip. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
@@ -180,11 +181,18 @@ def linked(page: Path, href: str | None) -> Page:
 
 
 def check_pages(out: Path) -> None:
-    """Every page under out is self-contained, carries the footer, links only to pages that exist
-    beside it or to github.com/webcpporg, and names its lane on every lane cell of a matrix, the
-    label of the chip a phone shows."""
+    """Every page under out is self-contained, carries the footer, and names its lane on every lane
+    cell of a matrix, the label of the chip a phone shows. Its links name pages that exist beside
+    it, github.com/webcpporg, or the site the report is served in, at its report/: the brand
+    links the site's index, `../` from out, and each library's page links its documentation,
+    `../libs/<library>/`, which assemble.py checks once the site is laid out."""
     written = sorted(out.rglob('*.html'))
     assert out / 'index.html' in written, written
+    top = out.resolve()
+    libraries = {path.stem for path in out.glob('*.html') if path.name != 'index.html'}
+    site_pages = {top.parent} | {top.parent / 'libs' / name for name in libraries}
+    for library in libraries:
+        assert f'../libs/{library}/' in Page(out / f'{library}.html').links, library
     for path in written:
         page = Page(path)
         lowered = page.source.lower()
@@ -194,12 +202,18 @@ def check_pages(out: Path) -> None:
             assert banned not in lowered, (path, banned)
         assert FOOTER in page.text, path
         assert EM_DASH not in page.source, path
+        assert page.links and (path.parent / page.links[0]).resolve() == top.parent, (
+            path, 'the brand links the site\'s index', page.links[:1])
         for href in page.links:
             parts = urlsplit(href)
             if parts.scheme or parts.netloc:
                 assert href.startswith(OWN_SITE), (path, href)
             elif parts.path:
-                assert (path.parent / unquote(parts.path)).is_file(), (path, href)
+                target = (path.parent / unquote(parts.path)).resolve()
+                if target.is_relative_to(top):
+                    assert target.is_file(), (path, href)
+                else:
+                    assert href.endswith('/') and target in site_pages, (path, href)
         for header, *rows in page.tables:
             lane_names = [column.lane for column in header if column.lane]
             assert lane_names, (path, 'a matrix without lanes')

@@ -11,7 +11,10 @@
   output/<lane>/...   what b2 captured of each failure, which the failure's cell links to.
 
 Each page stands alone: its style is inline, with no script, font or image, so the directory can
-be published as it is. The only site a page links to is github.com/webcpporg. Below 600 pixels
+be published as it is. The directory is served as the site's report/, beside the index page and
+the libraries' pages (tools/ci/assemble.py): the brand links the site's index, `../` from the
+directory, and a library's page links its documentation, `../libs/<library>/`. The footer links
+github.com/webcpporg, the only site outside it a page links to. Below 600 pixels
 wide, each row of a matrix becomes a card: its name, then a chip per lane, so that a phone shows
 every verdict without scrolling sideways.
 """
@@ -233,7 +236,7 @@ def page(title: str, crumbs: Sequence[tuple[str, str | None]], up: str,
          body: list[str]) -> str:
     """A whole page: crumbs are the trail at its top, each a label and its link (None for the
     page itself), and up leads from it to the directory."""
-    trail = [f'<a class="brand" href="{OWN_SITE}webcpp">webcpp</a>']
+    trail = [f'<a class="brand" href="{href("../", up)}">webcpp</a>']
     for label, link in [('test matrix', 'index.html'), *crumbs]:
         trail.append('<span>/</span>')
         trail.append(f'<a href="{href(link, up)}">{e(label)}</a>' if link else e(label))
@@ -390,7 +393,9 @@ def library_page(library: str, lanes: list[Lane], library_rows: list[Row]) -> st
                      cells))
     built = any(lane.rows[row.id].builds for lane in lanes for row in library_rows
                 if row.id in lane.rows)
+    documentation = href(f'../libs/{library}/')
     body = [f'<h1>{e(library)}</h1>',
+            f'<p><a href="{documentation}">The documentation of {e(library)}</a></p>',
             verdict_paragraph(failures, len(failing_lanes), len(lanes), built)]
     body += lane_problems(lanes)
     body += table(['Test', 'Type'], lanes, rows)
