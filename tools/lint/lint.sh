@@ -25,11 +25,12 @@
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
 # for the libraries' tests and examples, natively and with the host's default toolset, plus one
 # aggregate translation unit per library, through which every public header is analysed. That
-# database leaves out each program b2 expects to fail (webcpp.compile-fail, webcpp.run-fail):
-# its code is wrong on purpose, and an analysis would report what the test exists to show, or
-# stop at the error the test expects. clang-format reads every C++ file, since formatting needs
-# no compilation. A source that only some targets build (a native_only.cpp that stops with
-# #error for WASI) is analysed natively, as b2 builds it there.
+# database leaves out a source b2 expects not to compile (webcpp.compile-fail): an analysis
+# would stop at the error the test exists to show. It is left out of clang-tidy only, the one
+# rule that compiles: clang-format and the rules that read text read it like any other C++
+# file. A run-fail test's sources compile, and are analysed. A source that only some targets
+# build (a native_only.cpp that stops with #error for WASI) is analysed natively, as b2 builds
+# it there.
 #
 # clang-tidy is most of the lint's time, so it can be split: --shard K/N analyses the K-th of N
 # interleaved slices of the files and runs every other rule as before. The N shards together

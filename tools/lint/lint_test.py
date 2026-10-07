@@ -171,7 +171,8 @@ def test_clean_tree_passes(root):
     result = lint(root)
     expect_clean(result)
     # rejects.cpp, which webcpp.compile-fail expects not to compile, would fail clang-tidy; it is
-    # left out of the analysis, and so is fails.cpp, the run-fail test's.
+    # left out of the analysis. fails.cpp, which webcpp.run-fail expects to fail when it runs,
+    # compiles, and is analysed.
     analysed = TIDY_CLEAN.search(result.stdout)
     assert analysed, result.stdout[-6000:]
     assert int(analysed.group(1)) > 1, analysed.group(0)
@@ -198,6 +199,7 @@ def test_compile_database_lists_what_b2_builds(root):
     aggregate = root / 'bin/aggregate/demo.cpp'
     files = {Path(entry['file']) for entry in entries}
     expected = {root / source for source in ('libs/demo/test/pass.cpp',
+                                             'libs/demo/test/fails.cpp',
                                              'libs/demo/test/native_only.cpp',
                                              'libs/demo/example/hello.cpp',
                                              'libs/demo/example/catches.cpp',
@@ -237,9 +239,9 @@ def test_clang_format(root):
 
 def test_clang_tidy_reads_what_b2_expects_to_build(root):
     prepare(root)
-    # An ordinary test beside rejects.cpp and fails.cpp is analysed, and so is a public header
-    # that no test includes, through the library's aggregate translation unit; a second source
-    # that does not compile on purpose is not.
+    # An ordinary test beside rejects.cpp is analysed, and so is a run-fail test, which compiles,
+    # and a public header that no test includes, through the library's aggregate translation
+    # unit; a second source that does not compile on purpose is not.
     test = 'libs/demo/test/planted.cpp'
     write(root, test, CPP + '\n'
           'int main() {\n'
@@ -267,6 +269,13 @@ def test_clang_tidy_reads_what_b2_expects_to_build(root):
           '}  // namespace webcpp::demo\n'
           '\n'
           '#endif\n')
+    run_fail = 'libs/demo/test/planted_fails.cpp'
+    write(root, run_fail, CPP + '\n'
+          'int main() {\n'
+          '    int status;\n'
+          '    status = 1;\n'
+          '    return status;\n'
+          '}\n')
     write(root, 'libs/demo/test/also_rejects.cpp', CPP + '\n'
           'int main() {\n'
           '    int value;\n'
@@ -274,10 +283,12 @@ def test_clang_tidy_reads_what_b2_expects_to_build(root):
           '}\n')
     append(root, 'libs/demo/test/Jamfile',
            'webcpp.run planted : planted.cpp ;\n'
+           'webcpp.run-fail planted_fails : planted_fails.cpp ;\n'
            'webcpp.compile-fail also_rejects : also_rejects.cpp ;\n')
     expect_alone(lint(root), 'clang-tidy',
-                 [at(root, test, 'int value;'), at(root, header, 'int value;')],
-                 spared=('also_rejects', 'rejects.cpp', 'fails.cpp'))
+                 [at(root, test, 'int value;'), at(root, header, 'int value;'),
+                  at(root, run_fail, 'int status;')],
+                 spared=('also_rejects', 'rejects.cpp'))
 
 
 def test_blocking_io_context_call(root):
@@ -424,6 +435,28 @@ def test_raw_rules(root):
            f'testing.run pass.cpp : : : {library} : raw_qualified ;\n')
     example = 'libs/demo/example/Jamfile'
     append(root, example, f'exe raw_exe : hello.cpp : {library} ;\n')
+    # What Jam reads as something else than an invocation of run: a block comment, assignments,
+    # a rule's definition, the shell text of actions and a case's pattern. A quoted "run" is an
+    # invocation, and so is the statement a case begins. b2 never loads this Jamfile, whose
+    # directory no target names.
+    parsing = 'libs/demo/test/parsing/Jamfile'
+    write(root, parsing, HASH + '\n'
+          '#| A block comment, which b2 skips whole:\n'
+          '   run in_block_comment.cpp ;\n'
+          '|#\n'
+          'run = assigned ;\n'
+          'run += appended ;\n'
+          'rule run ( sources * ) { ECHO $(sources) ; }\n'
+          'actions shell\n'
+          '{\n'
+          '    run in_actions\n'
+          '}\n'
+          'switch $(variant)\n'
+          '{\n'
+          '    case run : ECHO pattern ;\n'
+          '    case * : compile-fail after_case.cpp ;\n'
+          '}\n'
+          '"run" quoted.cpp ;\n')
     expect_alone(lint(root), 'raw b2 rules', [
         at(root, test, 'raw_run ;'),
         at(root, test, 'raw_run_fail'),
@@ -433,8 +466,13 @@ def test_raw_rules(root):
         at(root, test, 'raw_bracket'),
         at(root, test, 'raw_qualified'),
         at(root, example, 'raw_exe'),
+        at(root, parsing, 'after_case.cpp'),
+        at(root, parsing, 'quoted.cpp'),
     ], spared=(at(root, test, 'a comment may name'), at(root, test, 'webcpp.compile '),
-               at(root, test, 'webcpp.run pass')))
+               at(root, test, 'webcpp.run pass'), at(root, parsing, 'in_block_comment'),
+               at(root, parsing, 'assigned'), at(root, parsing, 'appended'),
+               at(root, parsing, 'rule run'), at(root, parsing, 'in_actions'),
+               at(root, parsing, 'case run')))
 
 
 def test_doc_comments(root):
@@ -455,17 +493,41 @@ def test_doc_comments(root):
                     '/// @todo Answer something else.\n'
                     '// A plain comment may name someone@example.org.\n'
                     'constexpr int answer()')
+    # Literals and plain comments are not Doc Comments, \n in them included. An unterminated
+    # character literal (the apostrophe of an #error) and a string spliced across two lines
+    # leave the lines of what follows them right.
     source = 'libs/demo/test/strings.cpp'
     write(root, source, CPP + '\n'
-          'const char* const text = "/** @todo in a string, not a Doc Comment */";\n')
+          '// A plain comment may end a line with \\n.\n'
+          'const char* const text = "/** @todo in a string, not a Doc Comment */";\n'
+          'const char* const newline = "one line\\n";\n'
+          "const char newline_character = '\\n';\n"
+          '\n'
+          '#if 0\n'
+          "#error This header can't be used here\n"
+          '#endif\n'
+          '\n'
+          'const char* const spliced =\n'
+          '    "one \\\n'
+          'two";\n'
+          '\n'
+          '/** A declaration after the literals, whose \\sa is found on its own line.\n'
+          '\n'
+          '    @return nothing.\n'
+          '*/\n'
+          'int after_the_literals();\n')
     expect_alone(lint(root), 'Doc Comments', [
         at(root, header, '@sa') + ' @sa',
         at(root, header, '@deprecated') + ' @deprecated',
         at(root, header, 'Mail its author') + ' @example',
         at(root, header, 'An @ alone') + ' a bare @',
         at(root, header, '/// @todo') + ' @todo',
+        at(root, source, 'whose \\sa') + ' \\sa',
     ], spared=(at(root, header, 'is escaped'), at(root, header, 'auto mail'),
-               at(root, header, '@see'), at(root, header, 'plain comment'), source))
+               at(root, header, '@see'), at(root, header, 'plain comment'),
+               at(root, source, 'plain comment'), at(root, source, '/** @todo'),
+               at(root, source, 'one line'), at(root, source, 'newline_character'),
+               at(root, source, '#error'), at(root, source, 'two";')))
 
 
 def test_pyright(root):
@@ -474,7 +536,27 @@ def test_pyright(root):
     # harness from tools/test, which only pyrightconfig.json's extraPaths make Pyright find.
     path = 'tools/planted.py'
     write(root, path, HASH + '\n"""Planted."""\n\nVALUE = 1\nVALUE + 1\n')
-    expect_alone(lint(root), 'Pyright', [at(root, path, 'VALUE + 1')[:-1] + ':1 - warning'])
+    # What is never used is an error: an import, a local variable and a private function.
+    unused = 'tools/unused.py'
+    write(root, unused, HASH + '\n'
+          '"""Planted."""\n'
+          '\n'
+          'import shlex\n'
+          '\n'
+          '\n'
+          'def _never_called():\n'
+          '    """Is never called."""\n'
+          '\n'
+          '\n'
+          'def assigns():\n'
+          '    """Assigns a value it never reads."""\n'
+          '    value = 1\n')
+    expect_alone(lint(root), 'Pyright', [
+        at(root, path, 'VALUE + 1')[:-1] + ':1 - warning',
+        at(root, unused, 'import shlex')[:-1] + ':8 - error',
+        at(root, unused, 'def _never_called')[:-1] + ':5 - error',
+        at(root, unused, 'value = 1')[:-1] + ':5 - error',
+    ])
 
 
 def test_python_line_length(root):

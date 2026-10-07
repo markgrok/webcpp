@@ -5,5 +5,8 @@
         "tools/test"
     ],
     "pythonVersion": "3.9",
-    "typeCheckingMode": "standard"
+    "typeCheckingMode": "standard",
+    "reportUnusedFunction": "error",
+    "reportUnusedImport": "error",
+    "reportUnusedVariable": "error"
 }

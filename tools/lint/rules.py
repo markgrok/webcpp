@@ -90,9 +90,14 @@ LIBRARY_JAMFILE = re.compile(r'(libs|tools/test/fixtures)/[^/]+/(test|example)/.
 # starts an invocation inside a statement.
 STATEMENT_STARTS = {';', '{', '}', '[', 'else'}
 
+# The second token of a statement that assigns the variable its first token names (`run = 1 ;`,
+# `run on $(target) = 1 ;`) rather than invoke the rule of that name.
+ASSIGNMENTS = {'=', '+=', '-=', '?=', 'default', 'on'}
+
 
 def jam_tokens(text: str) -> Iterator[tuple[str, int]]:
-    """Each token of the Jam text with the line it starts on, without comments.
+    """Each token of the Jam text with the line it starts on, without comments, # to the end of
+    the line or #| to |#.
 
     The body of an actions block is shell text: it is skipped, and its closing brace is the token
     that ends the block."""
@@ -104,6 +109,13 @@ def jam_tokens(text: str) -> Iterator[tuple[str, int]]:
         if character.isspace():
             line += character == '\n'
             position += 1
+            continue
+        if text.startswith('#|', position):
+            # A block comment, to its |#, which b2 reads as Jam's.
+            end = text.find('|#', position + 2)
+            end = len(text) if end < 0 else end + 2
+            line += text.count('\n', position, end)
+            position = end
             continue
         if character == '#':
             end = text.find('\n', position)
@@ -139,13 +151,16 @@ def jam_tokens(text: str) -> Iterator[tuple[str, int]]:
 
 def raw_rules(path: str, text: str) -> Iterator[Finding]:
     """A library's test or example Jamfile invokes none of b2's rules that declare a program, as
-    a statement or inside [ ], bare or through a module other than webcpp (testing.run)."""
+    a statement or inside [ ], bare or through a module other than webcpp (testing.run). A
+    statement that assigns a variable of that name invokes nothing."""
     if not JAMFILE.fullmatch(PurePosixPath(path).name) or not LIBRARY_JAMFILE.fullmatch(path):
         return
+    tokens = list(jam_tokens(text))
     statement = True
     case_pattern = False
-    for word, line in jam_tokens(text):
-        if statement:
+    for index, (word, line) in enumerate(tokens):
+        following = tokens[index + 1][0] if index + 1 < len(tokens) else ''
+        if statement and following not in ASSIGNMENTS:
             # Jam removes the quotes of a token: "run" invokes run.
             module, _, rule = word.replace('"', '').rpartition('.')
             if rule in RAW_RULES and module != 'webcpp':
@@ -237,10 +252,17 @@ def doc_comments_of(text: str) -> Iterator[list[Character]]:
             position = close
             continue
         if character in '"\'':
+            # The literal ends at its closing quote, or at a newline that no backslash splices:
+            # the apostrophe of an #error opens one that never closes. The newline is left to
+            # the loop, which counts it, as it counts a spliced one here.
             position += 1
             while position < len(text) and text[position] not in (character, '\n'):
-                position += 2 if text[position] == '\\' else 1
-            position += 1
+                if text[position] == '\\':
+                    line += text[position + 1:position + 2] == '\n'
+                    position += 1
+                position += 1
+            if text[position:position + 1] == character:
+                position += 1
             continue
         if character.isalnum() or character == '_':
             # A number may hold digit separators, which an identifier cannot.

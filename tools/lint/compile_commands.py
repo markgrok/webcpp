@@ -17,9 +17,9 @@ without exceptions links it. Every line that compiles a .cpp file of the source 
 entry of <out>, once per distinct command. Three kinds of line are left out:
 
 - a source b2 generates under bin/, the Jamroot's build directory, which is not ours to analyse;
-- a program b2 expects to fail (webcpp.compile-fail, webcpp.run-fail): the dry run prints a
-  `(failed-as-expected)` marker in its directory, and its code is wrong on purpose, so an
-  analysis of it reports what the test exists to show;
+- a source b2 expects not to compile (webcpp.compile-fail): the dry run prints its object as a
+  `(failed-as-expected)` marker, and an analysis would stop at the error the test exists to
+  show. A run-fail test's marker is its .run file: its sources compile, and are analysed;
 - the same source compiled again with the same options, under another name.
 
 The aggregate translation unit of a library includes every public header, webcpp/<name>.hpp and
@@ -92,14 +92,13 @@ def dry_run(root: str, request: list[str]) -> list[str]:
 
 
 def compiles(lines: list[str]) -> list[list[str]]:
-    """The commands of lines that compile a .cpp file, as words, without those of a program b2
-    expects to fail."""
+    """The commands of lines that compile a .cpp file, as words, without those b2 expects to
+    fail: a compile-fail test's, whose object is itself a `(failed-as-expected)` marker. A
+    run-fail test's marker is its .run file, so its sources stay."""
     commands = [shlex.split(line) for line in lines
                 if ' -c ' in line and line.rstrip().endswith('.cpp"')]
-    failing = [os.path.dirname(marker.group(1)) + '/'
-               for marker in map(MARKER.match, lines) if marker]
-    return [words for words in commands
-            if not output_of(words).startswith(tuple(failing))]
+    failing = {marker.group(1) for marker in map(MARKER.match, lines) if marker}
+    return [words for words in commands if output_of(words) not in failing]
 
 
 def output_of(words: list[str]) -> str:
