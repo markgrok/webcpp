@@ -28,22 +28,22 @@ reference MrDocs writes, which webcpp.doc names.
 
 The page answers for itself and for the files around it. `--page` names the page's entry file;
 every `.adoc` the page's `include::` graph does not reach, among the sections given, is a fault
-naming the file, and only a reached section's anchors count toward the checks below. A file of
-the library that sends its reader to the page, with `doc: #<anchor>`, or a list or a range of them
-on one line, `doc: #<a>, #<b> and #<c>` or `doc: #<a> to #<b>`, or with a link
-`index.html#<anchor>`, names anchors a reached section defines, each of them; with
-`--repository`, every file git lists there, those it tracks and those it would track, is read for
-one, skipping what does not decode as UTF-8. Among those files, a Doc Comment of the library's
-C++ that sends its reader to a section by its title, `@see "<title>"` or `\\see "<title>"`, names
-the title of a section the page reaches, as its heading writes it after its `=` marks: MrDocs
-writes the title as text, which no link checks. With `--readme`, each fenced block of the README
-that a comment `<!-- include::<file>[<attributes>] -->` opens is that file's region, as an include
-with those attributes would give it, and every C++ block of the README is one. With --complete,
-the page is whole: every block's language is one of the page's, C++, JavaScript, JSON or shell,
-as Asciidoctor reads it; its C++ is included from the example programs, the reference's synopses
-being MrDocs's; it shows JavaScript only as an include of a twin; it shows every example's code
-or output, and every output of a twin, each a difference from the original that the page
-explains; and it shows the reference, `include::{reference}[leveloffset=+1]`.
+naming the file, and only a reached section's anchors count toward the checks below. A file of the
+library that sends its reader to the page, with `doc: #<anchor>`, or a list or a range of them on
+one line, `doc: #<a>, #<b> and #<c>` or `doc: #<a> to #<b>`, or with a link `index.html#<anchor>`,
+names anchors a reached section defines, each of them; with `--repository`, every file git lists
+there, those it tracks and those it would track, is read for one, skipping what does not decode as
+UTF-8. Among those files, a Doc Comment of the library's C++ that sends its reader to a section by
+its title, `@see "<title>"` or `\\see "<title>"`, names the title of a section the page reaches, as
+its heading writes it after its `=` marks, and keeps it on one line: MrDocs writes the title as
+text, which no link checks. With `--readme`, each fenced block of the README that a comment
+`<!-- include::<file>[<attributes>] -->` opens is that file's region, as an include with those
+attributes would give it, and every C++ block of the README is one. With --complete, the page is
+whole: every block's language is one of the page's, C++, JavaScript, JSON or shell, as Asciidoctor
+reads it; its C++ is included from the example programs, the reference's synopses being MrDocs's;
+it shows JavaScript only as an include of a twin; it shows every example's code or output, and
+every output of a twin, each a difference from the original that the page explains; and it shows
+the reference, `include::{reference}[leveloffset=+1]`.
 
 And the rendered page, given alone with `--rendered`, shows no cross-reference left as text,
 `&lt;&lt;id&gt;&gt;`, outside its blocks of code, inline code included; no literal `++` outside
@@ -97,6 +97,8 @@ HEADING = re.compile(r'^={1,6} +(\S.*?)\s*$')
 # A Doc Comment's reference to a section of the guide by its title, `@see "<title>"` or
 # `\see "<title>"`, in a file of the library's C++.
 SEE_TITLE = re.compile(r'[@\\]see\s+"([^"\n]+)"')
+# A title cut at the end of its line, whose rest the line-by-line read would miss.
+SEE_TITLE_CUT = re.compile(r'[@\\]see\s+"[^"\n]*$')
 CPP_SUFFIXES = ('.hpp', '.h', '.hh', '.hxx', '.ipp', '.cpp', '.cc', '.cxx')
 ATTRIBUTE_REFERENCE = re.compile(r'\{([\w-]+)\}')
 
@@ -474,6 +476,9 @@ def see_faults(paths: list[Path], defined: set[str]) -> list[str]:
         except UnicodeDecodeError:
             continue
         for number, line in enumerate(text.split('\n'), start=1):
+            if SEE_TITLE_CUT.search(line):
+                found.append(f'{path}:{number}: a @see title goes on to the next line; keep the '
+                             'title on one line')
             for title in SEE_TITLE.findall(line):
                 if title not in defined:
                     found.append(f'{path}:{number}: @see names no section of the page: '

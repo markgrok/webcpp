@@ -383,6 +383,11 @@ def check_see_titles(root: Path) -> None:
     expect(check(root), 1, 'see.hpp:4: @see names no section of the page: "Nowhere"')
     write(header, '/// Brief.\n///\n/// \\see "Elsewhere".\n')
     expect(check(root), 1, 'see.hpp:3: @see names no section of the page: "Elsewhere"')
+    # A title wrapped onto the next line would be checked by none of its words.
+    for command in ('@see', '\\see'):
+        write(header, f'/** Brief.\n\n    {command} "A deeper\n    part", in the guide.\n*/\n')
+        expect(check(root), 1, 'see.hpp:3: a @see title goes on to the next line; keep the '
+               'title on one line')
     # Only a section's title counts: not a line of a listing, of a comment or of a comment
     # block, a block's title or an anchor.
     write(root / 'doc/page.adoc', PAGE + '\n----\n== Listed\n----\n\n// == Commented\n\n'
