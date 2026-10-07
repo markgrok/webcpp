@@ -6,9 +6,10 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 
 """Checks the Jamroot: it finds the installed Boost and searches it first, refuses a missing or
-older one by naming the fix, checks again when Boost changes, keeps Boost's warnings out of
--Werror, refuses CPATH, and installs the headers. Each case builds a scratch superproject with
-the fixture library demo. Run with the names of some cases to run only those."""
+older one by naming the fix, refuses one whose version it cannot read, checks again when Boost
+changes, keeps Boost's warnings out of -Werror, refuses CPATH, and installs the headers. Each
+case builds a scratch superproject with the fixture library demo. Run with the names of some
+cases to run only those."""
 
 from __future__ import annotations
 
@@ -112,6 +113,21 @@ def test_a_boost_changed_in_place_is_checked_again(root):
     harness.expect(harness.run_b2(root, 'libs/demo'), False, 'Boost 1.80.0 was found in')
 
 
+def test_an_unreadable_version_is_refused(root):
+    # The check's answer is cached by the version it reads, so a Boost whose version cannot be
+    # read stops the build, even one that compiles: a version changed in place would reuse the
+    # answer. The Jamroot reads `#define BOOST_VERSION <number>`, as every Boost writes it.
+    boost = root / 'boost unread'
+    harness.configure(root, harness.without_boost() + fake_boost(boost, 109200))
+    header = boost / 'include/boost/version.hpp'
+    header.write_text(header.read_text().replace('#define BOOST_VERSION ',
+                                                 '#  define BOOST_VERSION '))
+    result = harness.run_b2(root, 'libs/demo/test')
+    harness.expect(result, False, "the version of the Boost in", 'cannot be read',
+                   '#define BOOST_VERSION')
+    assert '**passed**' not in result.stdout, result.stdout[-4000:]
+
+
 def test_boost_warnings_are_not_ours(root):
     # A Boost header that warns under -Wextra, in a directory whose path holds a space: the
     # build treats Boost's headers as system ones, so -Werror does not fail on them. Only
@@ -194,6 +210,7 @@ CASES = [
     test_old_boost_is_refused,
     test_a_changed_boost_is_checked_again,
     test_a_boost_changed_in_place_is_checked_again,
+    test_an_unreadable_version_is_refused,
     test_boost_warnings_are_not_ours,
     test_configured_boost_is_searched_first,
     test_cpath_set_is_refused,

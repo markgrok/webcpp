@@ -67,6 +67,19 @@ rule boost-include ( )
 
 .boost-include = [ boost-include ] ;
 
+# The line of the file header that defines BOOST_VERSION, as every Boost
+# writes it: #define BOOST_VERSION 109200. b2 runs a SHELL command with
+# cmd.exe on Windows, where findstr does what grep does elsewhere.
+local rule version-line ( header )
+{
+    if [ os.name ] = NT
+    {
+        local native = [ path.native [ path.make $(header) ] ] ;
+        return [ SHELL "findstr /B /C:\"#define BOOST_VERSION \" \"$(native)\"" ] ;
+    }
+    return [ SHELL "grep \"^#define BOOST_VERSION \" \"$(header)\"" ] ;
+}
+
 # The version the boost/version.hpp under directory defines, as its
 # BOOST_VERSION and as a name: 108000 1.80.0. Nothing when there is no such
 # file, or when its version cannot be read.
@@ -75,7 +88,7 @@ rule boost-version ( directory )
     local header = $(directory)/boost/version.hpp ;
     if [ path.exists $(header) ]
     {
-        local line = [ SHELL "grep \"^#define BOOST_VERSION \" \"$(header)\"" ] ;
+        local line = [ version-line $(header) ] ;
         local digits = [ MATCH "BOOST_VERSION +(([0-9]+)([0-9][0-9][0-9])([0-9][0-9]))" : $(line) ] ;
         if $(digits)
         {
@@ -119,11 +132,6 @@ rule boost-unusable ( properties * )
     {
         status = "Boost 1.92 or newer was not found:"
             "$(.boost-include)/boost/version.hpp does not exist" ;
-    }
-    else if ! $(.boost-found)
-    {
-        status = "Boost 1.92 or newer is required, and the version of the"
-            "Boost in $(.boost-include) cannot be read" ;
     }
     else if [ numbers.less $(.boost-found[1]) 109200 ]
     {
@@ -180,10 +188,21 @@ if $(.boost-found)
 # neither a target's properties nor its path.
 feature.feature webcpp-boost-check : : free incidental ;
 
+# The check's answer is cached by the version it read, so a Boost whose
+# version cannot be read stops the build even when it compiles: a version
+# changed in place would reuse the answer. It also proves on every system
+# that the version is read there, cmd.exe's findstr included.
 rule boost-check ( properties * )
 {
     if ! <webcpp-boost-check>off in $(properties)
     {
+        if $(.boost-include) && ! $(.boost-found)
+            && [ path.exists $(.boost-include)/boost/version.hpp ]
+        {
+            errors.user-error "Boost 1.92 or newer is required, and the version of the"
+                "Boost in $(.boost-include) cannot be read: its boost/version.hpp has no"
+                "line `#define BOOST_VERSION <number>`" ;
+        }
         return $(.boost-check) ;
     }
 }
