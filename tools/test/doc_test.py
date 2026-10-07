@@ -84,6 +84,27 @@ def add_oracle_demo(root: Path) -> None:
     subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=root / 'libs/oracle_demo', check=True)
 
 
+def add_third(root: Path) -> None:
+    """Places a third library, third, with a page of its own whose one section is #only-third, in
+    the scratch superproject root, a git repository of its own too."""
+    third = root / 'libs/third'
+    (third / 'include/webcpp').mkdir(parents=True)
+    (third / 'doc').mkdir()
+    (third / 'build.jam').write_text('project /webcpp/third ;\n\n'
+                                     'alias third : : : : <include>include ;\n')
+    (third / 'README.md').write_text('# third\n')
+    (third / 'include/webcpp/third.hpp').write_text(
+        '#ifndef WEBCPP_THIRD_HPP\n#define WEBCPP_THIRD_HPP\n\nnamespace webcpp::third {\n\n'
+        '/** Returns three.\n\n    @return 3.\n*/\nconstexpr int three() noexcept {\n'
+        '    return 3;\n}\n\n}  // namespace webcpp::third\n\n#endif\n')
+    (third / 'doc/Jamfile').write_text('import webcpp ;\n\nwebcpp.doc third : third.adoc ;\n'
+                                       'webcpp.reference third ;\n')
+    (third / 'doc/third.adoc').write_text('= third\n\n[#only-third]\n== Only here\n\n'
+                                          'third returns three.\n\n[#reference]\n'
+                                          '== Reference\n\ninclude::{reference}[leveloffset=+1]\n')
+    subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=third, check=True)
+
+
 def page_text(root: Path, page: str = PAGE) -> str:
     """The text of a page's content, the demo page's by default, without its markup, as a reader
     sees it, its lines joined."""
@@ -402,6 +423,55 @@ def test_links_between_pages(root):
                    'not exist')
 
 
+def test_links_into_two_pages(root):
+    # Two linked pages, each read for its own library's anchors: #only-third is third's alone,
+    # and third is the second library the page links.
+    prepare(root)
+    add_oracle_demo(root)
+    add_third(root)
+    edit(root, ORACLE_SOURCE, 'superproject.\n',
+         'superproject. It is built as link:{webcpp-libs}/demo/{webcpp-page}#quick-start[demo] '
+         'and link:{webcpp-libs}/third/{webcpp-page}#only-third[third] are.\n')
+    harness.expect(harness.run_b2(root, 'libs/oracle_demo/doc'), True)
+    pages = {name: next((root / f'bin/libs/{name}/doc').rglob('index.html')).read_text()
+             for name in ('demo', 'third')}
+    assert 'id="only-third"' in pages['third'] and 'id="only-third"' not in pages['demo']
+    assert 'id="quick-start"' in pages['demo'] and 'id="quick-start"' not in pages['third']
+    # And each anchor is still looked for in its own library's page only.
+    edit(root, ORACLE_SOURCE, '#only-third[third]', '#quick-start[third]')
+    harness.expect(harness.run_b2(root, 'libs/oracle_demo/doc'), False,
+                   '../../../third/doc/html/index.html#quick-start: names no anchor of the page '
+                   'of third: third#quick-start')
+
+
+def test_page_outside_git(root):
+    # A library that is not a git checkout loads, and builds what needs no git; only the check
+    # of its page, which reads the files git lists, names it.
+    (root / '.local/mrdocs').symlink_to(mrdocs_root())
+    harness.expect(harness.run_b2(root, 'libs/demo/doc//reference'), True)
+    harness.expect(harness.run_b2(root, '-n', 'libs/demo/doc'), True)
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
+                   f'{(root / "libs/demo").resolve()}: is not a git checkout')
+
+
+def test_counts_warn_and_fail_through_the_build(root):
+    # A library's own counts.py: what it writes on its standard error is shown and is no count;
+    # its failure stops the build with its message.
+    prepare(root)
+    script = root / 'libs/demo/doc/counts.py'
+    script.write_text('import sys\n'
+                      'print("counts.py: a warning, n-cases=99", file=sys.stderr, flush=True)\n'
+                      'print("n-cases=3")\n')
+    edit(root, 'libs/demo/doc/demo.adoc', 'compiles alone.\n', 'compiles alone. {n-cases} cases.\n')
+    result = harness.run_b2(root, 'libs/demo/doc')
+    harness.expect(result, True, 'counts.py: a warning, n-cases=99')
+    assert 'compiles alone. 3 cases.' in page_text(root), page_text(root)
+    script.write_text('import sys\nsys.exit("counts.py: no case file in fixtures")\n')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
+                   'counts.py: no case file in fixtures',
+                   'webcpp.doc demo: tools/doc/counts.py could not count')
+
+
 def test_index_lists_every_library(root):
     prepare(root)
     # A second library, a port, with a page of its own to link to.
@@ -482,6 +552,9 @@ CASES = [
     test_page_shows_the_counts_of_its_programs,
     test_page_shows_twins_and_their_counts,
     test_links_between_pages,
+    test_links_into_two_pages,
+    test_page_outside_git,
+    test_counts_warn_and_fail_through_the_build,
     test_index_lists_every_library,
 ]
 

@@ -63,16 +63,17 @@ link to #index or #webcpp, the sections of MrDocs's reference that reference.py 
 library's `--repository` and `--library`, each reference of its files to another library's page,
 and with `--webcpp-libs` and `--webcpp-page`, the values webcpp.doc gave those attributes, each
 link of the rendered page into one, names an anchor of that page as the build made it, before
-this check: `--linked-library <library>` and `--linked-page <page.html>` name each such page, in
-pairs, and a reference to a library's page that is not among them is a fault, as is an anchor that
-ends in the number MrDocs gives an overload, `-0<digit>`, which it may renumber.
-`--linked-libraries`, with `--repository` and `--library`, prints the other libraries whose pages
-the library's files refer to, one per line: the pages the build makes first.
+this check: each `--linked-page <page.html>` is such a page, whose library is the last
+`libs/<library>/doc/` of its path, and a reference to a library's page that is not among them is
+a fault, as is an anchor that ends in the number MrDocs gives an overload, `-0<digit>`, which it
+may renumber. `--linked-libraries`, with `--repository` and `--library`, prints the other
+libraries whose pages the library's files refer to, one per line: the pages the build makes
+first; none outside a git checkout, or without git.
 
 Usage: doc-check.py --page <page.adoc> [--examples <dir>] [--twins <dir>] [--repository <dir>]
 [--library <name>] [--readme <README.md>] [--complete] <section.adoc>...; doc-check.py
 --rendered <page.html> [--repository <dir> --library <name>] [--webcpp-libs <path> --webcpp-page
-<path>] [--linked-library <name> --linked-page <page.html>]...; or doc-check.py
+<path>] [--linked-page <page.html>]...; or doc-check.py
 --linked-libraries --repository <dir> [--library <name>]. Prints each fault and exits 1 when there
 is one, or 2 on a usage error.
 """
@@ -122,6 +123,9 @@ LIBRARY_PAGE = re.compile(rf'(?:^|[^\w.-])(?:libs|\.\.)/({LIBRARY_NAME})/(?:doc/
 # `{webcpp-libs}/<library>/`, is none.
 WEBCPP_LIBS = re.compile(rf'\{{webcpp-libs\}}/(?={LIBRARY_NAME}/)')
 WEBCPP_LINK = re.compile(rf'({LIBRARY_NAME})/\{{webcpp-page\}}(?:#([\w-]+))?(?![\w/.{{-])')
+# The library whose page the build made, from the page's path: the last libs/<library>/doc/ in
+# it, where b2 builds the pages of the libraries under its build directory.
+BUILT_PAGE = re.compile(rf'(?:^|/)libs/({LIBRARY_NAME})/doc/')
 # The number MrDocs appends to the anchor of an overload, which it may renumber.
 OVERLOAD = re.compile(r'-0[0-9]$')
 ATTRIBUTE_ENTRY = re.compile(r'^:([\w-]+!?):\s*(.*)$')
@@ -447,9 +451,13 @@ def anchors(sections: list[Path]) -> set[str]:
 
 def listed_files(repository: Path) -> list[Path] | None:
     """Every file git lists in `repository`, those it tracks and those it would track, or None
-    when it is not a git checkout."""
-    listed = subprocess.run(['git', '-C', str(repository), 'ls-files', '-z', '--cached',
-                             '--others', '--exclude-standard'], capture_output=True, check=False)
+    when it is not a git checkout, or git is not there to list them."""
+    try:
+        listed = subprocess.run(['git', '-C', str(repository), 'ls-files', '-z', '--cached',
+                                 '--others', '--exclude-standard'], capture_output=True,
+                                check=False)
+    except OSError:
+        return None
     if listed.returncode != 0:
         return None
     names = sorted(set(listed.stdout.decode('utf-8').split('\0')) - {''})
@@ -978,7 +986,8 @@ def repository_files(repository: Path) -> tuple[list[Path], list[str]]:
     """Every file git lists in `repository`, or the fault that it is not a git checkout."""
     files = listed_files(repository)
     if files is None:
-        return [], [f'{repository}: is not a git checkout, whose files the check reads']
+        return [], [f'{repository}: is not a git checkout, or git is not on PATH: the check '
+                    'reads the files git lists']
     return files, []
 
 
@@ -995,7 +1004,9 @@ def rendered_check(arguments: argparse.Namespace) -> list[str]:
         links += references(files, own)[1]
     if arguments.webcpp_libs is not None:
         links += page_links(rendered, arguments.webcpp_libs, arguments.webcpp_page)
-    pages = dict(zip(arguments.linked_library, arguments.linked_page))
+    pages: dict[str, Path] = {}
+    for page in arguments.linked_page:
+        pages[BUILT_PAGE.findall(page.as_posix())[-1]] = page
     return found + link_faults(links, pages, own)
 
 
@@ -1040,7 +1051,6 @@ def main() -> int:
     parser.add_argument('--rendered', type=Path)
     parser.add_argument('--webcpp-libs')
     parser.add_argument('--webcpp-page')
-    parser.add_argument('--linked-library', action='append', default=[])
     parser.add_argument('--linked-page', type=Path, action='append', default=[])
     parser.add_argument('--linked-libraries', action='store_true')
     parser.add_argument('sections', type=Path, nargs='*')
@@ -1048,23 +1058,26 @@ def main() -> int:
     of_the_page = (arguments.sections or arguments.page or arguments.examples or
                    arguments.twins or arguments.readme or arguments.complete)
     of_the_rendered = (arguments.webcpp_libs is not None or arguments.webcpp_page is not None or
-                       arguments.linked_library or arguments.linked_page)
+                       arguments.linked_page)
     if arguments.linked_libraries:
         if of_the_page or of_the_rendered or arguments.rendered or not arguments.repository:
             parser.error('--linked-libraries reads the files of --repository alone')
-        files, found = repository_files(arguments.repository)
-        if not found:
-            linked = {link.library for link in references(files, arguments.library)[1]}
-            print(''.join(f'{library}\n' for library in sorted(linked)), end='')
+        # Outside a git checkout, or without git, none: the build reads them as a Jamfile
+        # loads, and the page's own check names what it cannot read.
+        files = listed_files(arguments.repository) or []
+        linked = {link.library for link in references(files, arguments.library)[1]}
+        print(''.join(f'{library}\n' for library in sorted(linked)), end='')
+        found = []
     elif arguments.rendered is not None:
         if of_the_page:
             parser.error('--rendered checks the rendered page, and the links of its library')
         if (arguments.webcpp_libs is None) != (arguments.webcpp_page is None):
             parser.error('--webcpp-libs and --webcpp-page go together: the attributes of a link '
                          'into another library\'s page')
-        if len(arguments.linked_library) != len(arguments.linked_page):
-            parser.error('each --linked-library with its --linked-page, the page the build made '
-                         'of that library')
+        for page in arguments.linked_page:
+            if not BUILT_PAGE.search(page.as_posix()):
+                parser.error(f'--linked-page {page} names no libs/<library>/doc/, where b2 '
+                             'builds the page of a library')
         found = rendered_check(arguments)
     else:
         if of_the_rendered:

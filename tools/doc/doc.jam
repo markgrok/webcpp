@@ -41,8 +41,9 @@
 #   every divergent twin's own output;
 # - the counts tools/doc/counts.py computes as the page is made, {n-examples}
 #   and the others its comment lists: from the programs tools/webcpp.jam
-#   records as it loads the library's test and example Jamfiles, from its
-#   headers, from its twins, and from its own doc/counts.py;
+#   records as it loads the library's test and example Jamfiles (each
+#   header compiled alone among them), from its twins, and from its own
+#   doc/counts.py;
 # - {webcpp-libs} and {webcpp-page}, with which it links another library's
 #   page, link:{webcpp-libs}/<library>/{webcpp-page}#<anchor>[...], in the
 #   layout -sWEBCPP_INDEX names (below). The check of the rendered page reads
@@ -158,31 +159,39 @@ rule doc ( library : source )
 # The pages of the other libraries that the files of library link, each
 # named by its converted page, ../../<other>/doc//index.html from the doc
 # project: the check of the rendered page reads each for the anchors its
-# links name, so the build makes them first. Not the installed pages: two
-# libraries may link each other, and neither page's installation then waits
-# for the other's. The names of those libraries are recorded in the same
-# order, for the check to tell which page is whose.
+# links name, so the build makes them first, and tells whose each is by its
+# path, under libs/<other>/doc/ of the build directory. Not the installed
+# pages: two libraries may link each other, and neither page's installation
+# then waits for the other's. Outside a git checkout, or without git, the
+# list is empty, and only the page's own check, which reads the files git
+# lists, names that.
 local rule linked-pages ( library )
 {
     local repository = [ path.native $(.root)/libs/$(library) ] ;
     local script = [ path.native $(.here)/doc-check.py ] ;
+    # Its standard error, a fault included, goes to b2's own, and never into
+    # the names.
     local command = \"$(.python)\" \"$(script)\" --linked-libraries
-        --repository \"$(repository)\" --library $(library) 2>&1 ;
+        --repository \"$(repository)\" --library $(library) ;
     local listed = [ SHELL "$(command:J= )" : exit-status : strip-eol ] ;
     if $(listed[2]) != 0
     {
         errors.user-error "webcpp.doc $(library): tools/doc/doc-check.py could not list the"
-            "pages libs/$(library) links:" $(listed[1]) ;
+            "pages libs/$(library) links; its message is above" ;
     }
     local pages ;
     for local other in [ SPLIT_BY_CHARACTERS $(listed[1]) : "\n" ]
     {
+        if ! [ MATCH "^([a-z][a-z0-9_]*)$" : $(other) ]
+        {
+            errors.user-error "webcpp.doc $(library): tools/doc/doc-check.py listed \"$(other)\","
+                "which is not a library's name" ;
+        }
         if ! [ CHECK_IF_FILE [ path.native $(.root)/libs/$(other)/doc/Jamfile ] ]
         {
             errors.user-error "libs/$(library) links the page of $(other), and"
                 "libs/$(other)/doc/Jamfile does not exist" ;
         }
-        .linked.$(library) += $(other) ;
         pages += ../../$(other)/doc//index.html ;
     }
     return $(pages) ;
@@ -380,8 +389,8 @@ local rule twins-of ( library )
 
 # The counts of library that its page is given, each name=value: those of
 # tools/doc/counts.py from the programs tools/webcpp.jam recorded as it
-# loaded the library's test and example Jamfiles, from its headers, from
-# twins, and from the library's own doc/counts.py. Computed as the page is
+# loaded the library's test and example Jamfiles, from twins, and from the
+# library's own doc/counts.py. Computed as the page is
 # made, at every build; a count that cannot be made stops the build,
 # naming its fault.
 local rule counts ( library : twins * )
@@ -398,13 +407,24 @@ local rule counts ( library : twins * )
     {
         command += --examples \"$(twins[1])\" --twins \"$(twins[2])\" --suffix \"$(twins[3])\" ;
     }
-    local counted = [ SHELL "$(command:J= ) 2>&1" : exit-status : strip-eol ] ;
+    # Its standard error, a fault or a warning of the library's own counts.py,
+    # goes to b2's own, and never into the attributes.
+    local counted = [ SHELL "$(command:J= )" : exit-status : strip-eol ] ;
     if $(counted[2]) != 0
     {
         errors.user-error "webcpp.doc $(library): tools/doc/counts.py could not count what the"
-            "page states:" $(counted[1]) ;
+            "page states; its message is above" ;
     }
-    return [ SPLIT_BY_CHARACTERS $(counted[1]) : "\n" ] ;
+    local counts = [ SPLIT_BY_CHARACTERS $(counted[1]) : "\n" ] ;
+    for local count in $(counts)
+    {
+        if ! [ MATCH "^([a-z][a-z0-9-]*=[0-9]+)$" : $(count) ]
+        {
+            errors.user-error "webcpp.doc $(library): tools/doc/counts.py printed \"$(count)\","
+                "which is not a count name=<number>" ;
+        }
+    }
+    return $(counts) ;
 }
 
 rule convert ( targets * : sources * : properties * )
@@ -445,7 +465,7 @@ actions convert
 
 # A library's page is checked with the links of its library into the pages
 # of others, which its sources after the first are: the converted page of
-# each library .linked names, in that order.
+# each library it links, which doc-check.py names by its path.
 rule rendered-check ( targets * : sources * : properties * )
 {
     local id = [ feature.get-values <webcpp-doc-page> : $(properties) ] ;
@@ -456,7 +476,6 @@ rule rendered-check ( targets * : sources * : properties * )
     LIBRARY on $(targets) = ;
     WEBCPP_LIBS on $(targets) = ;
     WEBCPP_PAGE on $(targets) = ;
-    LINKED on $(targets) = ;
     if $(id) != index
     {
         local layout = [ layout ] ;
@@ -464,13 +483,12 @@ rule rendered-check ( targets * : sources * : properties * )
         LIBRARY on $(targets) = $(id) ;
         WEBCPP_LIBS on $(targets) = $(.webcpp-libs.$(layout)) ;
         WEBCPP_PAGE on $(targets) = $(.webcpp-page.$(layout)) ;
-        LINKED on $(targets) = $(.linked.$(id)) ;
     }
 }
 
 actions rendered-check
 {
-    "$(PYTHON)" "$(SCRIPT)" --rendered "$(>[1])" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --webcpp-libs$(_)"$(WEBCPP_LIBS)" --webcpp-page$(_)"$(WEBCPP_PAGE)" --linked-library$(_)"$(LINKED)" --linked-page$(_)"$(>[2-])"
+    "$(PYTHON)" "$(SCRIPT)" --rendered "$(>[1])" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --webcpp-libs$(_)"$(WEBCPP_LIBS)" --webcpp-page$(_)"$(WEBCPP_PAGE)" --linked-page$(_)"$(>[2-])"
 }
 
 rule npm-ci ( targets * : sources * : properties * )

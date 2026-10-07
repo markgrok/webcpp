@@ -6,12 +6,12 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 
 """Checks tools/doc/counts.py: the fixture demo counts its examples and its tests per target, its
-Boost.Test suite and its headers, from the programs b2 recorded; the fixture oracle_demo counts its
-agreeing, divergent and without-twin programs from twins.py --list, which runs no twin; a library's
-own doc/counts.py adds its counts, and fails the count when it names a generic one, counts
-nothing, prints nothing or fails; and so does a count read from the tree that finds nothing. Each
-case copies a fixture library into a scratch directory. Run with the names of some cases to run
-only those."""
+Boost.Test suite and its headers compiled alone, from the programs b2 recorded; the fixture
+oracle_demo counts its agreeing, divergent and without-twin programs from twins.py --list, which
+runs no twin; a library's own doc/counts.py adds its counts, its standard error shown and never
+counted, and fails the count when it names a generic one, counts nothing, prints nothing or
+fails; and so does a library that declares twins and has none. Each case copies a fixture
+library into a scratch directory. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -139,7 +139,7 @@ def test_oracle_demo_counts_twins_without_running_them(root: Path) -> None:
                      'n-examples-without-twin': '1', 'n-examples-with-original': '2'}, twins
     assert (found['n-examples'], found['n-examples-native'], found['n-examples-wasip2'],
             found['n-tests'], found['n-boost-test-suites'], found['n-headers']) == \
-        ('3', '3', '0', '1', '0', '1'), found
+        ('3', '3', '0', '1', '0', '0'), found
     # A library that declares no twins has no twin count.
     assert 'n-twins-agreeing' not in counted(count(directory, ORACLE_PROGRAMS)), found
 
@@ -161,12 +161,17 @@ def test_twins_list_faults_fail(root: Path) -> None:
     fails(count(directory, ORACLE_PROGRAMS, *ORACLE_TWINS), 'no twin', 'test/oracle/twins')
 
 
-def test_headers_of_nothing_fail(root: Path) -> None:
+def test_headers_are_those_compiled_alone(root: Path) -> None:
+    # n-headers counts what webcpp.headers-alone recorded, one program per header, and reads no
+    # header itself: the tree's headers are b2's to find.
     directory = library(root, 'demo')
-    shutil.rmtree(directory / 'include/webcpp')
-    (directory / 'include/webcpp').mkdir()
-    (directory / 'include/webcpp/other.hpp').write_text('')
-    fails(count(directory, DEMO_PROGRAMS), 'no header', 'webcpp/demo.hpp', 'webcpp/demo/')
+    shutil.rmtree(directory / 'include')
+    assert counted(count(directory, DEMO_PROGRAMS))['n-headers'] == '2'
+    more = (*DEMO_PROGRAMS, 'headers-alone alone-demo-more native')
+    assert counted(count(directory, more))['n-headers'] == '3'
+    # A library whose tests compile no header alone counts none, as any count of programs.
+    plain = tuple(record for record in DEMO_PROGRAMS if not record.startswith('headers-alone'))
+    assert counted(count(directory, plain))['n-headers'] == '0'
 
 
 def test_library_counts_are_added(root: Path) -> None:
@@ -182,6 +187,12 @@ def test_library_counts_are_added(root: Path) -> None:
                           'held = len(list((Path(sys.argv[1]) / "example").glob("*.cpp")))\n'
                           'print(f"n-programs={held}")\n')
     assert counted(count(directory, DEMO_PROGRAMS))['n-programs'] == '2'
+    # What it writes on its standard error is shown there, and is no count.
+    own_counts(directory, 'import sys\nprint("a warning, n-steps=4", file=sys.stderr)\n'
+                          'print("n-cases=38")\n')
+    result = count(directory, DEMO_PROGRAMS)
+    assert counted(result)['n-cases'] == '38' and 'n-steps' not in counted(result), result
+    assert 'a warning, n-steps=4' in result.stderr, result.stderr
 
 
 def test_library_count_named_as_a_generic_one_fails(root: Path) -> None:
@@ -225,7 +236,7 @@ CASES = [
     test_demo_counts_programs_and_headers,
     test_oracle_demo_counts_twins_without_running_them,
     test_twins_list_faults_fail,
-    test_headers_of_nothing_fail,
+    test_headers_are_those_compiled_alone,
     test_library_counts_are_added,
     test_library_count_named_as_a_generic_one_fails,
     test_library_count_of_nothing_fails,

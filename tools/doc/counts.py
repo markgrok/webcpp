@@ -15,11 +15,10 @@ none is typed and none drifts from the tree. It prints each on a line of its own
   tools/webcpp.jam records the programs of the library's test and example Jamfiles (a Jamfile is
   never read here): `n-examples` and `n-examples-<target>`, the programs of kind example;
   `n-tests` and `n-tests-<target>`, every other one, a webcpp.run's -noexcept variant being no
-  program of its own and each header that webcpp.headers-alone compiles alone one; and
-  `n-boost-test-suites`. A target is native, emscripten, wasip2 or wasip3, and every one is
-  counted, so a count of programs may be 0: a library declares the targets it builds for.
-* From the library's headers, `include/webcpp/<library>.hpp` and every `.hpp` under
-  `include/webcpp/<library>/`, those webcpp.headers-alone compiles: `n-headers`.
+  program of its own and each header that webcpp.headers-alone compiles alone one;
+  `n-boost-test-suites`; and `n-headers`, the headers webcpp.headers-alone compiles alone, one
+  program each. A target is native, emscripten, wasip2 or wasip3, and every one is counted, so a
+  count of programs may be 0: a library declares the targets it builds for.
 * With `--examples`, `--twins` and `--suffix`, which the library's oracle declares with
   webcpp.twins, from what tools/oracle/twins.py --list prints, which runs no twin:
   `n-twins-agreeing`, `n-twins-divergent`, `n-examples-without-twin` and
@@ -27,11 +26,13 @@ none is typed and none drifts from the tree. It prints each on a line of its own
   has none of these.
 * From the library's own `doc/counts.py`, when there is one, run with the library's directory as
   its one argument: each line `<name>=<number>` it prints, a count of what only that library
-  holds, such as the cases of its fixtures.
+  holds, such as the cases of its fixtures. What it writes on its standard error is written on
+  this script's, and is no count.
 
 A count that finds nothing fails, naming what it looked for, rather than put a zero on the page:
-the headers, the twins (a library that declares twins and has none), and each count of a
-library's own counts.py, which must also print at least one and exit 0. A name of the library's
+the twins (a library that declares twins and has none), and each count of a library's own
+counts.py, which must also print at least one and exit 0. A fault is written on the standard
+error, and the standard output holds only counts. A name of the library's
 own that is also one of the counts above fails, naming both.
 
 Usage: counts.py --library DIR [--program RECORD]... [--examples DIR --twins DIR --suffix SUFFIX]
@@ -62,12 +63,12 @@ PROGRAM_COUNTS = {
     'n-tests': 'the programs b2 recorded',
     **{f'n-tests-{target}': 'the programs b2 recorded' for target in TARGETS},
     'n-boost-test-suites': 'the programs b2 recorded',
+    'n-headers': 'the programs b2 recorded',
 }
-HEADER_COUNTS = {'n-headers': 'the library\'s headers'}
 TWIN_COUNTS = {name: 'tools/oracle/twins.py --list'
                for name in ('n-twins-agreeing', 'n-twins-divergent', 'n-examples-without-twin',
                             'n-examples-with-original')}
-GENERIC = {**PROGRAM_COUNTS, **HEADER_COUNTS, **TWIN_COUNTS}
+GENERIC = {**PROGRAM_COUNTS, **TWIN_COUNTS}
 
 # A line of a library's own counts.py.
 OWN_COUNT = re.compile(r'^([a-z][a-z0-9]*(?:-[a-z0-9]+)*)=([0-9]+)$')
@@ -108,19 +109,8 @@ def program_counts(programs: Sequence[Program]) -> dict[str, int]:
     for target in TARGETS:
         counts[f'n-tests-{target}'] = sum(target in program.targets for program in tests)
     counts['n-boost-test-suites'] = sum(program.kind == 'boost-test' for program in tests)
+    counts['n-headers'] = sum(program.kind == 'headers-alone' for program in tests)
     return counts
-
-
-def header_counts(library: Path) -> dict[str, int]:
-    """The count of the library's headers, those webcpp.headers-alone compiles alone."""
-    include = library / 'include/webcpp'
-    headers = [include / f'{library.name}.hpp'] if (include / f'{library.name}.hpp').is_file() \
-        else []
-    headers += sorted(path for path in (include / library.name).rglob('*.hpp') if path.is_file())
-    if not headers:
-        raise Fault(f'{SELF}: no header webcpp/{library.name}.hpp, and none under '
-                    f'webcpp/{library.name}/, in {library / "include"}')
-    return {'n-headers': len(headers)}
 
 
 def twin_counts(examples: Path, twins: Path, suffix: str) -> dict[str, int]:
@@ -166,6 +156,7 @@ def own_counts(library: Path) -> dict[str, int]:
                          text=True, check=False)
     if run.returncode != 0:
         raise Fault(f'{script}: exited with {run.returncode}:\n{run.stdout}{run.stderr}'.rstrip())
+    sys.stderr.write(run.stderr)
     counts: dict[str, int] = {}
     for line in run.stdout.splitlines():
         found = OWN_COUNT.match(line)
@@ -217,7 +208,6 @@ def main(argv: Sequence[str]) -> int:
     counts: dict[str, int] = {}
     try:
         counts.update(program_counts(programs))
-        counts.update(header_counts(library))
         if twins is not None:
             counts.update(twin_counts(*twins))
         counts.update(own_counts(library))

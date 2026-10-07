@@ -121,10 +121,10 @@ def write(path: Path, text: str) -> None:
     path.write_text(text)
 
 
-def run(*arguments: str) -> subprocess.CompletedProcess:
-    """Runs doc-check.py with arguments."""
+def run(*arguments: str, path: str | None = None) -> subprocess.CompletedProcess:
+    """Runs doc-check.py with arguments; path, when given, is the only PATH it runs with."""
     return subprocess.run([sys.executable, str(CHECK), *arguments], capture_output=True, text=True,
-                          check=False)
+                          check=False, env=None if path is None else {'PATH': path})
 
 
 def check(root: Path, *extra: str, sections: list[Path] | None = None,
@@ -487,13 +487,17 @@ def check_rendered(root: Path) -> None:
             expect(result, 1, f'index.html: {fault}')
 
 
-def linked(root: Path, page: Path, site: bool = False) -> subprocess.CompletedProcess:
+def linked(root: Path, page: Path, site: bool = False,
+           pages: tuple[str, ...] = ('other',)) -> subprocess.CompletedProcess:
     """Runs the check of the rendered page as webcpp.doc runs it for the library at root, named
-    fixture, whose build made the page of other first: in the tree's layout, or the site's."""
+    fixture, whose build made the pages of the libraries `pages` first, each where b2 builds it,
+    under bin/libs/<library>/doc/: in the tree's layout, or the site's."""
     links = ('..', 'index.html') if site else ('../../..', 'doc/html/index.html')
+    built = [word for library in pages
+             for word in ('--linked-page',
+                          str(root / f'scratch/bin/libs/{library}/doc/index.html'))]
     return run('--rendered', str(page), '--repository', str(root), '--library', 'fixture',
-               '--webcpp-libs', links[0], '--webcpp-page', links[1],
-               '--linked-library', 'other', '--linked-page', str(root / 'scratch/other.html'))
+               '--webcpp-libs', links[0], '--webcpp-page', links[1], *built)
 
 
 def check_links(root: Path) -> None:
@@ -501,9 +505,11 @@ def check_links(root: Path) -> None:
     rendered page, which reads the linked page as the build made it, for its anchor."""
     # Outside what git lists (check_references ignores scratch/), so that no file of the library
     # holds them.
-    write(root / 'scratch/other.html',
+    write(root / 'scratch/bin/libs/other/doc/index.html',
           '<html><body><h2 id="present">Present</h2><h3 id="webcpp-other-f-02">f</h3>'
           '<a name="named">n</a></body></html>')
+    write(root / 'scratch/bin/libs/third/doc/index.html',
+          '<html><body><h2 id="only-third">Only here</h2></body></html>')
     rendered = root / 'scratch/index.html'
     write(rendered, '<html><body><p>Clean.</p></body></html>')
     header = root / 'include/header.hpp'
@@ -577,13 +583,37 @@ def check_links(root: Path) -> None:
                     '</body></html>')
     expect(linked(root, rendered), 1, '../../../third/doc/html/index.html#a: names the page of '
                                       'third, which the build did not make first')
-    # Each page the build made is named with its library.
-    unpaired = run('--rendered', str(rendered), '--linked-library', 'other')
-    expect(unpaired, 2, '')
-    assert 'each --linked-library with its --linked-page' in unpaired.stderr, unpaired.stderr
+    # Each page the build made is its library's, named by its path, whatever their order.
+    write(header, f'// Why ({DOC} other#present and ({DOC} third#only-third)).\n')
+    for pages in (('other', 'third'), ('third', 'other')):
+        expect(linked(root, rendered, pages=pages), 1, '../../../third/doc/html/index.html#a: '
+               'names no anchor of the page of third: third#a')
+    write(rendered, '<html><body><p>Clean.</p></body></html>')
+    for pages in (('other', 'third'), ('third', 'other')):
+        expect(linked(root, rendered, pages=pages), 0, '')
+    nameless = run('--rendered', str(rendered), '--linked-page', str(root / 'scratch/page.html'))
+    expect(nameless, 2, '')
+    assert 'names no libs/<library>/doc/' in nameless.stderr, nameless.stderr
+    write(header, f'// Why ({DOC} other#present).\n')
     write(header, f'// Why ({DOC} #machines).\n')
     write(root / 'doc/page.adoc', PAGE)
     expect(check(root, '--complete'), 0, '')
+
+
+def check_without_git(root: Path) -> None:
+    """Outside a git checkout, or without git, the libraries a page links are none, which the build
+    reads as a Jamfile loads; the page's own check names what it cannot read."""
+    with tempfile.TemporaryDirectory() as elsewhere:
+        for path in (None, ''):
+            listing = run('--linked-libraries', '--repository', elsewhere, '--library', 'fixture',
+                          path=path)
+            assert (listing.returncode, listing.stdout, listing.stderr) == (0, '', ''), listing
+    listing = run('--linked-libraries', '--repository', str(root), '--library', 'fixture',
+                  path='')
+    assert (listing.returncode, listing.stdout, listing.stderr) == (0, '', ''), listing
+    result = run('--examples', str(root / 'example'), '--repository', str(root), '--page',
+                 str(root / 'doc/page.adoc'), str(root / 'doc/page.adoc'), path='')
+    expect(result, 1, f'{root}: is not a git checkout')
 
 
 def main() -> int:
@@ -601,7 +631,8 @@ def main() -> int:
         write(root / 'README.md', README)
         write(root / 'doc/page.adoc', PAGE)
         for part in (check_page, check_reference, check_examples, check_graph, check_references,
-                     check_see_titles, check_readme, check_rendered, check_links):
+                     check_see_titles, check_readme, check_rendered, check_links,
+                     check_without_git):
             part(root)
             print(f'{part.__name__}: ok')
     print('doc-check.py: ok')
