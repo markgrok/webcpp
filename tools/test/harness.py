@@ -29,9 +29,9 @@ FIXTURES = ROOT / 'tools/test/fixtures'
 # A shell with any of these (Homebrew sets CPATH) puts its headers before the configured Boost.
 COMPILER_PATHS = ('CPATH', 'CPLUS_INCLUDE_PATH', 'C_INCLUDE_PATH')
 
-# Left out of a copy at its top: the repository, the machine-local tools, the agents'
-# workspace and the real libraries.
-TOP_IGNORED = {'.git', '.local', '.superpowers', 'libs'}
+# Left out of a copy at its top: the repository, the machine-local tools and the real libraries;
+# what git ignores there is left out too (ignored_by_git).
+TOP_IGNORED = {'.git', '.local', 'libs'}
 
 # Left out of a copy at any depth: what a build or a run writes.
 IGNORED = {'bin', 'node_modules', '__pycache__', '.DS_Store'}
@@ -78,6 +78,16 @@ def built(_: str, names: list[str]) -> set[str]:
     return {name for name in names if name in IGNORED}
 
 
+def ignored_by_git(top: Path, names: list[str]) -> set[str]:
+    """The names of top that git ignores, by a .gitignore or by the checkout's own excludes, so that
+    what one machine keeps there stays out of a copy; none when top is not a git checkout."""
+    result = subprocess.run(['git', '-C', str(top), 'check-ignore', '-z', '--stdin'],
+                            input='\0'.join(names), capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return set()
+    return {name for name in result.stdout.split('\0') if name}
+
+
 def copy_tree(src: Path) -> Path:
     """Copies src to a new directory under $TMPDIR whose path contains a space, and returns it.
 
@@ -89,7 +99,8 @@ def copy_tree(src: Path) -> Path:
     def left_out(directory: str, names: list[str]) -> set[str]:
         if Path(directory) != top:
             return built(directory, names)
-        return built(directory, names) | {name for name in names if name in TOP_IGNORED}
+        return (built(directory, names) | {name for name in names if name in TOP_IGNORED}
+                | ignored_by_git(top, names))
 
     scratch = Path(tempfile.mkdtemp(prefix='webcpp scratch '))
     shutil.copytree(top, scratch, ignore=left_out, symlinks=True, dirs_exist_ok=True)
