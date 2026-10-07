@@ -5,15 +5,20 @@
 # chains that return *this, and the em dash ban. tools/lint/lint.sh enforces
 # those by pattern, and says so when it does.
 #
-# performance-enum-size is off because the two enums the product exposes to
-# a reader, xactor::errc and xstate::errc, have to be int:
+# HeaderFilterRegex reports what is found in the libraries' public headers
+# and in the headers of their tests and examples (libs/xactor/test/require.hpp),
+# and nothing in Boost's or the standard library's, which webcpp does not
+# change.
+#
+# performance-enum-size is off because a library's error enum (xactor::errc,
+# and each library's own) has to be int:
 # boost::system::error_code::value() returns int, so a narrower base type
 # would only move the conversion.
 #
 # misc-header-include-cycle is off because it reports Boost's .ipp idiom,
 # where a header includes an implementation file that includes the header
-# back behind an include guard. The product's own headers are flat and have
-# no cycle, and the check fires on a dependency the product cannot change.
+# back behind an include guard. webcpp's own headers are flat and have no
+# cycle, and the check fires on a dependency webcpp cannot change.
 #
 # readability-redundant-member-init is off: every aggregate member a user can
 # designate-initialize gets a {} default member initializer (actor_options,
@@ -48,7 +53,7 @@ Checks: >
   -readability-redundant-member-init
 
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(^|/)include/webcpp/'
+HeaderFilterRegex: '(^|/)(include/webcpp|libs/[^/]+/(test|example))/'
 FormatStyle: file
 
 CheckOptions:

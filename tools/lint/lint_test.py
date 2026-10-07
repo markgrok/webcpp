@@ -239,11 +239,30 @@ def test_clang_format(root):
 
 def test_clang_tidy_reads_what_b2_expects_to_build(root):
     prepare(root)
-    # An ordinary test beside rejects.cpp is analysed, and so is a run-fail test, which compiles,
-    # and a public header that no test includes, through the library's aggregate translation
-    # unit; a second source that does not compile on purpose is not.
+    # An ordinary test beside rejects.cpp is analysed, with the helper header it includes, and so
+    # is a run-fail test, which compiles, and a public header that no test includes, through the
+    # library's aggregate translation unit; a second source that does not compile on purpose is
+    # not.
+    helper = 'libs/demo/test/planted_helper.hpp'
+    write(root, helper, CPP + '\n'
+          '#ifndef WEBCPP_TEST_DEMO_PLANTED_HELPER_HPP\n'
+          '#define WEBCPP_TEST_DEMO_PLANTED_HELPER_HPP\n'
+          '\n'
+          'namespace webcpp::test {\n'
+          '\n'
+          'inline int helped() {\n'
+          '    int helped_value;\n'
+          '    helped_value = 2;\n'
+          '    return helped_value;\n'
+          '}\n'
+          '\n'
+          '}  // namespace webcpp::test\n'
+          '\n'
+          '#endif\n')
     test = 'libs/demo/test/planted.cpp'
     write(root, test, CPP + '\n'
+          '#include "planted_helper.hpp"\n'
+          '\n'
           'int main() {\n'
           '    int value;\n'
           '    value = 0;\n'
@@ -286,8 +305,8 @@ def test_clang_tidy_reads_what_b2_expects_to_build(root):
            'webcpp.run-fail planted_fails : planted_fails.cpp ;\n'
            'webcpp.compile-fail also_rejects : also_rejects.cpp ;\n')
     expect_alone(lint(root), 'clang-tidy',
-                 [at(root, test, 'int value;'), at(root, header, 'int value;'),
-                  at(root, run_fail, 'int status;')],
+                 [at(root, test, 'int value;'), at(root, helper, 'int helped_value;'),
+                  at(root, header, 'int value;'), at(root, run_fail, 'int status;')],
                  spared=('also_rejects', 'rejects.cpp'))
 
 
