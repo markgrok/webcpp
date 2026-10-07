@@ -96,11 +96,15 @@ install() {
     # Each file installed is a line of b2's output, so only a failure's last lines are shown.
     "${b2}" --prefix="${prefix}" --with-headers install > "${work}/headers.log" 2>&1 \
         || { tail -n 50 "${work}/headers.log"; exit 1; }
-    (cd tools/build && "../../${b2}" --prefix="${prefix}" --bindir="${prefix}/bin" install) \
+    # The standard layout, <prefix>/bin/b2 and its build system in <prefix>/share/b2, on every
+    # runner: b2's default on Windows is the portable layout, which ignores --bindir and puts b2
+    # in <prefix> itself.
+    (cd tools/build && "../../${b2}" --prefix="${prefix}" --bindir="${prefix}/bin" \
+        b2-install-layout=standard install) \
         > "${work}/b2.log" 2>&1 || { tail -n 50 "${work}/b2.log"; exit 1; }
     cd "${temp}"
     rm -rf "${work}"
-    "${prefix}/bin/b2" --version
+    "${prefix}/bin/${b2#./}" --version
 }
 
 configure() {

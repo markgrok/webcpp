@@ -963,8 +963,10 @@ run locally exactly as the CI runs it, beside others:
   (`--with-headers`, since no library links a compiled Boost library) and
   that b2 into a prefix cached per image, writes the `using boost` line of
   `.local/user-config.jam`, and puts b2 on `PATH`, on Linux, macOS and
-  Windows. It refuses an empty or relative prefix: b2 given an empty
-  `--prefix` installs into `/usr/local`.
+  Windows. b2 is installed with `b2-install-layout=standard`, in
+  `<prefix>/bin`: b2's default on Windows is the portable layout, which
+  ignores `--bindir` and puts b2 in the prefix itself. It refuses an empty or
+  relative prefix: b2 given an empty `--prefix` installs into `/usr/local`.
 - `wasi-sdk` installs wasi-sdk 34 into `.local/wasi-sdk`, `wasmtime`
   installs wasmtime 47.0.3 on `PATH`, `mrdocs` installs MrDocs 2026.9.29 into
   `.local/mrdocs`, and `node` sets up Node 26.7.0.
@@ -972,8 +974,8 @@ run locally exactly as the CI runs it, beside others:
   and leaves no file and exits 1 when the download fails or the digest
   differs.
 
-`tools/ci/actions_test.py` pins `download.sh` and the Boost action's prefix
-check.
+`tools/ci/actions_test.py` pins `download.sh`, the Boost action's prefix
+check and the layout it installs b2 in.
 
 **The site.** On every run of the superproject's CI, `tools/ci/assemble.py`
 lays out the site from the pages and the report, and on `main` it is

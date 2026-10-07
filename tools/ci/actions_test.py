@@ -8,9 +8,11 @@
 """Checks the shell steps of tools/ci/actions: download.sh keeps a file only when its SHA-256 is
 the pinned one, exits 1 and leaves no file when the digest differs or the download fails; and the
 Boost action's install.sh refuses an empty or relative prefix before it downloads anything, since
-b2 given an empty --prefix installs into /usr/local. Nothing is fetched from the network: the
-downloads are file:// URLs, and install.sh runs against a download.sh that only says it was
-called. Run with the names of some cases to run only those."""
+b2 given an empty --prefix installs into /usr/local, and installs b2 in <prefix>/bin on every
+runner, Windows's included, where b2's default layout would put it in <prefix> itself. Nothing is
+fetched from the network: the downloads are file:// URLs, and install.sh runs against a
+download.sh that only says it was called, or that hands it a stand-in Boost archive. Run with the
+names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -110,12 +113,71 @@ def test_boost_refuses_an_empty_or_relative_prefix(scratch: Path) -> None:
         assert CALLED in result.stderr, (prefix, result.stderr)
 
 
+# A stand-in for b2, as bootstrap.sh builds it: --version, the headers' install, and the install
+# of b2 itself from tools/build, where the layout decides where b2 goes. b2's Jamroot defaults to
+# the portable layout on Windows, which puts b2 in --prefix and ignores --bindir; the standard
+# layout, the default elsewhere, puts it in --bindir. The stand-in takes the portable default,
+# Windows's, so that only an install that names its layout finds b2 in <prefix>/bin.
+FAKE_B2 = r'''#!/usr/bin/env bash
+set -euo pipefail
+prefix='' bindir='' layout=portable
+for argument in "$@"; do
+    case "$argument" in
+        --version) echo 'B2 5.5.3 (stand-in)'; exit 0 ;;
+        --prefix=*) prefix="${argument#--prefix=}" ;;
+        --bindir=*) bindir="${argument#--bindir=}" ;;
+        b2-install-layout=*) layout="${argument#b2-install-layout=}" ;;
+    esac
+done
+if [ -z "$bindir" ]; then
+    mkdir -p "$prefix/include/boost"
+    echo '#define BOOST_VERSION 109200' > "$prefix/include/boost/version.hpp"
+elif [ "$layout" = standard ]; then
+    mkdir -p "$bindir" && cp "$0" "$bindir/b2"
+else
+    mkdir -p "$prefix" && cp "$0" "$prefix/b2"
+fi
+'''
+
+
+def boost_archive(scratch: Path) -> Path:
+    """A boost_1_92_0.tar.bz2 whose bootstrap.sh writes the stand-in b2."""
+    tree = scratch / 'archive/boost_1_92_0'
+    (tree / 'tools/build').mkdir(parents=True)
+    (tree / 'b2.in').write_text(FAKE_B2)
+    bootstrap = tree / 'bootstrap.sh'
+    bootstrap.write_text('#!/bin/sh\ncp b2.in b2 && chmod +x b2\n')
+    bootstrap.chmod(0o755)
+    archive = scratch / 'boost_1_92_0.tar.bz2'
+    with tarfile.open(archive, 'w:bz2') as tar:
+        tar.add(tree, arcname='boost_1_92_0')
+    return archive
+
+
+def test_boost_installs_b2_in_the_prefix_bin(scratch: Path) -> None:
+    script = boost_tree(scratch)
+    archive = boost_archive(scratch)
+    (scratch / 'tools/ci/download.sh').write_text(f'#!/bin/sh\ncp "{archive}" "$3"\n')
+    prefix = scratch / 'prefix'
+    runner = {'RUNNER_OS': 'Linux', 'RUNNER_TEMP': str(scratch / 'temp'),
+              'GITHUB_PATH': str(scratch / 'path')}
+    (scratch / 'temp').mkdir()
+    result = run(script, 'install', prefix, env=runner)
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    assert (prefix / 'bin/b2').is_file(), sorted(str(p) for p in prefix.rglob('*'))
+    result = subprocess.run(['bash', str(script), 'configure', str(prefix)], capture_output=True,
+                            text=True, check=False, cwd=scratch, env={**os.environ, **runner})
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert (scratch / 'path').read_text() == f'{prefix}/bin\n'
+
+
 CASES: list[Callable[[Path], None]] = [
     test_a_pinned_download_is_kept,
     test_another_digest_leaves_no_file,
     test_a_failed_download_exits_1_and_leaves_no_file,
     test_a_usage_error_exits_2,
     test_boost_refuses_an_empty_or_relative_prefix,
+    test_boost_installs_b2_in_the_prefix_bin,
 ]
 
 
