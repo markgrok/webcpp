@@ -60,6 +60,7 @@ DEMO_COUNTS = {
 
 ORACLE_PROGRAMS = (
     'run square native',
+    'headers-alone alone-oracle_demo native',
     'example square native',
     'example half native',
     'example compile_time native',
@@ -139,7 +140,7 @@ def test_oracle_demo_counts_twins_without_running_them(root: Path) -> None:
                      'n-examples-without-twin': '1', 'n-examples-with-original': '2'}, twins
     assert (found['n-examples'], found['n-examples-native'], found['n-examples-wasip2'],
             found['n-tests'], found['n-boost-test-suites'], found['n-headers']) == \
-        ('3', '3', '0', '1', '0', '0'), found
+        ('3', '3', '0', '2', '0', '1'), found
     # A library that declares no twins has no twin count.
     assert 'n-twins-agreeing' not in counted(count(directory, ORACLE_PROGRAMS)), found
 
@@ -169,9 +170,11 @@ def test_headers_are_those_compiled_alone(root: Path) -> None:
     assert counted(count(directory, DEMO_PROGRAMS))['n-headers'] == '2'
     more = (*DEMO_PROGRAMS, 'headers-alone alone-demo-more native')
     assert counted(count(directory, more))['n-headers'] == '3'
-    # A library whose tests compile no header alone counts none, as any count of programs.
+    # A library whose tests compile no header alone fails, rather than put a zero on the page:
+    # every library compiles its public headers alone.
     plain = tuple(record for record in DEMO_PROGRAMS if not record.startswith('headers-alone'))
-    assert counted(count(directory, plain))['n-headers'] == '0'
+    fails(count(directory, plain), 'demo declares no webcpp.headers-alone: its headers are not '
+                                   'counted')
 
 
 def test_library_counts_are_added(root: Path) -> None:

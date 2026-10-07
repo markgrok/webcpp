@@ -18,7 +18,9 @@ none is typed and none drifts from the tree. It prints each on a line of its own
   program of its own and each header that webcpp.headers-alone compiles alone one;
   `n-boost-test-suites`; and `n-headers`, the headers webcpp.headers-alone compiles alone, one
   program each. A target is native, emscripten, wasip2 or wasip3, and every one is counted, so a
-  count of programs may be 0: a library declares the targets it builds for.
+  count of programs may be 0: a library declares the targets it builds for. `n-headers` is never
+  0: every library compiles its public headers alone, and one that declares no
+  webcpp.headers-alone fails the count, naming it.
 * With `--examples`, `--twins` and `--suffix`, which the library's oracle declares with
   webcpp.twins, from what tools/oracle/twins.py --list prints, which runs no twin:
   `n-twins-agreeing`, `n-twins-divergent`, `n-examples-without-twin` and
@@ -30,10 +32,10 @@ none is typed and none drifts from the tree. It prints each on a line of its own
   this script's, and is no count.
 
 A count that finds nothing fails, naming what it looked for, rather than put a zero on the page:
-the twins (a library that declares twins and has none), and each count of a library's own
-counts.py, which must also print at least one and exit 0. A fault is written on the standard
-error, and the standard output holds only counts. A name of the library's
-own that is also one of the counts above fails, naming both.
+the headers, the twins (a library that declares twins and has none), and each count of a
+library's own counts.py, which must also print at least one and exit 0. A name of the library's
+own that is also one of the counts above fails, naming both. A fault is written on the standard
+error, and the standard output holds only counts.
 
 Usage: counts.py --library DIR [--program RECORD]... [--examples DIR --twins DIR --suffix SUFFIX]
 
@@ -98,8 +100,9 @@ class Program:
                                  f'{", ".join(TARGETS)}')
 
 
-def program_counts(programs: Sequence[Program]) -> dict[str, int]:
-    """The counts of the programs b2 recorded, a zero included."""
+def program_counts(library: str, programs: Sequence[Program]) -> dict[str, int]:
+    """The counts of the programs b2 recorded, a zero included, but for the headers: every
+    library compiles its public headers alone, so one that records none fails."""
     examples = [program for program in programs if program.kind == 'example']
     tests = [program for program in programs if program.kind != 'example']
     counts = {'n-examples': len(examples)}
@@ -110,6 +113,9 @@ def program_counts(programs: Sequence[Program]) -> dict[str, int]:
         counts[f'n-tests-{target}'] = sum(target in program.targets for program in tests)
     counts['n-boost-test-suites'] = sum(program.kind == 'boost-test' for program in tests)
     counts['n-headers'] = sum(program.kind == 'headers-alone' for program in tests)
+    if counts['n-headers'] == 0:
+        raise Fault(f'{SELF}: {library} declares no webcpp.headers-alone: its headers are not '
+                    'counted, and every library compiles its public headers alone')
     return counts
 
 
@@ -207,7 +213,7 @@ def main(argv: Sequence[str]) -> int:
     library, programs, twins = parse(argv)
     counts: dict[str, int] = {}
     try:
-        counts.update(program_counts(programs))
+        counts.update(program_counts(library.name, programs))
         if twins is not None:
             counts.update(twin_counts(*twins))
         counts.update(own_counts(library))

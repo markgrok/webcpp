@@ -8,3 +8,4 @@ import webcpp ;
 
 # Its tests run no original: b2 libs/oracle_demo/test needs no Node.
 webcpp.run square : square_test.cpp : <library>/webcpp/oracle_demo//oracle_demo ;
+webcpp.headers-alone oracle_demo : ../include ;

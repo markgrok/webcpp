@@ -85,14 +85,18 @@ def add_oracle_demo(root: Path) -> None:
 
 
 def add_third(root: Path) -> None:
-    """Places a third library, third, with a page of its own whose one section is #only-third, in
-    the scratch superproject root, a git repository of its own too."""
+    """Places a third library, third, with a page of its own whose one section is #only-third and
+    a header its tests compile alone, in the scratch superproject root, a git repository of its
+    own too."""
     third = root / 'libs/third'
     (third / 'include/webcpp').mkdir(parents=True)
     (third / 'doc').mkdir()
     (third / 'build.jam').write_text('project /webcpp/third ;\n\n'
                                      'alias third : : : : <include>include ;\n')
     (third / 'README.md').write_text('# third\n')
+    (third / 'test').mkdir()
+    (third / 'test/Jamfile').write_text('import webcpp ;\n\n'
+                                        'webcpp.headers-alone third : ../include ;\n')
     (third / 'include/webcpp/third.hpp').write_text(
         '#ifndef WEBCPP_THIRD_HPP\n#define WEBCPP_THIRD_HPP\n\nnamespace webcpp::third {\n\n'
         '/** Returns three.\n\n    @return 3.\n*/\nconstexpr int three() noexcept {\n'
@@ -366,6 +370,11 @@ def test_page_shows_the_counts_of_its_programs(root):
     harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
     assert 'It has 10 tests, 1 of them a Boost.Test suite: 9 run natively, 7 on wasip2 and 6 ' \
         'on wasip3.' in page_text(root), page_text(root)
+    # A library that compiles no header alone has no header count, and no page.
+    edit(root, 'libs/demo/test/Jamfile', 'webcpp.headers-alone demo : ../include ;\n', '')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
+                   'demo declares no webcpp.headers-alone: its headers are not counted',
+                   'webcpp.doc demo: tools/doc/counts.py could not count')
 
 
 def test_page_shows_twins_and_their_counts(root):
