@@ -106,7 +106,8 @@ def test_a_target_without_a_lane_fails(root):
     assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
     assert 'browser declare emscripten, which the CI has no lane for' in result.stderr, (
         result.stderr)
-    assert 'comes with stage 4, when emsdk is pinned' in result.stderr, result.stderr
+    assert 'the CI gets an emscripten lane when emsdk is pinned (AGENTS.md, Roadmap)' in (
+        result.stderr), result.stderr
     assert result.stdout == '', result.stdout
     # Not even for another library: the matrix is planned whole, or not at all.
     assert run(root, 'plan', '--library', 'demo').returncode == 0

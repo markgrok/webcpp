@@ -16,8 +16,8 @@ plan runs `b2 -d0 declared-targets` from the superproject's root and prints the 
 the lanes to run, {"include": [LANE, ...]}: one lane per compiler of LANES for each target a
 library declares, of the library --library names, else of every library. A lane builds the tests
 and examples of the libraries that declare its target, and no other: a lane of a target no
-library declares would build nothing. A target the CI has no lane for (emscripten, until stage 4
-pins emsdk) is a failure, never a lane left out.
+library declares would build nothing. A target the CI has no lane for (emscripten, until emsdk
+is pinned: AGENTS.md, Roadmap) is a failure, never a lane left out.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -194,8 +194,8 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
     if missing:
         declaring = sorted({name for name, target in pairs if target in missing})
         raise Failure(f'{", ".join(declaring)} declare {", ".join(missing)}, which the CI has '
-                      'no lane for: the emscripten lane comes with stage 4, when emsdk is '
-                      'pinned; a target is never left untested', 2)
+                      'no lane for: the CI gets an emscripten lane when emsdk is pinned '
+                      '(AGENTS.md, Roadmap); a target is never left untested', 2)
     lanes = []
     for lane in LANES:
         libraries = sorted({name for name, target in pairs if target == lane.target})
