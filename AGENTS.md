@@ -8,20 +8,10 @@ only what is specific to that library: the original and its version, how its
 oracle drives the original, its particular cautions. Read this file first,
 then the library's.
 
-Two kinds of paragraph mark what is not in the tree yet, so that each can be
-checked when it lands:
-
-- **Pending (Task 12):** publishing. `libs/xactor` becomes a submodule when
-  its repository is published; until then it is a repository of its own
-  inside the checkout, which the build and the lint already treat as a
-  library. The CI's workflows are in the tree, and run once the
-  repositories and GitHub Pages exist.
-- **Pending (stage 2):** the shared oracle, `tools/oracle/`, which stage 2
-  generalises from xstate's.
-
-Everything else describes the tree as it is. Every command below runs from
-the superproject's root, in a shell where `CPATH`, `CPLUS_INCLUDE_PATH` and
-`C_INCLUDE_PATH` are unset (chapter 12).
+This file describes the tree as it is. What is still to come is listed in
+the roadmap (chapter 13), to which every other mention of it refers. Every
+command below runs from the superproject's root, in a shell where `CPATH`,
+`CPLUS_INCLUDE_PATH` and `C_INCLUDE_PATH` are unset (chapter 12).
 
 ## Contents
 
@@ -37,6 +27,7 @@ the superproject's root, in a shell where `CPATH`, `CPLUS_INCLUDE_PATH` and
 10. Process
 11. Commits and text
 12. b2 facts
+13. Roadmap
 
 ## 1. What webcpp is
 
@@ -52,10 +43,10 @@ repository of its own, checked out here as a submodule under `libs/<name>`.
 
 | Library | What it is | Targets | State |
 | --- | --- | --- | --- |
-| xactor | a deterministic actor system, webcpp's own | native, wasip2, wasip3 (`xactor_asio` native only) | in `libs/xactor`; the model for every port |
-| xstate | a port of XState 5.33.2's state machines and actors; depends on xactor and Boost.JSON | native, wasip2, wasip3 | stage 2 |
-| wasi | a helper for building C++ as WASI HTTP components | wasip2, wasip3 (`response.hpp` also natively) | stage 3 |
-| trystero | a port of Trystero, serverless WebRTC rooms | native, emscripten | stage 4 |
+| xactor | a deterministic actor system, webcpp's own | native, wasip2, wasip3 (`xactor_asio` native only) | a submodule at `libs/xactor`; the model for every port |
+| xstate | a port of XState 5.33.2's state machines and actors; depends on xactor and Boost.JSON | native, wasip2, wasip3 | to come (chapter 13) |
+| wasi | a helper for building C++ as WASI HTTP components | wasip2, wasip3 (`response.hpp` also natively) | to come (chapter 13) |
+| trystero | a port of Trystero, serverless WebRTC rooms | native, emscripten | to come (chapter 13) |
 
 ### The layout
 
@@ -88,7 +79,8 @@ webcpp/
   bin/                b2's build directory, git-ignored
 ```
 
-Pending (stage 2): `tools/oracle/` (chapter 5).
+The shared oracle, `tools/oracle/`, is to come with xstate (chapters 5 and
+13).
 
 A library's layout:
 
@@ -117,7 +109,7 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
 ### Prerequisites
 
 - Boost 1.92 or newer, installed;
-- b2 (B2 5.5.3 is what stage 1 is built with);
+- b2 (B2 5.5.3 measured);
 - a C++20 compiler;
 - Python 3.9 or newer;
 - for WebAssembly: wasi-sdk 34 and wasmtime 47 (47.0.3 measured);
@@ -126,8 +118,9 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
 - later: Emscripten, wit-bindgen and the `wasi:http` WIT for wasi and
   trystero; OpenSSL for trystero natively.
 
-Until stage 6 bundles the toolchains, each is configured in `user-config.jam`.
-b2 reads `~/user-config.jam`, or the file `--user-config=<file>` names:
+Each toolchain is installed by hand and configured in `user-config.jam`,
+until webcpp bundles the toolchains (chapter 13). b2 reads
+`~/user-config.jam`, or the file `--user-config=<file>` names:
 
 ```
 using clang ;      # or gcc, or msvc: the native toolset
@@ -208,10 +201,13 @@ owner's:
    and never changes a GitHub setting. Until the repository exists, the
    library is a local repository at `libs/<name>` (`git init`), which the
    lint and the build already treat as a library.
-2. **The submodule**, added by the owner once the repository exists:
+2. **The submodule**, added by the owner once the repository exists, with a
+   URL relative to the superproject's, as Boost's `.gitmodules` writes its
+   libraries' (`libs/xactor` is `../xactor.git`), so that a clone fetches
+   the libraries over the same protocol as the superproject:
 
    ```
-   git submodule add https://github.com/webcpporg/<name> libs/<name>
+   git submodule add ../<name>.git libs/<name>
    ```
 
    Never `git add -A` or `git add libs` in the superproject: a library is a
@@ -255,8 +251,12 @@ owner's:
    ```
 
    A dependency on another library is written as its target,
-   `<library>/webcpp/xactor//xactor`; on a compiled Boost library, as Boost's
-   target, `<library>/boost//json`. Nothing else registers a library: the
+   `<library>/webcpp/xactor//xactor`. Only Boost's header-only libraries are
+   available: the CI installs Boost's headers alone, and no rule links a
+   compiled Boost library. A library that needs Boost.JSON uses it header-only,
+   through `<boost/json/src.hpp>`, included in one translation unit of each
+   program, as Boost.JSON documents; compiled Boost libraries are on the
+   roadmap (chapter 13). Nothing else registers a library: the
    test, example and doc directories join the aggregates `test`, `example` and
    `doc` by themselves, and `include/webcpp/**` joins `install`.
 5. **`test/Jamfile`, `example/Jamfile` and `doc/Jamfile`**, with the rules of
@@ -316,18 +316,18 @@ A test's helpers that are shared between tests go in `webcpp::test`
 - Each difference has an example `example/diff_<topic>.cpp`, with its
   `.expected`, and its twin in the original's language (chapter 5), which
   shows the original's behaviour; the page shows both outputs side by side.
-  Stage 2 brings the model, xstate's `diff_spawn_id`: XState keys a child
-  spawned without an id as `"undefined"`, the port as an empty string, and
-  the page shows the two outputs, each printed by its program.
+  xstate, to come, will be the model, with its `diff_spawn_id`: XState keys
+  a child spawned without an id as `"undefined"`, the port as an empty
+  string, and the page shows the two outputs, each printed by its program.
 - No divergence goes unrecorded. A difference found later, in a test, a
   review or a user's report, is either fixed or recorded in the same change
   that finds it.
 
 ## 5. Evidence: oracle and twins
 
-Pending (stage 2): `tools/oracle/` does not exist yet. xstate is its first
-user, and these are the rules it implements. Until then, a port's evidence is
-its tests, and its page records what it does.
+`tools/oracle/` is to come with xstate, its first user (chapter 13), and
+these are the rules it implements. Until then, a port's evidence is its
+tests, and its page records what it does.
 
 The oracle is shared by every port:
 
@@ -424,7 +424,7 @@ rule that failed.
 | Rule | What fails |
 | --- | --- |
 | clang-format | a C++ file not formatted as `.clang-format` says (Google-based, 4 spaces, 100 columns); `clang-format -i` fixes it |
-| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry run: every test and example natively, plus one aggregate translation unit per library that includes every public header (`bin/aggregate/<name>.cpp`) |
+| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry run: every test and example natively, plus one aggregate translation unit per library that includes every public header (`bin/aggregate/<name>.cpp`). Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
 | io_context::run | a call of Boost.Asio's `run`, `run_one` or `run_for`, which block; a driver drains with `poll` and `poll_one` |
 | fluent chains | three calls chained in one expression |
 | returns `*this` | a function other than an assignment operator returning `*this` |
@@ -718,7 +718,7 @@ A target is what a program is built for:
 | Target | Toolset | Runs with |
 | --- | --- | --- |
 | `native` | any toolset not below: gcc, clang, msvc, darwin | the host |
-| `emscripten` | b2's `emscripten` | first used by trystero (stage 4) |
+| `emscripten` | b2's `emscripten` | no CI lane yet: one comes when emsdk is pinned (chapter 13) |
 | `wasip2` | `clang-wasip2`, a clang registered against wasi-sdk with version `wasip2` | `testing.launcher=wasmtime` |
 | `wasip3` | `clang-wasip3`, likewise | `testing.launcher=wasmtime` |
 
@@ -752,7 +752,7 @@ webcpp.headers-alone <library> : <include-root> ;
 | `webcpp.run-fail` | the program exits with another status | |
 | `webcpp.compile` | the sources compile | no program is linked |
 | `webcpp.compile-fail` | the sources do not compile | left out of clang-tidy |
-| `webcpp.example` | the program's standard output, carriage returns removed, equals `<stem>.expected` beside it | run through `testing.launcher` for wasm, by `tools/example/run_example.py`; always run again |
+| `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | run through `testing.launcher` for wasm, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again |
 | `webcpp.headers-alone` | each public header compiles alone | one test per header, `alone-<path>` with `/` as `-` (`alone-xactor-scheduler`), against `/webcpp/<library>//<library>` |
 
 The rules of the doc Jamfiles are in chapter 8: `webcpp.doc <library> :
@@ -816,8 +816,10 @@ webcpp.example xactor_asio.cpp : : native ;
   return from its case, calls `require(BOOST_TEST(...))`, which ends the
   program with the errors counted so far
   (`libs/xactor/test/require.hpp`): a test may be built without exceptions.
-- Boost.Test only for a test that needs it (fixtures, data-driven suites).
-  Such a test is declared with the targets `native` only.
+- Boost.Test is not supported by the shared rules yet: `webcpp.run` always
+  adds a `-noexcept` variant natively, and the CI installs no compiled
+  `unit_test_framework`. It is on the roadmap (chapter 13), for a test that
+  needs it (fixtures, data-driven suites).
 - Every test runs on every target its Jamfile declares. What a target cannot
   build is excluded by declaration (`: native`), and inside a program by the
   same condition the library uses (`#ifndef __wasi__`), never by skipping
@@ -873,7 +875,10 @@ writes the test matrix into `<dir>`: `index.html`, the libraries by lanes;
 `output/<lane>/...`, the log of each failure, linked from its cell. A cell is
 green when every build of it passed, red with the kind of its most
 significant failure (compile, compiled, link, linked, build, run, ran, not
-run), and grey (n/a) when the lane did not build it.
+run), and grey (n/a) when the lane did not build it. The directory is served
+as the site's `report/` (below): each page's `webcpp` links the site's index,
+`../`, a library's page links its documentation, `../libs/<library>/`, and the
+footer links `github.com/webcpporg`.
 
 **Its exit status is the verdict:** 0 when every lane built something (a test
 or an example: an example counts as something that ran) and everything
@@ -888,8 +893,8 @@ named `index`.
 
 The CI runs exactly the commands above. It is GitHub Actions, in two
 workflows of the superproject, and every third-party action is pinned by its
-full commit SHA, with its tag in a comment. Pending (Task 12): it runs once
-the repositories are published.
+full commit SHA, with its tag in a comment. It runs on every push to `main`
+and on every pull request, of the superproject and of each library.
 
 **A library's CI,** `libs/<name>/.github/workflows/ci.yml`, calls the
 superproject's reusable workflow, `.github/workflows/library.yml@main`
@@ -906,8 +911,8 @@ jobs:
   `b2 declared-targets -d0` and prints the JSON matrix of lanes: one lane per
   compiler for each target a library declares, building the libraries that
   declare it. The CI never lists a library's targets by hand. A target with
-  no lane fails the plan by name: the emscripten lane comes with stage 4,
-  when emsdk is pinned.
+  no lane fails the plan by name: the CI gets an emscripten lane when emsdk
+  is pinned (chapter 13).
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
@@ -984,8 +989,7 @@ report/             the test matrix
 It fails, naming each fault, when a library has no page, when the index does
 not link a library's page, or when a link of any page names no file of the
 site or no anchor of its page: an index built without `-sWEBCPP_INDEX=site`
-links out of the site, and fails. Pending (Task 12): the site is live once
-GitHub Pages is enabled.
+links out of the site, and fails.
 
 Submodules are bumped by pull request, merged only when green; `main` is the
 only branch.
@@ -1018,8 +1022,7 @@ only branch.
     `tools/ci/assemble_test.py` and `tools/ci/actions_test.py`, each run as
     `python3 <path>`. They build in scratch copies under `$TMPDIR`, whose
     path holds a space, so they run beside a build of the tree;
-  - CI green, the library's and the superproject's (Pending (Task 12): once
-    the repositories are published).
+  - CI green, the library's and the superproject's.
 - **Fix the lint, the failures and the flakiness you meet,** even when they
   are not yours; report what you cannot fix.
 - **A change of the build or of a tool** has a test that fails without it:
@@ -1132,3 +1135,25 @@ Each of these was measured; each has cost time.
   `<boost/...>` names as system ones (`--system-header-prefix=boost/`).
 - **A checkout path that holds a space** builds: every path b2 hands to an
   action is quoted, and the tests of the build run in such a path.
+
+## 13. Roadmap
+
+What webcpp does not have yet, and the chapters that mention it:
+
+- **More libraries:** xstate, a port of XState 5.33.2's state machines and
+  actors, which builds its actor layer on xactor; wasi, a helper for building
+  C++ as WASI HTTP components; trystero, a port of Trystero, serverless
+  WebRTC rooms (chapter 1). Each joins `libs/` as a submodule, with its page
+  and its lanes.
+- **The shared oracle,** `tools/oracle/`, generalised from xstate's, its
+  first user (chapter 5).
+- **The emscripten lane.** b2's `emscripten` is a target already, and the CI
+  gets a lane for it when emsdk is pinned, as wasi-sdk and wasmtime are;
+  until then, a library that declares it fails the CI's plan (chapter 9).
+  trystero is its first user.
+- **Compiled Boost libraries and Boost.Test.** The CI installs Boost's
+  headers alone, and `webcpp.run` builds every test natively in a
+  `-noexcept` variant too, so a library uses only header-only Boost and its
+  tests use lightweight_test (chapters 2 and 9).
+- **Bundled toolchains.** Each toolchain is installed by hand and configured
+  in `user-config.jam` (chapter 1), until webcpp bundles them.
