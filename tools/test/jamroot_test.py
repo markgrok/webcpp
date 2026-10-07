@@ -5,9 +5,12 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks the Jamroot: it finds the installed Boost, refuses a missing or older one by naming the
-fix, refuses CPATH, and installs the headers. Each case builds a scratch superproject with the
-fixture library demo. Run with the names of some cases to run only those."""
+"""Checks the Jamroot: it finds the installed Boost and searches it first, refuses a missing or
+older one by naming the fix, checks again when Boost changes, keeps Boost's warnings out of
+-Werror, refuses CPATH, and installs the headers. Each case builds a scratch superproject with
+the fixture library demo. Run with the names of some cases to run only those."""
+
+from __future__ import annotations
 
 import filecmp
 import os
@@ -44,24 +47,51 @@ def configure(root, text):
     (root / '.local/user-config.jam').write_text(text)
 
 
-def old_boost(root):
-    """Writes a Boost 1.80 that is only a version.hpp; returns the user-config line naming it.
+def using_boost(prefix):
+    """The user-config line that configures the Boost installed in prefix."""
+    return f'using boost : 1.92 : <include>"{prefix}/include" <library>"{prefix}/lib" ;\n'
+
+
+def fake_boost(prefix, version):
+    """Writes in prefix a Boost that is only a version.hpp defining version, such as 108000.
 
     The header is dated 2020, as an installed package's headers keep their own dates: older
-    than anything a build wrote.
+    than anything a build wrote. Returns the user-config line that configures it.
     """
-    prefix = root / 'old boost'
     (prefix / 'include/boost').mkdir(parents=True)
     (prefix / 'lib').mkdir()
     header = prefix / 'include/boost/version.hpp'
     header.write_text(
         '#ifndef BOOST_VERSION_HPP\n'
         '#define BOOST_VERSION_HPP\n'
-        '#define BOOST_VERSION 108000\n'
-        '#define BOOST_LIB_VERSION "1_80"\n'
+        f'#define BOOST_VERSION {version}\n'
+        f'#define BOOST_LIB_VERSION "{version // 100000}_{version // 100 % 1000}"\n'
         '#endif\n')
     os.utime(header, (INSTALLED_LONG_AGO, INSTALLED_LONG_AGO))
-    return f'using boost : 1.80 : <include>"{prefix}/include" <library>"{prefix}/lib" ;\n'
+    return using_boost(prefix)
+
+
+def old_boost(root):
+    """Writes a fake Boost 1.80, and returns the user-config line that configures it."""
+    return fake_boost(root / 'old boost', 108000)
+
+
+def add_library(root, name, jamfile, sources):
+    """Adds to the scratch superproject root a library whose test/ holds jamfile and sources."""
+    (root / 'libs' / name / 'test').mkdir(parents=True)
+    (root / 'libs' / name / 'build.jam').write_text(f'project /webcpp/{name} ;\n')
+    (root / 'libs' / name / 'test/Jamfile').write_text(jamfile)
+    for source, text in sources.items():
+        (root / 'libs' / name / 'test' / source).write_text(text)
+
+
+def search_list(output):
+    """The directories that a compiler's -v output searches for #include <...>, in order."""
+    lines = [line.strip() for line in output.splitlines()]
+    start = lines.index('#include <...> search starts here:') + 1
+    end = lines.index('End of search list.', start)
+    return [Path(line.removesuffix(' (framework directory)')).resolve()
+            for line in lines[start:end]]
 
 
 def test_boost_found_and_fixture_builds(root):
@@ -72,11 +102,15 @@ def test_boost_found_and_fixture_builds(root):
 
 
 def test_no_boost_configured_names_the_fix(root):
-    configure(root, without_boost())
-    result = harness.run_b2(root, 'libs/demo/test', env_extra={'BOOST_ROOT': None})
-    expect(result, False, 'Boost 1.92 or newer was not found', 'using boost : 1.92 : <include>')
-    # The build stops at the configuration check, before a wall of missing-header errors.
-    assert 'lightweight_test.hpp' not in result.stdout, result.stdout[-4000:]
+    # No `using boost`, then one that names no location: either leaves Boost to the
+    # compiler's default include path, where it is not.
+    for config in (without_boost(), without_boost() + 'using boost : 1.92 ;\n'):
+        configure(root, config)
+        result = harness.run_b2(root, 'libs/demo/test', env_extra={'BOOST_ROOT': None})
+        expect(result, False, 'Boost 1.92 or newer was not found',
+               'no `using boost` names its location', 'using boost : 1.92 : <include>')
+        # The build stops at the configuration check, before a wall of missing-header errors.
+        assert 'lightweight_test.hpp' not in result.stdout, result.stdout[-4000:]
 
 
 def test_old_boost_is_refused(root):
@@ -95,20 +129,52 @@ def test_a_changed_boost_is_checked_again(root):
     expect(harness.run_b2(root, 'libs/demo/test'), False, 'Boost 1.80.0 was found in')
 
 
+def test_a_boost_changed_in_place_is_checked_again(root):
+    # Homebrew points opt/boost at another keg: the same directory holds another version.
+    keg = root / 'opt boost'
+    fake_boost(root / 'boost 1.92', 109200)
+    fake_boost(root / 'boost 1.80', 108000)
+    keg.symlink_to(root / 'boost 1.92')
+    configure(root, without_boost() + using_boost(keg))
+    expect(harness.run_b2(root, 'libs/demo'), True)
+    keg.unlink()
+    keg.symlink_to(root / 'boost 1.80')
+    expect(harness.run_b2(root, 'libs/demo'), False, 'Boost 1.80.0 was found in')
+
+
 def test_boost_warnings_are_not_ours(root):
     # A Boost header that warns under -Wextra, in a directory whose path holds a space: the
-    # build treats Boost's directory as a system one, so -Werror does not fail on it.
+    # build treats Boost's headers as system ones, so -Werror does not fail on them. Only
+    # Boost's: a header whose include path merely starts with "boost" still warns.
     boost = root / 'boost that warns'
-    (boost / 'include/boost').mkdir(parents=True)
-    (boost / 'include/boost/version.hpp').write_text('#define BOOST_VERSION 109200\n')
-    (boost / 'include/boost/warns.hpp').write_text('inline int warns(int unused) { return 0; }\n')
-    configure(root, without_boost()
-              + f'using boost : 1.92 : <include>"{boost}/include" <library>"{boost}/lib" ;\n')
-    (root / 'libs/warns/test').mkdir(parents=True)
-    (root / 'libs/warns/build.jam').write_text('project /webcpp/warns ;\n')
-    (root / 'libs/warns/test/Jamfile').write_text('import testing ;\ncompile uses_boost.cpp ;\n')
-    (root / 'libs/warns/test/uses_boost.cpp').write_text('#include <boost/warns.hpp>\n')
-    expect(harness.run_b2(root, 'libs/warns/test'), True, '**passed**')
+    configure(root, without_boost() + fake_boost(boost, 109200))
+    warns = 'inline int warns(int unused) { return 0; }\n'
+    (boost / 'include/boost/warns.hpp').write_text(warns)
+    add_library(root, 'warns',
+                'import testing ;\n'
+                'compile uses_boost.cpp ;\n'
+                'compile uses_boostlike.cpp : <include>../include ;\n',
+                {'uses_boost.cpp': '#include <boost/warns.hpp>\n',
+                 'uses_boostlike.cpp': '#include <boostlike/warns.hpp>\n'})
+    (root / 'libs/warns/include/boostlike').mkdir(parents=True)
+    (root / 'libs/warns/include/boostlike/warns.hpp').write_text(warns)
+    expect(harness.run_b2(root, 'libs/warns/test//uses_boost'), True, '**passed**')
+    expect(harness.run_b2(root, 'libs/warns/test//uses_boostlike'), False,
+           "unused parameter 'unused'")
+
+
+def test_configured_boost_is_searched_first(root):
+    # A Boost in a directory the compiler searches on its own must not win over the configured
+    # one; Apple clang, for one, searches /usr/local/include before any -isystem directory.
+    # So the configured directory comes first among those searched for #include <...>.
+    boost = root / 'configured boost'
+    configure(root, without_boost() + fake_boost(boost, 109200))
+    add_library(root, 'order', 'import testing ;\ncompile uses_boost.cpp : <cxxflags>-v ;\n',
+                {'uses_boost.cpp': '#include <boost/version.hpp>\n'})
+    result = harness.run_b2(root, 'libs/order/test')
+    expect(result, True, '**passed**')
+    searched = search_list(result.stdout)
+    assert searched[0] == (boost / 'include').resolve(), searched
 
 
 def test_cpath_set_is_refused(root):
@@ -116,19 +182,37 @@ def test_cpath_set_is_refused(root):
     expect(result, False, 'CPATH is set')
 
 
+def test_a_relative_user_config_is_found(root):
+    # WEBCPP_USER_CONFIG relative to the directory the tests run from, while b2 runs in root.
+    shutil.rmtree(root / '.local', ignore_errors=True)
+    saved = os.environ.get('WEBCPP_USER_CONFIG')
+    os.environ['WEBCPP_USER_CONFIG'] = os.path.relpath(harness.user_config(harness.ROOT))
+    try:
+        expect(harness.run_b2(root, 'libs/demo/test'), True, '**passed**')
+    finally:
+        if saved is None:
+            del os.environ['WEBCPP_USER_CONFIG']
+        else:
+            os.environ['WEBCPP_USER_CONFIG'] = saved
+
+
 def test_install_copies_headers_to_prefix(root):
+    # Every file of include/webcpp/**, a header or not, but no hidden file such as Finder's.
+    source = root / 'libs/demo/include'
+    (source / 'webcpp/.DS_Store').write_bytes(b'Finder')
     prefix = Path(tempfile.mkdtemp(prefix='webcpp prefix '))
     try:
         expect(harness.run_b2(root, 'install', f'--prefix={prefix}'), True)
-        source = root / 'libs/demo/include'
-        headers = sorted(path.relative_to(source) for path in source.rglob('*') if path.is_file())
+        files = sorted(path.relative_to(source) for path in source.rglob('*')
+                       if path.is_file() and not path.name.startswith('.'))
         installed = sorted(path.relative_to(prefix / 'include')
                            for path in (prefix / 'include').rglob('*') if path.is_file())
-        assert installed == headers, (installed, headers)
+        assert installed == files, (installed, files)
         assert Path('webcpp/demo.hpp') in installed, installed
-        assert any(path.parent == Path('webcpp/demo') for path in installed), installed
-        for header in headers:
-            assert filecmp.cmp(source / header, prefix / 'include' / header, shallow=False), header
+        assert Path('webcpp/demo/answer.hpp') in installed, installed
+        assert Path('webcpp/demo/data/answer.txt') in installed, installed
+        for file in files:
+            assert filecmp.cmp(source / file, prefix / 'include' / file, shallow=False), file
     finally:
         shutil.rmtree(prefix)
 
@@ -138,8 +222,11 @@ CASES = [
     test_no_boost_configured_names_the_fix,
     test_old_boost_is_refused,
     test_a_changed_boost_is_checked_again,
+    test_a_boost_changed_in_place_is_checked_again,
     test_boost_warnings_are_not_ours,
+    test_configured_boost_is_searched_first,
     test_cpath_set_is_refused,
+    test_a_relative_user_config_is_found,
     test_install_copies_headers_to_prefix,
 ]
 

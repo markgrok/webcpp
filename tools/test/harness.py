@@ -11,6 +11,8 @@ library, plus the fixture libraries a test places under its libs/. It lives unde
 directory whose name contains a space, so every test also proves that such a checkout builds.
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 import subprocess
@@ -34,13 +36,16 @@ TIMEOUT = 900
 
 
 def user_config(root: Path) -> Path:
-    """Returns the user-config.jam b2 reads for root: root/.local's, else $WEBCPP_USER_CONFIG's."""
+    """Returns the user-config.jam b2 reads for root: root/.local's, else $WEBCPP_USER_CONFIG's.
+
+    A relative $WEBCPP_USER_CONFIG is resolved here, since b2 runs in root.
+    """
     local = root / '.local/user-config.jam'
     if local.is_file():
         return local
     configured = os.environ.get('WEBCPP_USER_CONFIG')
     if configured:
-        return Path(configured)
+        return Path(configured).resolve()
     raise RuntimeError(f'no user-config.jam: {local} does not exist, '
                        'and WEBCPP_USER_CONFIG is not set')
 
@@ -62,7 +67,7 @@ def run_b2(root: Path, *args: str, env_extra: dict | None = None) -> subprocess.
                           stderr=subprocess.STDOUT, text=True, check=False, timeout=TIMEOUT)
 
 
-def built(_directory: str, names: list[str]) -> set[str]:
+def built(_: str, names: list[str]) -> set[str]:
     """The names a copy leaves out of any directory: what a build or a run wrote."""
     return {name for name in names if name in IGNORED}
 

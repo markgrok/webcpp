@@ -10,7 +10,7 @@ its own under `libs/<name>`, and everything is built and tested with b2.
 - Boost 1.92 or newer, installed;
 - b2;
 - a C++20 compiler;
-- Python 3, for the tests of the build itself.
+- Python 3.9 or newer, for the tests of the build itself.
 
 If Boost is not on the compiler's default include path, tell b2 where it is
 in `user-config.jam`. For Homebrew's Boost:

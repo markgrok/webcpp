@@ -107,33 +107,29 @@ rule boost-unusable ( properties * )
     local status ;
     if ! $(.boost-include)
     {
-        status = "Boost 1.92 or newer was not found: no `using boost` is"
-            "configured, and the compiler's default include path has none" ;
+        status = "Boost 1.92 or newer was not found: no `using boost` names its"
+            "location, and none is on the compiler's default include path" ;
     }
     else if ! [ path.exists $(.boost-include)/boost/version.hpp ]
     {
         status = "Boost 1.92 or newer was not found:"
             "$(.boost-include)/boost/version.hpp does not exist" ;
     }
+    else if ! $(.boost-found)
+    {
+        status = "Boost 1.92 or newer is required, and the version of the"
+            "Boost in $(.boost-include) cannot be read" ;
+    }
+    else if [ numbers.less $(.boost-found[1]) 109200 ]
+    {
+        status = "Boost 1.92 or newer is required, and Boost $(.boost-found[2])"
+            "was found in $(.boost-include)" ;
+    }
     else
     {
-        local found = [ boost-version $(.boost-include) ] ;
-        if ! $(found)
-        {
-            status = "Boost 1.92 or newer is required, and the version of the"
-                "Boost in $(.boost-include) cannot be read" ;
-        }
-        else if [ numbers.less $(found[1]) 109200 ]
-        {
-            status = "Boost 1.92 or newer is required, and Boost $(found[2])"
-                "was found in $(.boost-include)" ;
-        }
-        else
-        {
-            errors.user-error "Boost $(found[2]) was found in"
-                "$(.boost-include), but a program that includes it does not"
-                "compile with these properties; bin/config.log says why" ;
-        }
+        errors.user-error "Boost $(.boost-found[2]) was found in"
+            "$(.boost-include), but a program that includes it does not"
+            "compile with these properties; bin/config.log says why" ;
     }
     local config = [ modules.binding user-config ] ;
     config ?= user-config.jam ;
@@ -156,11 +152,18 @@ rule boost-unusable ( properties * )
 # The configuration check: tools/test/boost_version.cpp compiles only against
 # Boost 1.92 or newer. b2 caches the answer in bin/project-cache.jam by the
 # check's name and the target's properties, so the name holds Boost's
-# directory: another Boost is checked again.
+# directory and the version found there: another Boost is checked again, and
+# so is another version in the same directory (Homebrew points opt/boost at
+# the keg of each version).
 .boost-check-name = "Boost 1.92 or newer" ;
 if $(.boost-include)
 {
+    .boost-found = [ boost-version $(.boost-include) ] ;
     .boost-check-name = "$(.boost-check-name) in $(.boost-include)" ;
+}
+if $(.boost-found)
+{
+    .boost-check-name = "$(.boost-check-name) ($(.boost-found[2]))" ;
 }
 .boost-check = [ check-target-builds /webcpp//boost_version $(.boost-check-name)
     : : <conditional>@boost-unusable ] ;
@@ -186,13 +189,19 @@ project /webcpp
       <warnings-as-errors>on
       <implicit-dependency>/boost//headers
       <library>/boost//headers
-      # Boost's directory again as a system one, so that its warnings are not
-      # ours: a directory given both ways is a system one. Quoted, as b2
-      # quotes its own -I, so that a path that holds a space builds: the shell
-      # removes the quotes, and so does cl from the response file b2 writes
-      # the options to.
+      # Boost's headers are system ones, so that their warnings are not ours,
+      # and Boost's directory keeps its place, searched before the compiler's
+      # own. GCC searches a -isystem directory before its own, and takes a
+      # directory given both ways for a system one. Clang searches a -I
+      # directory before its own, and Apple's searches /usr/local/include
+      # before every -isystem one, so clang and emcc keep the -I and mark the
+      # headers that <boost/...> names. Quoted, as b2 quotes its own -I, so
+      # that a path that holds a space builds: the shell removes the quotes,
+      # and so does cl from the response file b2 writes the options to. The
+      # prefix is quoted too, since b2 drops a slash that ends a property.
       <toolset>gcc:<cxxflags>"-isystem\"$(.boost-include)\""
-      <toolset>clang:<cxxflags>"-isystem\"$(.boost-include)\""
+      <toolset>clang:<cxxflags>"--system-header-prefix=\"boost/\""
+      <toolset>emscripten:<cxxflags>"--system-header-prefix=\"boost/\""
       <toolset>msvc:<cxxflags>"\"/external:I$(.boost-include)\""
       <toolset>msvc:<cxxflags>"/external:W0"
       # Boost.Container's auto-link (reached through Boost.JSON) would ask
@@ -231,10 +240,27 @@ rule projects ( pattern )
 .package-paths = [ package.paths webcpp ] ;
 .includedir = [ $(.package-paths).includedir ] ;
 
+path-constant WEBCPP_ROOT : . ;
+
+# The files under directory, at any depth, without its directories, which
+# glob-tree-ex returns too, and without hidden files such as .DS_Store.
+rule files-under ( directory )
+{
+    local files ;
+    for local entry in [ glob-tree-ex $(directory) : * : .* ]
+    {
+        if [ CHECK_IF_FILE $(WEBCPP_ROOT)/$(entry) ]
+        {
+            files += $(entry) ;
+        }
+    }
+    return $(files) ;
+}
+
 # A library is a directory of libs/ with a build.jam (a submodule not
 # checked out has none), registered as /webcpp/<name>. Its test, example and
-# doc directories join the aggregates, and its headers the installation,
-# which keeps their tree; the patterns are those Boost installs.
+# doc directories join the aggregates, and every file of its
+# include/webcpp/** the installation, which keeps their tree.
 for local build in [ glob libs/*/build.jam ]
 {
     local library = $(build:D) ;
@@ -245,7 +271,7 @@ for local build in [ glob libs/*/build.jam ]
     .example += [ projects $(library)/example ] ;
     .doc += [ projects $(library)/doc ] ;
     install install-$(name)
-      : [ glob-tree-ex $(library)/include/webcpp : *.hpp *.ipp *.h *.inc ]
+      : [ files-under $(library)/include/webcpp ]
       : <location>$(.includedir) <install-source-root>$(library)/include ;
     .install += install-$(name) ;
 }
