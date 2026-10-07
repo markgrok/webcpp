@@ -1,0 +1,14 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# oracle_demo: a library proven against an original, JavaScript itself,
+# which the tests of tools/test place under libs/oracle_demo of a scratch
+# superproject. Its oracle, test/oracle/Jamfile, runs a twin that agrees, a
+# twin with an output of its own, and a script over a tree of cases.
+
+project /webcpp/oracle_demo ;
+
+alias oracle_demo : : : : <include>include ;

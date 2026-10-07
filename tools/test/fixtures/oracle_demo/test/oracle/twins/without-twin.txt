@@ -1,0 +1,3 @@
+# The examples that have no twin, each with the reason the original has no
+# counterpart for it.
+compile_time: JavaScript has no evaluation at compile time

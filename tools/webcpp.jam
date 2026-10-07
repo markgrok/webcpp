@@ -16,13 +16,25 @@
 #     webcpp.example source : requirements * : targets * ;
 #     webcpp.headers-alone library : include-root ;
 #
-# and the rules of the documentation, tools/doc/doc.jam's, with which a
-# library's doc Jamfile declares its page and its reference, and the
-# superproject's doc/Jamfile its index page:
+# the rule with which any test or example Jamfile of a library declares one
+# of its own lanes, which `b2 declared-lanes` lists:
+#
+#     webcpp.lane name : targets + ;
+#
+# the rules of the documentation, tools/doc/doc.jam's, with which a library's
+# doc Jamfile declares its page and its reference, and the superproject's
+# doc/Jamfile its index page:
 #
 #     webcpp.doc library : page ;
 #     webcpp.reference library ;
 #     webcpp.index page ;
+#
+# and the rules of the oracle, tools/oracle/oracle.jam's, with which a
+# library's test/oracle/Jamfile runs its original over its twins and cases:
+#
+#     webcpp.original word + ;
+#     webcpp.twins examples : twins : suffix : extra-words * ;
+#     webcpp.cases name : script : cases : expected ;
 #
 # A target is what a program is built for: emscripten (b2's toolset
 # emscripten), wasip2 and wasip3 (the clang toolsets of user-config.jam
@@ -30,6 +42,7 @@
 # program is built for its own targets, else for those of its Jamfile's
 # webcpp.targets, else for native only. For any other target, b2 skips it
 # without a word.
+import alias ;
 import errors ;
 import feature ;
 import make ;
@@ -73,6 +86,11 @@ if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 # tools/doc/doc would find in its place.
 modules.load webcpp-doc : doc.jam : [ path.native [ path.join $(.tools) doc ] ] ;
 import webcpp-doc ;
+
+# The oracle's rules, loaded as the module webcpp-oracle, as the
+# documentation's are.
+modules.load webcpp-oracle : oracle.jam : [ path.native [ path.join $(.tools) oracle ] ] ;
+import webcpp-oracle ;
 
 .nl = "\n" ;
 
@@ -312,12 +330,52 @@ actions write-include
 # them.
 rule declared ( directories * )
 {
+    load-jamfiles $(directories) ;
+    return [ sequence.unique $(.declared) ] ;
+}
+
+# Loads the Jamfiles under directories (absolute, in b2's form), at any
+# depth, which a build loads only once it reaches them.
+local rule load-jamfiles ( directories * )
+{
     local names = [ modules.peek project : JAMFILE ] ;
     for local jamfile in [ path.glob-tree $(directories) : $(names) ]
     {
         project.load $(jamfile:D) ;
     }
-    return [ sequence.unique $(.declared) ] ;
+}
+
+# webcpp.lane <name> : <target> + ; one of a library's own lanes, such as
+# its oracle's: the explicit alias <name> over targets, recorded as
+# "<library> <name> <directory>" for lanes. Only a Jamfile under the
+# library's test or example directory, which lanes loads, may declare one.
+rule lane ( name : targets + )
+{
+    local current = [ project.current ] ;
+    local jamfile = [ $(current).project-module ] ;
+    local root = [ path.root [ project.attribute $(jamfile) project-root ] [ path.pwd ] ] ;
+    local location = [ path.root [ project.attribute $(jamfile) location ] [ path.pwd ] ] ;
+    local directory = [ path.relative-to $(root) $(location) ] ;
+    local library = [ MATCH "^libs/([^/]+)/(test|example)(/.*)?$" : $(directory) ] ;
+    if ! $(library)
+    {
+        local file = [ path.root [ path.make [ modules.binding $(jamfile) ] ] [ path.pwd ] ] ;
+        file = [ path.relative-to $(root) $(file) ] ;
+        errors.user-error "webcpp.lane is declared in $(file), which is not a test or an"
+            "example Jamfile of a library: only one under libs/<library>/test or"
+            "libs/<library>/example declares a lane, so that b2 declared-lanes finds it" ;
+    }
+    alias $(name) : $(targets) ;
+    $(current).mark-target-as-explicit $(name) ;
+    .lanes += "$(library[1]) $(name) $(directory)" ;
+}
+
+# The lines "<library> <name> <directory>" of the lanes that the Jamfiles
+# under directories (absolute, in b2's form) declare, at any depth, sorted.
+rule lanes ( directories * )
+{
+    load-jamfiles $(directories) ;
+    return [ sequence.unique $(.lanes) ] ;
 }
 
 # A library's page, libs/<library>/doc/html/index.html, from page and the
@@ -339,4 +397,25 @@ rule reference ( library )
 rule index ( page )
 {
     webcpp-doc.index $(page) ;
+}
+
+# How a program of the original's language runs, and the target node-modules
+# (tools/oracle/oracle.jam).
+rule original ( words + )
+{
+    webcpp-oracle.original $(words) ;
+}
+
+# The target twins, which runs every twin of examples on the original and
+# compares what it prints (tools/oracle/oracle.jam).
+rule twins ( examples : twins : suffix : extra * )
+{
+    webcpp-oracle.twins $(examples) : $(twins) : $(suffix) : $(extra) ;
+}
+
+# The target cases-<name>, which runs script on the original over cases and
+# compares what it writes with expected (tools/oracle/oracle.jam).
+rule cases ( name : script : cases : expected )
+{
+    webcpp-oracle.cases $(name) : $(script) : $(cases) : $(expected) ;
 }

@@ -158,13 +158,15 @@ def add_library(root: Path, name: str, jamfile: str, sources: dict[str, str]) ->
         (root / 'libs' / name / 'test' / source).write_text(text)
 
 
-def run_cases(label: str, cases: Sequence[Callable[[Path], None]], argv: Sequence[str]) -> int:
+def run_cases(label: str, cases: Sequence[Callable[[Path], None]], argv: Sequence[str],
+              fixtures: Sequence[str] = ('demo',)) -> int:
     """Runs each of cases, or only those argv names, and returns the exit status of the run.
 
-    Each case receives a scratch superproject of its own, with the fixture library demo, which is
-    removed after it. The run prints "<case>: ok" after each case and "<label>: ok" at its end; a
-    case that fails raises, which ends the run there. A name in argv that is no case's makes it
-    print the unknown names and return 2 before any case runs.
+    Each case receives a scratch superproject of its own, with the fixture libraries named in
+    fixtures (demo, unless the test names others), which is removed after it. The run prints
+    "<case>: ok" after each case and "<label>: ok" at its end; a case that fails raises, which
+    ends the run there. A name in argv that is no case's makes it print the unknown names and
+    return 2 before any case runs.
     """
     unknown = set(argv) - {case.__name__ for case in cases}
     if unknown:
@@ -173,7 +175,7 @@ def run_cases(label: str, cases: Sequence[Callable[[Path], None]], argv: Sequenc
     for case in cases:
         if argv and case.__name__ not in argv:
             continue
-        root = scratch_superproject('demo')
+        root = scratch_superproject(*fixtures)
         try:
             case(root)
         finally:

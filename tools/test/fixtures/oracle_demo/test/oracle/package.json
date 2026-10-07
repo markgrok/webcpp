@@ -1,0 +1,7 @@
+{
+  "name": "webcpp-oracle-demo-oracle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The original of the fixture library oracle_demo: JavaScript itself, with no dependency."
+}

@@ -7,7 +7,8 @@
 # webcpp, the superproject: it finds the installed Boost and checks its
 # version, sets what every library shares, registers each library of libs/
 # as /webcpp/<name>, declares the aggregates test, example, doc and
-# install, and lists the targets the libraries declare (declared-targets).
+# install, and lists the targets and the lanes the libraries declare
+# (declared-targets, declared-lanes).
 import boost ;
 import errors ;
 import feature ;
@@ -181,11 +182,13 @@ if $(.boost-found)
 .boost-check = [ check-target-builds /webcpp//boost_version $(.boost-check-name)
     : : <conditional>@boost-unusable ] ;
 
-# Two targets leave the check out of their requirements: the check's own
+# Some targets leave the check out of their requirements: the check's own
 # target, which evaluates the project's requirements too and would wait on
-# itself, and declared-targets, which reads only Jamfiles, for a CI job that
-# installs no Boost. The feature marks them; free and incidental, it changes
-# neither a target's properties nor its path.
+# itself; declared-targets and declared-lanes, which read only Jamfiles, for
+# a CI job that installs no Boost; and the targets that compile nothing, such
+# as the documentation's and the oracle's Node packages. The feature marks
+# them; free and incidental, it changes neither a target's properties nor its
+# path.
 feature.feature webcpp-boost-check : : free incidental ;
 
 # The check's answer is cached by the version it read, so a Boost whose
@@ -327,10 +330,8 @@ alias example : $(.example) ;
 alias doc : [ projects doc ] $(.doc) ;
 alias install : $(.install) ;
 
-# `b2 declared-targets` prints each pair "<library> <target>" that a program
-# of a library's test or example Jamfiles declares, one per line, sorted: the
-# lanes CI runs for each library. With -d0, b2 prints nothing else.
-rule declared-targets ( targets * : sources * : properties * )
+# The test and example directories of every library, absolute, in b2's form.
+rule library-directories ( )
 {
     local root = [ path.make $(WEBCPP_ROOT) ] ;
     local directories ;
@@ -338,12 +339,34 @@ rule declared-targets ( targets * : sources * : properties * )
     {
         directories += [ path.root [ path.make $(directory) ] $(root) ] ;
     }
-    for local pair in [ webcpp.declared $(directories) ]
+    return $(directories) ;
+}
+
+# `b2 declared-targets` prints each pair "<library> <target>" that a program
+# of a library's test or example Jamfiles declares, one per line, sorted: the
+# lanes CI runs for each library. With -d0, b2 prints nothing else.
+rule declared-targets ( targets * : sources * : properties * )
+{
+    for local pair in [ webcpp.declared [ library-directories ] ]
     {
         ECHO $(pair) ;
     }
 }
 notfile declared-targets : @declared-targets : : <webcpp-boost-check>off ;
+
+# `b2 declared-lanes` prints each line "<library> <lane> <directory>" that a
+# library's test or example Jamfiles declare with webcpp.lane, sorted: a
+# library's own lanes, such as its oracle's, which CI runs as
+# `b2 -a <directory>//<lane>`. It reads only Jamfiles too, and needs neither
+# Boost nor Node.
+rule declared-lanes ( targets * : sources * : properties * )
+{
+    for local lane in [ webcpp.lanes [ library-directories ] ]
+    {
+        ECHO $(lane) ;
+    }
+}
+notfile declared-lanes : @declared-lanes : : <webcpp-boost-check>off ;
 
 # A lane builds and runs one library's tests and examples for one target,
 # from scratch, and writes what b2 built and ran, which
@@ -357,4 +380,5 @@ notfile declared-targets : @declared-targets : : <webcpp-boost-check>off ;
 # every test, those the lane skips included. With --out-xml, b2 exits 0 even
 # when a test fails: the report's exit status is the verdict.
 
-explicit boost_version throw_exception test example doc install $(.install) declared-targets ;
+explicit boost_version throw_exception test example doc install $(.install) declared-targets
+    declared-lanes ;

@@ -1,0 +1,14 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+# The oracle of oracle_demo: its original is JavaScript itself, run by Node.
+
+import webcpp ;
+
+webcpp.original node --conditions=development ;
+webcpp.twins ../../example : twins : .mjs ;
+webcpp.cases squares : cases.mjs : ../fixtures/cases : ../fixtures/expected ;
+webcpp.lane oracle : twins cases-squares ;

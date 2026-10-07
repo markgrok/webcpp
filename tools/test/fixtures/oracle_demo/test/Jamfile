@@ -1,0 +1,10 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+import webcpp ;
+
+# Its tests run no original: b2 libs/oracle_demo/test needs no Node.
+webcpp.run square : square_test.cpp : <library>/webcpp/oracle_demo//oracle_demo ;

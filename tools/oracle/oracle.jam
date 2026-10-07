@@ -1,0 +1,308 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The rules of a library's oracle, which tools/webcpp.jam offers a library's
+# test/oracle/Jamfile as webcpp.original, webcpp.twins and webcpp.cases:
+#
+#     import webcpp ;
+#     webcpp.original <word> + ;
+#     webcpp.twins <examples-dir> : <twins-dir> : <suffix> : <extra-word> * ;
+#     webcpp.cases <name> : <script> : <cases-dir> : <expected-dir> ;
+#
+# webcpp.original says how a program of the original's language runs (node
+# --conditions=development for JavaScript), once and first; the original is
+# pinned by package.json and package-lock.json beside the Jamfile, which the
+# explicit target node-modules installs with npm ci, again when the lockfile
+# changes. webcpp.twins declares the explicit target twins: twins.py runs
+# every twin of the examples with the original's words and the extra words,
+# and compares what each prints. webcpp.cases declares the explicit target
+# cases-<name>: the original runs <script> <cases-dir> <output>, which writes
+# its results under the Jamfile's build directory, and compare.py finds them
+# equal to <expected-dir>. The first of twins and cases also declares the
+# explicit target update-expected, which writes every expected directory
+# again from the original, and the twins' own outputs (twins.py --update,
+# which refuses one that agrees). Directories are relative to the Jamfile.
+#
+# Every target is explicit, so that only a request by name, or a lane that
+# names it (webcpp.lane), runs Node: `b2 test` never does. Node and npm are
+# looked for on PATH only when an oracle target runs, and the build stops,
+# naming the one that is missing. The targets compile nothing, so they leave
+# the Jamroot's check of Boost out.
+#
+# This file is loaded as the module webcpp-oracle, beside webcpp-doc.
+import alias ;
+import common ;
+import errors ;
+import feature ;
+import make ;
+import modules ;
+import notfile ;
+import os ;
+import path ;
+import project ;
+
+# This directory, and the superproject's, absolute: an action starts in the
+# directory b2 was started in.
+.here = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
+.root = [ path.parent [ path.parent $(.here) ] ] ;
+
+if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
+
+.twins-runner = [ path.native $(.here)/twins.py ] ;
+.compare = [ path.native $(.here)/compare.py ] ;
+
+# The oracle Jamfile a target belongs to, by its directory relative to the
+# superproject, which keys what this module records of it; and the cases a
+# target cases-<name> runs. Free, so that they play no part in a target's
+# build directory.
+feature.feature webcpp-oracle : : free incidental ;
+feature.feature webcpp-oracle-cases : : free incidental ;
+
+# The project of the Jamfile being loaded, its directory, absolute in b2's
+# form, then relative to the superproject, and the Jamfile itself, relative
+# to the superproject.
+local rule current ( )
+{
+    local current = [ project.current ] ;
+    local jamfile = [ $(current).project-module ] ;
+    local location = [ path.root [ project.attribute $(jamfile) location ] [ path.pwd ] ] ;
+    local file = [ path.root [ path.make [ modules.binding $(jamfile) ] ] [ path.pwd ] ] ;
+    return $(current) $(location) [ path.relative-to $(.root) $(location) ]
+        [ path.relative-to $(.root) $(file) ] ;
+}
+
+# Each of paths, relative to the directory location, absolute and as the
+# system writes it.
+local rule natives ( location : paths * )
+{
+    local found ;
+    for local p in $(paths)
+    {
+        found += [ path.native [ path.root [ path.make $(p) ] $(location) ] ] ;
+    }
+    return $(found) ;
+}
+
+# The build stops, naming the Jamfile of found (what current returned), when
+# that Jamfile has not called webcpp.original yet.
+local rule original-of ( rule-name : found + )
+{
+    if ! $(.original.$(found[3]))
+    {
+        errors.user-error "webcpp.$(rule-name): webcpp.original must come first, in"
+            "$(found[4]): it says how a program of the original's language runs" ;
+    }
+}
+
+# The requirements of every target of the Jamfile key.
+local rule requirements ( key )
+{
+    return <webcpp-oracle>$(key) <dependency>node-modules <webcpp-boost-check>off ;
+}
+
+# Declares update-expected for the Jamfile key, once, with its first twins or
+# cases: it writes again whatever the Jamfile's twins and cases record by the
+# time it runs.
+local rule update-expected ( current : key )
+{
+    if ! $(.update.$(key))
+    {
+        .update.$(key) = true ;
+        notfile update-expected : @webcpp-oracle%update : : [ requirements $(key) ] ;
+        $(current).mark-target-as-explicit update-expected ;
+    }
+}
+
+# webcpp.original <word> + ; how a program of the original's language runs,
+# and the explicit target node-modules.
+rule original ( words + )
+{
+    local found = [ current ] ;
+    local key = $(found[3]) ;
+    if $(.original.$(key))
+    {
+        errors.user-error "webcpp.original is called twice in $(found[4])" ;
+    }
+    for local name in package.json package-lock.json
+    {
+        if ! [ CHECK_IF_FILE [ path.native $(found[2])/$(name) ] ]
+        {
+            errors.user-error "webcpp.original: $(key)/$(name) does not exist; the original is"
+                "pinned by package.json and package-lock.json beside the oracle's Jamfile" ;
+        }
+    }
+    .original.$(key) = $(words) ;
+    .location.$(key) = $(found[2]) ;
+    # npm ci writes node_modules/.package-lock.json, newer than the lockfile
+    # until the lockfile changes.
+    make .package-lock.json : package-lock.json : @webcpp-oracle%npm-ci
+      : <location>node_modules <webcpp-oracle>$(key) <webcpp-boost-check>off ;
+    alias node-modules : .package-lock.json : <webcpp-boost-check>off ;
+    $(found[1]).mark-target-as-explicit .package-lock.json node-modules ;
+}
+
+# webcpp.twins <examples-dir> : <twins-dir> : <suffix> : <extra-word> * ;
+# the explicit target twins.
+rule twins ( examples : twins : suffix : extra * )
+{
+    local found = [ current ] ;
+    local key = $(found[3]) ;
+    original-of twins : $(found) ;
+    if $(.twins.$(key))
+    {
+        errors.user-error "webcpp.twins is called twice in $(found[4])" ;
+    }
+    .twins.$(key) = [ natives $(found[2]) : $(examples) $(twins) ] ;
+    .suffix.$(key) = $(suffix) ;
+    .extra.$(key) = $(extra) ;
+    notfile twins : @webcpp-oracle%run-twins : : [ requirements $(key) ] ;
+    $(found[1]).mark-target-as-explicit twins ;
+    update-expected $(found[1]) : $(key) ;
+}
+
+# webcpp.cases <name> : <script> : <cases-dir> : <expected-dir> ; the
+# explicit target cases-<name>.
+rule cases ( name : script : cases : expected )
+{
+    local found = [ current ] ;
+    local key = $(found[3]) ;
+    original-of cases : $(found) ;
+    if $(name) in $(.cases.$(key))
+    {
+        errors.user-error "webcpp.cases $(name) is declared twice in $(found[4])" ;
+    }
+    .cases.$(key) += $(name) ;
+    .case.$(key).$(name) = [ natives $(found[2]) : $(script) $(cases) $(expected) ] ;
+    # Where the original writes its results, under the Jamfile's build
+    # directory.
+    local build-dir = [ $(found[1]).build-dir ] ;
+    .output.$(key).$(name) = [ natives [ path.pwd ] : $(build-dir)/$(name) ] ;
+    notfile cases-$(name) : @webcpp-oracle%run-cases
+      : : [ requirements $(key) ] <webcpp-oracle-cases>$(name) ;
+    $(found[1]).mark-target-as-explicit cases-$(name) ;
+    update-expected $(found[1]) : $(key) ;
+}
+
+# The build stops, naming tool, when it is not on PATH.
+local rule on-path ( tool : key )
+{
+    if ! [ common.find-tool $(tool) ]
+    {
+        errors.user-error "$(tool) is not on PATH, and the oracle of $(key) runs it: Node and"
+            "npm are the prerequisites of an oracle" ;
+    }
+}
+
+# The variables every action of the Jamfile key reads.
+local rule paths ( targets * : key )
+{
+    on-path $(.original.$(key)[1]) : $(key) ;
+    ORIGINAL on $(targets) = $(.original.$(key)) ;
+    PYTHON on $(targets) = $(.python) ;
+}
+
+rule npm-ci ( targets * : sources * : properties * )
+{
+    local key = [ feature.get-values <webcpp-oracle> : $(properties) ] ;
+    on-path node : $(key) ;
+    on-path npm : $(key) ;
+    HERE on $(targets) = [ path.native $(.location.$(key)) ] ;
+}
+
+# Installs the packages package-lock.json pins into node_modules, from npm's
+# cache when it holds them.
+actions npm-ci
+{
+    cd "$(HERE)" && npm ci --no-audit --no-fund --prefer-offline
+}
+
+# The variables of twins.py: the examples, the twins and the suffix, and the
+# extra words, after the original's.
+local rule twins-paths ( targets * : key )
+{
+    paths $(targets) : $(key) ;
+    RUNNER on $(targets) = $(.twins-runner) ;
+    EXAMPLES on $(targets) = $(.twins.$(key)[1]) ;
+    TWINS on $(targets) = $(.twins.$(key)[2]) ;
+    SUFFIX on $(targets) = $(.suffix.$(key)) ;
+    EXTRA on $(targets) = $(.extra.$(key)) ;
+}
+
+rule run-twins ( targets * : sources * : properties * )
+{
+    twins-paths $(targets) : [ feature.get-values <webcpp-oracle> : $(properties) ] ;
+}
+
+actions run-twins
+{
+    "$(PYTHON)" "$(RUNNER)" --suffix "$(SUFFIX)" --examples "$(EXAMPLES)" --twins "$(TWINS)" -- "$(ORIGINAL)" "$(EXTRA)"
+}
+
+rule run-cases ( targets * : sources * : properties * )
+{
+    local key = [ feature.get-values <webcpp-oracle> : $(properties) ] ;
+    local name = [ feature.get-values <webcpp-oracle-cases> : $(properties) ] ;
+    paths $(targets) : $(key) ;
+    COMPARE on $(targets) = $(.compare) ;
+    CASE on $(targets) = $(.case.$(key).$(name)) ;
+    OUTPUT on $(targets) = $(.output.$(key).$(name)) ;
+}
+
+# CASE is the script, the cases and the expected results. The output is
+# removed first, so that a result the script no longer writes is not
+# compared.
+actions run-cases
+{
+    set -e
+    rm -rf "$(OUTPUT)"
+    "$(ORIGINAL)" "$(CASE[1])" "$(CASE[2])" "$(OUTPUT)"
+    "$(PYTHON)" "$(COMPARE)" "$(CASE[3])" "$(OUTPUT)"
+}
+
+# update-expected runs update-cases when the Jamfile declares cases, then
+# update-twins when it declares twins: two actions on the one target, in that
+# order, which stop at the first that fails.
+rule update ( targets * : sources * : properties * )
+{
+    local key = [ feature.get-values <webcpp-oracle> : $(properties) ] ;
+    if $(.cases.$(key))
+    {
+        paths $(targets) : $(key) ;
+        local cases ;
+        for local name in $(.cases.$(key))
+        {
+            cases += $(.case.$(key).$(name)) ;
+        }
+        CASES on $(targets) = $(cases) ;
+        update-cases $(targets) ;
+    }
+    if $(.twins.$(key))
+    {
+        twins-paths $(targets) : $(key) ;
+        update-twins $(targets) ;
+    }
+}
+
+# CASES holds three words for each case, its script, its cases and its
+# expected results, which the loop reads three at a time. Each expected
+# directory is removed, then written whole, so that a file the original no
+# longer writes goes, and a script that fails leaves the target failed.
+actions update-cases
+{
+    set -e
+    set -- "$(CASES)"
+    while [ $# -gt 0 ]
+    do
+        rm -rf "$3"
+        "$(ORIGINAL)" "$1" "$2" "$3"
+        shift 3
+    done
+}
+
+actions update-twins
+{
+    "$(PYTHON)" "$(RUNNER)" --update --suffix "$(SUFFIX)" --examples "$(EXAMPLES)" --twins "$(TWINS)" -- "$(ORIGINAL)" "$(EXTRA)"
+}
