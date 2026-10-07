@@ -26,6 +26,7 @@ Exit 0 when there is none, 1 when there is one, 2 on a usage error.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import sys
@@ -358,9 +359,16 @@ INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]*)[>"]')
 
 
 def glob_matches(paths: list[PurePosixPath], pattern: str) -> list[PurePosixPath]:
-    """The paths, relative to the library, that pattern matches: pathlib's own glob semantics,
-    where * stays within one path segment."""
-    return [path for path in paths if path.match(pattern)]
+    """The paths, relative to the library, that pattern matches: anchored at both ends, as many
+    segments as pattern has, each matched against pattern's with fnmatch.fnmatchcase, so * stays
+    within one path segment and never reaches a deeper one. pathlib's own PurePath.match is
+    right-anchored instead, so a pattern of n segments also matches a path of more than n whose
+    last n agree with it; this does not."""
+    pattern_parts = PurePosixPath(pattern).parts
+    return [path for path in paths
+           if len(path.parts) == len(pattern_parts)
+           and all(fnmatch.fnmatchcase(part, pattern_part)
+                   for part, pattern_part in zip(path.parts, pattern_parts))]
 
 
 def boundary_findings(config_path: str, boundary: object, library_paths: list[PurePosixPath],
@@ -382,10 +390,13 @@ def boundary_findings(config_path: str, boundary: object, library_paths: list[Pu
         return
     headers, excepted = boundary['headers'], boundary.get('except', [])
     must_not_include, why = boundary['must-not-include'], boundary['why']
-    fields = (('headers', headers), ('except', excepted), ('must-not-include', must_not_include))
-    if any(not isinstance(value, list) for _, value in fields) or not isinstance(why, str):
+    lists = (headers, excepted, must_not_include)
+    malformed = (any(not isinstance(value, list) for value in lists)
+                or any(not isinstance(item, str) for value in lists for item in value)
+                or not isinstance(why, str) or not why)
+    if malformed:
         yield (config_path, 1, '"headers", "except" and "must-not-include" must be lists of '
-               'strings, and "why" a string')
+               'strings, and "why" a non-empty string')
         return
     covered: set[PurePosixPath] = set()
     for name, patterns in (('headers', headers), ('except', excepted)):

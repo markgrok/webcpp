@@ -511,10 +511,10 @@ def boundaries_config(root, boundaries: list[dict]) -> str:
     return path
 
 
-def planted_header(root, name: str, comment: str, include: str) -> str:
-    """Writes a header under libs/demo/test/boundaries/, which no Jamfile builds, so that
-    planting an include in it never touches clang-tidy or b2; returns its path."""
-    path = f'libs/demo/test/boundaries/{name}'
+def planted_header(root, relative: str, comment: str, include: str) -> str:
+    """Writes a header at libs/demo/<relative>, under test/ or example/ so that no Jamfile
+    builds it and planting an include in it never touches clang-tidy or b2; returns its path."""
+    path = f'libs/demo/{relative}'
     write(root, path, CPP + f'\n// {comment}\n{include}\n')
     return path
 
@@ -526,7 +526,8 @@ def test_include_boundaries_angle_brackets(root):
         'must-not-include': ['webcpp/forbidden'],
         'why': 'the core must not reach the forbidden module',
     }])
-    header = planted_header(root, 'core.hpp', 'Planted by lint_test.py: a forbidden include.',
+    header = planted_header(root, 'test/boundaries/core.hpp',
+                            'Planted by lint_test.py: a forbidden include.',
                             '#include <webcpp/forbidden/thing.hpp>')
     expect_alone(lint(root), 'include boundaries', [
         f"{at(root, header, '#include <webcpp/forbidden')} the core must not reach the "
@@ -541,7 +542,7 @@ def test_include_boundaries_quotes(root):
         'must-not-include': ['webcpp/forbidden'],
         'why': 'quotes name a path exactly as angle brackets do',
     }])
-    header = planted_header(root, 'quoted.hpp',
+    header = planted_header(root, 'test/boundaries/quoted.hpp',
                             'Planted by lint_test.py: the same forbidden path, in quotes.',
                             '#include "webcpp/forbidden/thing.hpp"')
     needle = at(root, header, '#include "webcpp/forbidden')
@@ -558,15 +559,60 @@ def test_include_boundaries_except(root):
         'must-not-include': ['webcpp/forbidden'],
         'why': 'the core must not reach the forbidden module',
     }])
-    core = planted_header(root, 'core.hpp', 'Planted by lint_test.py: a forbidden include.',
+    core = planted_header(root, 'test/boundaries/core.hpp',
+                          'Planted by lint_test.py: a forbidden include.',
                           '#include <webcpp/forbidden/thing.hpp>')
-    excepted = planted_header(root, 'excepted.hpp',
+    excepted = planted_header(root, 'test/boundaries/excepted.hpp',
                               'Planted by lint_test.py: excepted, so this include passes.',
                               '#include <webcpp/forbidden/thing.hpp>')
     expect_alone(lint(root), 'include boundaries', [
         f"{at(root, core, '#include <webcpp/forbidden')} the core must not reach the forbidden "
         'module',
     ], spared=(at(root, excepted, '#include <webcpp/forbidden'),))
+
+
+def test_include_boundaries_except_does_not_reach_a_deeper_path(root):
+    prepare(root)
+    # pathlib's PurePath.match is right-anchored: it matches when pattern agrees with path's
+    # trailing segments, whatever comes before them. So nested/test/boundaries/excepted.hpp's
+    # last 3 segments equal the except pattern's 3, and PurePath.match wrongly exempts it;
+    # glob_matches must not do that: a glob is anchored at both ends.
+    boundaries_config(root, [{
+        'headers': ['test/boundaries/*.hpp', 'nested/test/boundaries/*.hpp'],
+        'except': ['test/boundaries/excepted.hpp'],
+        'must-not-include': ['webcpp/forbidden'],
+        'why': 'the core must not reach the forbidden module',
+    }])
+    excepted = planted_header(root, 'test/boundaries/excepted.hpp',
+                              'Planted by lint_test.py: excepted, so this include passes.',
+                              '#include <webcpp/forbidden/thing.hpp>')
+    nested = planted_header(root, 'nested/test/boundaries/excepted.hpp',
+                            'Planted by lint_test.py: a deeper file whose tail matches except; '
+                            'it must not be exempted.',
+                            '#include <webcpp/forbidden/thing.hpp>')
+    expect_alone(lint(root), 'include boundaries', [
+        f"{at(root, nested, '#include <webcpp/forbidden')} the core must not reach the "
+        'forbidden module',
+    ], spared=(at(root, excepted, '#include <webcpp/forbidden'),))
+
+
+def test_include_boundaries_headers_glob_does_not_reach_a_deeper_path(root):
+    prepare(root)
+    # Likewise for headers: nested/test/boundaries/core.hpp's last 3 segments equal the headers
+    # glob too, but it must not be read as covered by it, even though it holds a forbidden
+    # include of its own.
+    boundaries_config(root, [{
+        'headers': ['test/boundaries/core.hpp'],
+        'must-not-include': ['webcpp/forbidden'],
+        'why': 'the core must not reach the forbidden module',
+    }])
+    planted_header(root, 'test/boundaries/core.hpp', 'Planted by lint_test.py: nothing forbidden'
+                   ' here.', '// no include at all')
+    planted_header(root, 'nested/test/boundaries/core.hpp',
+                   'Planted by lint_test.py: a deeper file whose tail matches headers; it is '
+                   'not covered.',
+                   '#include <webcpp/forbidden/thing.hpp>')
+    expect_clean(lint(root))
 
 
 def test_include_boundaries_prefix_catches_bare_header(root):
@@ -576,13 +622,38 @@ def test_include_boundaries_prefix_catches_bare_header(root):
         'must-not-include': ['webcpp/xactor'],
         'why': 'webcpp/xactor is a prefix of webcpp/xactor.hpp, not only of webcpp/xactor/...',
     }])
-    header = planted_header(root, 'no_xactor.hpp',
+    header = planted_header(root, 'test/boundaries/no_xactor.hpp',
                             'Planted by lint_test.py: the prefix also catches the bare header.',
                             '#include <webcpp/xactor.hpp>')
     expect_alone(lint(root), 'include boundaries', [
         f"{at(root, header, '#include <webcpp/xactor.hpp')} webcpp/xactor is a prefix of "
         'webcpp/xactor.hpp, not only of webcpp/xactor/...',
     ])
+
+
+def test_include_boundaries_non_string_list_element(root):
+    prepare(root)
+    config = boundaries_config(root, [{
+        'headers': ['test/boundaries/core.hpp'],
+        'must-not-include': [123, 'webcpp/forbidden'],
+        'why': 'reason',
+    }])
+    planted_header(root, 'test/boundaries/core.hpp',
+                   'Planted by lint_test.py: never read, the boundary itself is malformed.',
+                   '#include <webcpp/forbidden/thing.hpp>')
+    expect_alone(lint(root), 'include boundaries', [
+        f'{config}:1: "headers", "except" and "must-not-include" must be lists of strings, and '
+        '"why" a non-empty string',
+    ])
+
+
+def test_include_boundaries_missing_key(root):
+    prepare(root)
+    config = boundaries_config(root, [{
+        'headers': ['test/boundaries/core.hpp'],
+        'must-not-include': ['webcpp/forbidden'],
+    }])
+    expect_alone(lint(root), 'include boundaries', [f"{config}:1: a boundary is missing 'why'"])
 
 
 def test_include_boundaries_glob_matches_nothing(root):
@@ -773,9 +844,13 @@ CASES = [
     test_include_boundaries_angle_brackets,
     test_include_boundaries_quotes,
     test_include_boundaries_except,
+    test_include_boundaries_except_does_not_reach_a_deeper_path,
+    test_include_boundaries_headers_glob_does_not_reach_a_deeper_path,
     test_include_boundaries_prefix_catches_bare_header,
     test_include_boundaries_glob_matches_nothing,
     test_include_boundaries_unknown_key,
+    test_include_boundaries_missing_key,
+    test_include_boundaries_non_string_list_element,
     test_include_boundaries_malformed_json,
     test_doc_comments,
     test_doc_comment_references,
