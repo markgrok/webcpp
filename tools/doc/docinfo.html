@@ -35,6 +35,12 @@ pre.highlight > code.hljs { background: none; padding: 0; }
   word-wrap: normal;
   overflow-x: auto;
 }
+/* From 1280px, Asciidoctor sets a listing in 1em while the table of contents takes 20em of the
+   width, so a line of 100 columns would scroll in a window narrower than 1345px. Its size from
+   768px, .90625em, keeps such a line whole from 1280px on. */
+@media screen and (min-width: 80em) {
+  .literalblock pre, .listingblock > .content > pre { font-size: .90625em; }
+}
 /* Code in a sentence has a box narrow enough that a comma or a period after it stays close, and
    the same box in a table cell, alone in the cell or not. */
 :not(pre):not([class^=L]) > code { padding: .1em .2ex; }
