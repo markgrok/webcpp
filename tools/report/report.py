@@ -26,9 +26,10 @@ and judges the lanes; pages.py writes the pages.
 Exit 0 when every lane built something (a test or an example) and everything it built passed; 1
 when a test or an example failed, an action outside every test and example failed, or a lane
 built nothing, each named on the standard error; 2, each named and with nothing written, when an
-input cannot be read, when a lane is built with more than one toolset, or when a lane named
-after a target (native, emscripten, wasip2, wasip3) is built for another; 2 also when the pages
-cannot be written.
+input cannot be read, when a lane is built with more than one toolset, when a lane named after
+a target (native, emscripten, wasip2, wasip3) is built for another, or when a lane named after no
+target is not named after the directory b2 built its toolset in (clang-darwin-21, gcc-15); 2
+also when the pages cannot be written.
 """
 
 from __future__ import annotations

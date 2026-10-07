@@ -148,10 +148,12 @@ prints the exact `using boost` line to add.
 
 **Machine-local setup.** `.local/` is git-ignored and holds what one machine
 needs: `.local/user-config.jam`, `.local/wasi-sdk/` and `.local/mrdocs/`. The
-tools look there first: `tools/lint/compile_commands.py` and the tests of the
-build read `.local/user-config.jam` (else the file `$WEBCPP_USER_CONFIG`
-names, else b2's own search), and the doc build finds MrDocs at
-`.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
+tools look there first. `tools/lint/compile_commands.py` runs b2 with
+`.local/user-config.jam`, else with the file `$WEBCPP_USER_CONFIG` names,
+else with b2's own search. The tests of the build and of the tools read
+`.local/user-config.jam`, else the file `$WEBCPP_USER_CONFIG` names, and stop
+with an error when neither exists (`tools/test/harness.py`). The doc build
+finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
 `b2 --user-config=.local/user-config.jam ...`.
 
 ### The build commands
@@ -424,7 +426,7 @@ rule that failed.
 | JSON literals | a raw JSON literal laid out otherwise than chapter 6 says |
 | licence notice | a source file that does not open with the notice (chapter 11) |
 | banned word | the word that the pattern `veru[s]` matches, in any case, in a file, a file name or a commit (its author, committer or message) of any repository |
-| world | a library header that names a clock, a file, a socket, a process, a thread, the environment or entropy without `lint-world:` |
+| no clock, disk or network | a library header that names a clock, a file, a socket, a process, a thread, the environment or entropy without `lint-world:` |
 | raw b2 rules | `run`, `run-fail`, `compile`, `compile-fail`, `exe` or `unit-test` in a library's test or example Jamfile (chapter 9) |
 | Doc Comments | a command webcpp does not allow, a bare `@`, or a colon after a reference (chapter 7) |
 | Pyright | an error or a warning in any Python file, with `pyrightconfig.json` (unused imports and variables are errors) |
@@ -598,9 +600,10 @@ webcpp.reference <name> ;
 ```
 
 Either rule declared in another directory stops the build, naming the rule
-and the directory, and so does a page whose Jamfile declares no reference. `b2 libs/<name>/doc` converts the page with
-Asciidoctor.js into `libs/<name>/doc/html/index.html`, with the reference
-included. The page sets its own title and attributes, as xactor's does:
+and the directory, and so does a page whose Jamfile declares no reference.
+`b2 libs/<name>/doc` converts the page with Asciidoctor.js into
+`libs/<name>/doc/html/index.html`, with the reference included. The page
+sets its own title and attributes, as xactor's does:
 
 ```
 = <name>: <what it is> for {cpp}
@@ -743,10 +746,10 @@ The rules of the doc Jamfiles are in chapter 8: `webcpp.doc <library> :
 <page>.adoc ;`, `webcpp.reference <library> ;` and, for the superproject's
 index, `webcpp.index <page>.adoc ;`.
 
-A library's Jamfiles, as xactor's:
+A library's Jamfiles, as xactor's, each whole after its licence notice.
+`libs/xactor/test/Jamfile`:
 
 ```
-# test/Jamfile
 project : requirements <library>/webcpp/xactor//xactor ;
 
 import webcpp ;
@@ -755,12 +758,18 @@ webcpp.targets native wasip2 wasip3 ;
 
 webcpp.headers-alone xactor : ../include ;
 
+# xactor's guarantees, one program per file, each also built natively as
+# <name>-noexcept, without exceptions and without RTTI. scheduler checks the
+# Asio driver where drivers.hpp declares it, outside WASI.
 webcpp.run scheduler : scheduler_test.cpp ;
+webcpp.run lifecycle : lifecycle_test.cpp ;
 webcpp.run fuel : fuel_test.cpp ;
+webcpp.run create_actor : create_actor_test.cpp ;
 ```
 
+`libs/xactor/example/Jamfile`:
+
 ```
-# example/Jamfile
 project : requirements <library>/webcpp/xactor//xactor ;
 
 import webcpp ;
@@ -768,7 +777,19 @@ import webcpp ;
 webcpp.targets native wasip2 wasip3 ;
 
 webcpp.example xactor_quick_start.cpp ;
-# Native only: Boost.Asio does not compile for WASI with wasi-sdk 34.
+webcpp.example xactor_lifecycle.cpp ;
+webcpp.example xactor_fuel.cpp ;
+webcpp.example xactor_timers.cpp ;
+webcpp.example xactor_drivers.cpp ;
+# A test of actors, with lightweight_test: it prints nothing on its standard
+# output, and returns boost::report_errors().
+webcpp.example xactor_testing.cpp ;
+# A static actor, whose behaviour is a Boost.MSM state machine.
+webcpp.example xactor_msm.cpp ;
+# Native only: Boost.Asio 1.92 does not compile for wasm32-wasip2 or
+# wasm32-wasip3 with wasi-sdk 34 (no ESHUTDOWN, no ::pause, and a signal.h
+# that stops with #error), so drivers.hpp declares asio_driver only outside
+# WASI.
 webcpp.example xactor_asio.cpp : : native ;
 ```
 
@@ -808,11 +829,15 @@ test, those the lane skips included, and the report refuses a file without
 it. With `--out-xml`, b2 exits 0 even when a test fails, so b2's status is
 never the verdict.
 
-**Lane names.** A native lane is named after the directory b2 builds its
-toolset in (`gcc-14`, `gcc-15`, `clang-linux-18`, `clang-darwin-21`,
-`msvc-14.3`); a wasm or emscripten lane after its target (`wasip2`, `wasip3`,
-`emscripten`). The report checks each name against the toolset the file
-records.
+**Lane names.** A lane is named after its target (`native`, `emscripten`,
+`wasip2`, `wasip3`) or after the directory b2 builds its toolset in
+(`gcc-14`, `gcc-15`, `clang-linux-18`, `clang-darwin-21`, `msvc-14.3`). The
+CI names a native lane after its directory, and a wasm or emscripten lane
+after its target. The report checks every name against the toolset directory
+the file records: a lane named after a target must be built for it, and any
+other name must be that directory, or the report exits 2, naming the lane,
+the directory and the two names it may take. A lane that built nothing
+records no directory; its name is not checked, and it fails as empty.
 
 **Lanes in parallel.** Independent lanes run at the same time, each with its
 own build directory, and are read once all have finished:
@@ -842,8 +867,9 @@ or an example: an example counts as something that ran) and everything
 passed; 1 when a test or an example failed, an action outside every test
 failed, or a lane built nothing, each named; 2, with nothing written, when a
 file cannot be read, a lane spans more than one toolset, a lane named after a
-target was built for another, a test lies outside `libs/<name>/`, or a
-library is named `index`.
+target was built for another, a lane named after no target is not named after
+its toolset directory, a test lies outside `libs/<name>/`, or a library is
+named `index`.
 
 ### CI
 
@@ -873,6 +899,9 @@ superproject's reusable workflow `.github/workflows/library.yml`
   reads every commit;
 - a `report` job merges every lane's XML with `tools/report/report.py`; its
   exit status is the CI's verdict.
+
+actionlint checks every workflow, as a job of the CI ported from xstate-cpp's,
+and runs clean on `.github/workflows/` before a workflow change is committed.
 
 **The Boost action,** `tools/ci/actions/boost/`, downloads
 `boost_1_92_0.tar.bz2` from `https://archives.boost.io/release/1.92.0/source/`
@@ -917,7 +946,7 @@ only branch.
     `tools/example/run_example_test.py`, each run as
     `python3 <path>`. They build in scratch copies under `$TMPDIR`, whose
     path holds a space, so they run beside a build of the tree;
-  - CI green (Pending, Task 11).
+  - CI green: Pending (Task 11).
 - **Fix the lint, the failures and the flakiness you meet,** even when they
   are not yours; report what you cannot fix.
 - **A change of the build or of a tool** has a test that fails without it:

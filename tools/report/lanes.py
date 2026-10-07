@@ -12,7 +12,8 @@ directory of libs/ that holds its Jamfile. b2 runs from the superproject's root,
 command does, so <directory> in the file is that root. A test is found by --dump-tests, which
 lists it whether or not the lane built it; an example by the <name>.output that webcpp.example
 compares. A lane is one toolset: the directory b2 names after it, in which every program of the
-lane is built.
+lane is built. A lane is named after the target that toolset builds for (native, emscripten,
+wasip2, wasip3), or after that directory (clang-darwin-21, gcc-15).
 
 The paths in a file are those of the machine that ran the lane, a CI runner as often as not, and
 are never opened: they are matched as text, a backslash read as a slash.
@@ -263,7 +264,7 @@ def closure(graph: dict[tuple[str, str], list[str]], target: str, directory: str
 def read_lane(name: str, path: Path) -> Lane:
     """The lane name, from the file b2 wrote at path. Raises InputError when the file cannot be
     read, or does not hold what the lane's name says: one toolset, for the target the name names
-    when it names one."""
+    when it names one, and otherwise the toolset whose directory the name is."""
     root = parse(path)
     directory = text_of(root, 'directory')
     lane = Lane(name)
@@ -326,6 +327,8 @@ def read_lane(name: str, path: Path) -> Lane:
         for owned in closure(graph, target, built_in):
             owners.setdefault(owned, []).append(build)
 
+    # A lane that built nothing has no directory, only the toolset its command line names.
+    from_directory = bool(toolsets)
     if not toolsets:
         toolsets = {toolset for named in COMMAND_TOOLSET.findall(text_of(root, 'command'))
                     for toolset in named.split(',') if toolset}
@@ -339,6 +342,13 @@ def read_lane(name: str, path: Path) -> Lane:
         if built_for != named_target:
             raise InputError(f'{path}: the lane {name} is built with {lane.toolset}, which '
                              f'builds for {built_for}')
+    # Any other name is the directory's: the name a command line gives a toolset (clang) is not
+    # the directory b2 builds it in (clang-darwin-21), so a lane that built nothing is not
+    # checked, and fails as empty.
+    elif from_directory and lane.toolset is not None and name.lower() != lane.toolset.lower():
+        raise InputError(f'{path}: the lane {name} is built with {lane.toolset}; name it '
+                         f'{lane.toolset}, after the directory b2 builds its toolset in, or '
+                         f'{target_of(lane.toolset)}, after its target')
 
     for element in root.findall('action'):
         try:

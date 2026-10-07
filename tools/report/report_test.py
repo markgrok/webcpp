@@ -443,11 +443,30 @@ def test_a_lane_is_what_its_name_says(root: Path) -> None:
     assert result.returncode == 2, outcome(result)
     assert 'built with clang-darwin-21, gcc-15; a lane is one toolset' in result.stderr, (
         outcome(result))
-    # A name that is no target's says nothing to check, and the header shows the toolset.
+    # A lane named after no target is named after the directory b2 built its toolset in, so that
+    # a native lane's label cannot claim a compiler it was not built with.
+    for name in ('gcc-99', 'clang-21', 'clang'):
+        out = root / f'out-{name}'
+        result = report(out, (name, sample('native-pass')))
+        assert result.returncode == 2, (name, outcome(result))
+        named = (f'the lane {name} is built with clang-darwin-21; name it clang-darwin-21, '
+                 'after the directory b2 builds its toolset in, or native, after its target')
+        assert named in result.stderr, (name, outcome(result))
+        assert not out.exists(), name
     out = root / 'out-named'
-    result = report(out, ('clang-21', sample('native-pass')))
+    result = report(out, ('clang-darwin-21', sample('native-pass')),
+                    ('clang-darwin-wasip2', sample('wasip2-pass')))
     assert result.returncode == 0, outcome(result)
-    assert matrix(out / 'index.html').columns[1].text == 'clang-21clang-darwin-21'
+    columns = matrix(out / 'index.html').columns
+    assert columns[1].text == 'clang-darwin-21clang-darwin-21', columns
+    assert columns[2].text == 'clang-darwin-wasip2clang-darwin-wasip2', columns
+    # A lane that built nothing has no directory to check its name against: the toolset its
+    # command line names (clang-wasip2) is not the directory's name (clang-darwin-wasip2). It
+    # fails as empty.
+    result = report(root / 'out-empty', ('clang-darwin-wasip2', sample('wasip2-empty')))
+    assert result.returncode == 1, outcome(result)
+    assert 'clang-darwin-wasip2: the lane built no test and no example' in result.stderr, (
+        outcome(result))
 
 
 def test_a_failure_outside_every_test_fails_the_lane(root: Path) -> None:
