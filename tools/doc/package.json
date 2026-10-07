@@ -1,0 +1,12 @@
+{
+  "name": "webcpp-doc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Builds the webcpp libraries' documentation pages with Asciidoctor.js.",
+  "dependencies": {
+    "@asciidoctor/core": "4.1.0",
+    "asciidoctor": "4.1.0",
+    "highlight.js": "11.12.0"
+  }
+}

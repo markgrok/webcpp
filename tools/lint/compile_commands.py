@@ -25,9 +25,10 @@ entry of <out>, once per distinct command. Three kinds of line are left out:
 The aggregate translation unit of a library includes every public header, webcpp/<name>.hpp and
 each .hpp under webcpp/<name>/, the headers webcpp.headers-alone checks. It is compiled with the
 command of the library's headers-alone translation units, which are exactly a public header's:
-a header that no test includes is still analysed, and a tool that reads the library's interface
-(MrDocs) reads one translation unit. It is written as bin/aggregate/<name>.cpp, inside the tree,
-since clang-tidy takes its configuration from the .clang-tidy nearest a source file.
+a header that no test includes is still analysed. It is written as bin/aggregate/<name>.cpp,
+inside the tree, since clang-tidy takes its configuration from the .clang-tidy nearest a source
+file. The reference of tools/doc/reference.py writes the same translation unit, with
+write_aggregate, for MrDocs to read the library's interface through.
 
 b2 runs with root/.local/user-config.jam when it exists, else with $WEBCPP_USER_CONFIG when it
 is set, else with its own search; and without CPATH, CPLUS_INCLUDE_PATH and C_INCLUDE_PATH,
@@ -122,20 +123,25 @@ def public_headers(root: str, library: str) -> list[str]:
     return sorted(header.relative_to(include).as_posix() for header in headers if header.is_file())
 
 
-def aggregate(root: str, library: str, alone: list[str]) -> dict[str, object]:
-    """The entry of the library's aggregate translation unit, after writing it.
+def write_aggregate(root: str, library: str, source: str) -> None:
+    """Writes the library's aggregate translation unit to the file source.
 
-    Lint shards running at once write the same text: each writes a file of its own, and renames
-    it over the aggregate."""
-    directory = os.path.join(root, BUILD_DIR, 'aggregate')
-    os.makedirs(directory, exist_ok=True)
-    source = os.path.join(directory, f'{library}.cpp')
+    Runs at once, of lint shards or of a lint and a reference, write the same text: each writes a
+    file of its own, and renames it over the aggregate."""
     includes = ''.join(f'#include <{header}>\n' for header in public_headers(root, library))
     written = f'{source}.{os.getpid()}'
     with open(written, 'w') as file:
         file.write(f'// Every public header of {library}, written by compile_commands.py.\n'
                    f'{includes}')
     os.replace(written, source)
+
+
+def aggregate(root: str, library: str, alone: list[str]) -> dict[str, object]:
+    """The entry of the library's aggregate translation unit, after writing it."""
+    directory = os.path.join(root, BUILD_DIR, 'aggregate')
+    os.makedirs(directory, exist_ok=True)
+    source = os.path.join(directory, f'{library}.cpp')
+    write_aggregate(root, library, source)
     arguments = alone[:-1] + [source]
     arguments[arguments.index('-o') + 1] = source.removesuffix('.cpp') + '.o'
     return {'directory': root, 'file': source, 'arguments': arguments}

@@ -1,0 +1,45 @@
+// Copyright (c) 2026 WebCpp.org
+//
+// Distributed under the Boost Software License, Version 1.0. (See
+// accompanying file LICENSE_1_0.txt or copy at
+// https://www.boost.org/LICENSE_1_0.txt)
+
+= demo: the fixture library
+:toc: left
+:toclevels: 2
+:idprefix:
+:sectanchors:
+
+demo is the smallest library the superproject builds, which the tests of its
+build place in `libs/demo` of a scratch superproject, a path with a space in
+it.
+
+[#quick-start]
+== Quick start
+
+A program asks for the answer:
+
+[source]
+----
+include::{examples}/hello.cpp[lines=7..-1]
+----
+
+It prints:
+
+[listing]
+----
+include::{examples}/hello.expected[]
+----
+
+A program that throws and catches prints what it caught, where exceptions are
+on:
+
+[listing]
+----
+include::{examples}/catches.expected[]
+----
+
+[#reference]
+== Reference
+
+include::{reference}[leveloffset=+1]

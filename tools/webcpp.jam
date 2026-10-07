@@ -16,6 +16,14 @@
 #     webcpp.example source : requirements * : targets * ;
 #     webcpp.headers-alone library : include-root ;
 #
+# and the rules of the documentation, tools/doc/doc.jam's, with which a
+# library's doc Jamfile declares its page and its reference, and the
+# superproject's doc/Jamfile its index page:
+#
+#     webcpp.doc library : page ;
+#     webcpp.reference library ;
+#     webcpp.index page ;
+#
 # A target is what a program is built for: emscripten (b2's toolset
 # emscripten), wasip2 and wasip3 (the clang toolsets of user-config.jam
 # whose versions are wasip2 and wasip3), and native (any other toolset). A
@@ -53,11 +61,18 @@ feature.feature webcpp-include : : free incidental ;
 
 if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 
+# This directory, absolute.
+.tools = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
+
 # The example runner, beside this file, as an absolute native path: the
 # action that runs it starts in the directory b2 was started in.
-.runner = [ path.native [ path.join
-    [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ]
-    example/run_example.py ] ] ;
+.runner = [ path.native [ path.join $(.tools) example/run_example.py ] ] ;
+
+# The documentation's rules, loaded as the module webcpp-doc: b2 has a
+# module named doc of its own, the one of --help, which an import of
+# tools/doc/doc would find in its place.
+modules.load webcpp-doc : doc.jam : [ path.native [ path.join $(.tools) doc ] ] ;
+import webcpp-doc ;
 
 .nl = "\n" ;
 
@@ -303,4 +318,25 @@ rule declared ( directories * )
         project.load $(jamfile:D) ;
     }
     return [ sequence.unique $(.declared) ] ;
+}
+
+# A library's page, libs/<library>/doc/html/index.html, from page and the
+# sections it includes, with the library's reference (tools/doc/doc.jam).
+rule doc ( library : page )
+{
+    webcpp-doc.doc $(library) : $(page) ;
+}
+
+# The target reference of a library's doc project, its API reference from
+# MrDocs, strict (tools/doc/doc.jam).
+rule reference ( library )
+{
+    webcpp-doc.reference $(library) ;
+}
+
+# The superproject's index page, doc/html/index.html, which lists every
+# library (tools/doc/doc.jam).
+rule index ( page )
+{
+    webcpp-doc.index $(page) ;
 }

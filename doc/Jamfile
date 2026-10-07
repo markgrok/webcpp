@@ -1,0 +1,13 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The index page, doc/html/index.html, which lists every library from its
+# meta/libraries.json and links to its page: `b2 doc` builds it with every
+# library's page.
+
+import webcpp ;
+
+webcpp.index index.adoc ;

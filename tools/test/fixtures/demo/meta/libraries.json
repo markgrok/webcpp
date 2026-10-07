@@ -1,0 +1,10 @@
+{
+    "key": "demo",
+    "name": "demo",
+    "authors": ["WebCpp.org"],
+    "description": "The smallest library the superproject builds, which the tests of its build place in libs/demo.",
+    "category": ["Testing"],
+    "maintainers": ["WebCpp.org"],
+    "cxxstd": "20",
+    "port-of": null
+}

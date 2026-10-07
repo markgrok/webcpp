@@ -1,0 +1,47 @@
+<!--
+Copyright (c) 2026 WebCpp.org
+
+Distributed under the Boost Software License, Version 1.0. (See
+accompanying file LICENSE_1_0.txt or copy at
+https://www.boost.org/LICENSE_1_0.txt)
+
+The style every page adds to Asciidoctor's, in its head (docinfo=shared).
+-->
+<style>
+/* Room for a line of the examples, which clang-format keeps within 100 columns, without scrolling. */
+#header, #content, #footnotes, #footer { max-width: 66em; }
+/* The block's own background shows behind the highlighted code. */
+.listingblock > .content > pre.highlight { background: #f7f7f8; }
+pre.highlight > code.hljs { background: none; padding: 0; }
+/* Code inside a link reads as part of the link, with no box of its own to break its underline. */
+#content a > code { padding: 0; background: none; color: inherit; }
+/* A line of code stays whole and scrolls, as it reads in an editor. */
+.listingblock pre, .literalblock pre {
+  white-space: pre;
+  word-wrap: normal;
+  overflow-x: auto;
+}
+/* Code in a sentence has a box narrow enough that a comma or a period after it stays close, and
+   the same box in a table cell, alone in the cell or not. */
+:not(pre):not([class^=L]) > code { padding: .1em .2ex; }
+#content p.tableblock > code:only-child { background: #f7f7f8; padding: .1em .2ex; }
+/* Inline code breaks between its words (postprocess.mjs), never inside one, at a hyphen as
+   `--recursive` would or elsewhere, on a screen wide enough for its longest word. In a table on
+   a narrower screen it breaks inside a word only where the word alone is wider than its column
+   can be, so a column keeps room for a name of the reference, `answer`, whole; a table that is
+   still wider than a phone scrolls in its own box (below). */
+@media screen and (min-width: 56.25em) {
+  :not(pre):not([class^=L]) > code { white-space: nowrap; }
+  :not(pre):not([class^=L]) > code.words { white-space: normal; }
+  code.words > span { white-space: nowrap; }
+}
+@media screen and (max-width: 74.9375em) {
+  table.tableblock :not(pre):not([class^=L]) > code,
+  table.tableblock code.words > span { white-space: normal; overflow-wrap: break-word; }
+}
+/* On a phone, a table wider than the page scrolls in its own box, as a listing does; the box fits
+   the table's rows, so a narrower table keeps its frame around them. */
+@media screen and (max-width: 56.25em) {
+  table.tableblock { display: block; overflow-x: auto; width: fit-content; max-width: 100%; }
+}
+</style>

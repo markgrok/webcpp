@@ -1,0 +1,19 @@
+// Copyright (c) 2026 WebCpp.org
+//
+// Distributed under the Boost Software License, Version 1.0. (See
+// accompanying file LICENSE_1_0.txt or copy at
+// https://www.boost.org/LICENSE_1_0.txt)
+
+= webcpp
+:idprefix:
+:sectanchors:
+
+webcpp is a collection of header-only {cpp}20 libraries that bring to {cpp}
+the libraries other languages use for the web. Each is built and tested with
+b2, natively and for WebAssembly, and documented on a page of its own, with
+its API reference.
+
+[#libraries]
+== Libraries
+
+include::{libraries}[]

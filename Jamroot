@@ -266,6 +266,9 @@ rule projects ( pattern )
 
 path-constant WEBCPP_ROOT : . ;
 
+# The documentation toolchain's own targets, tools/doc/Jamfile.
+use-project /webcpp/doc-tools : tools/doc ;
+
 # The files under directory, at any depth, without its directories, which
 # glob-tree-ex returns too, and without hidden files such as .DS_Store.
 rule files-under ( directory )

@@ -1,0 +1,15 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The documentation toolchain's own target, /webcpp/doc-tools//node-modules,
+# which every page needs: Asciidoctor.js and highlight.js, installed by npm
+# ci into node_modules from package-lock.json, again when it changes. It needs
+# no Boost, whose check the Jamroot's requirements would run.
+
+make .package-lock.json : package-lock.json : @webcpp-doc%npm-ci
+  : <location>node_modules <webcpp-boost-check>off ;
+alias node-modules : .package-lock.json : <webcpp-boost-check>off ;
+explicit .package-lock.json node-modules ;

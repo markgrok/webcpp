@@ -1,0 +1,65 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The MrDocs settings every library's reference is written with, which
+# tools/doc/reference.py fills in for a library: @LIBRARY@ is its name,
+# @MACROS@ the prefix of its macros, and the quoted @...@ are paths of its
+# checkout and of the reference's build directory. A library's
+# doc/mrdocs.yml replaces any of these keys, or adds others, but those that
+# say where MrDocs reads and writes, what it writes, and how strict it is.
+
+# What MrDocs reads: one translation unit that includes every public header
+# of the library, compiled as compile_commands.json says, in which only the
+# library's headers and its namespace are documented. A detail namespace, at
+# any depth, is the library's own business: MrDocs shows no page for it and
+# asks no Doc Comment of it, and doc_comments.py asks each symbol in it for a
+# brief.
+source-root: @SOURCE_ROOT@
+compilation-database: @DATABASE@
+input:
+  - @INPUT@
+file-patterns:
+  - '*.hpp'
+include-symbols:
+  - 'webcpp::@LIBRARY@::**'
+implementation-defined:
+  - 'webcpp::**::detail'
+# Every macro of the library is extracted, so that an undocumented one is
+# reported; the include guards, WEBCPP_<NAME>_<HEADER>_HPP, are not macros
+# of its interface.
+extract-all-macros: true
+include-macros:
+  - '@MACROS@*'
+exclude-macros:
+  - 'WEBCPP_*_HPP'
+
+# What MrDocs writes: one AsciiDoc file without a document title, which the
+# library's page includes with leveloffset=+1, and whose links to the source
+# go to the library's repository.
+generator: adoc
+multipage: false
+embedded: true
+output: @OUTPUT@
+base-url: https://github.com/webcpporg/@LIBRARY@/blob/main/
+
+# Strict: any warning fails the reference. With their defaults,
+# auto-function-metadata documents a parameter with the brief of its type and
+# auto-relates counts a class with related free functions as documented,
+# which hide what is not documented.
+warnings: true
+warn-if-undocumented: true
+warn-if-doc-error: true
+warn-no-paramdoc: true
+warn-no-brief: true
+warn-if-undoc-enum-val: true
+warn-broken-ref: true
+warn-unknown-config-keys: true
+warn-as-error: true
+auto-function-metadata: false
+auto-relates: false
+error-on-empty-corpus: true
+# Only what is wrong is printed.
+log-level: warn

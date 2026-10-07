@@ -1,0 +1,331 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The rules of the documentation, which tools/webcpp.jam offers a library's
+# doc/Jamfile, and the superproject's, as webcpp.doc, webcpp.reference and
+# webcpp.index:
+#
+#     import webcpp ;
+#     webcpp.doc <library> : <page>.adoc ;
+#     webcpp.reference <library> ;
+#
+# webcpp.reference declares the target reference of the library's doc
+# project: tools/doc/reference.py writes the library's API reference with
+# MrDocs, strict, from one translation unit of every public header, and
+# checks with doc_comments.py what MrDocs does not. webcpp.doc converts the
+# page with Asciidoctor.js into libs/<library>/doc/html/index.html, the
+# reference included where the page says include::{reference}[...], once
+# doc-check.py finds the page whole (--complete), and installs it once the
+# converted page passes doc-check.py's check of a rendered page. webcpp.index
+# does the same for the superproject's index page, which includes the table
+# libraries.py writes from every library's meta/libraries.json at
+# {libraries}.
+#
+# Every page is converted with highlighter.mjs and postprocess.mjs, the
+# style of docinfo.html, and these attributes, which a page need not set:
+# {examples}, the library's example directory, source-highlighter,
+# source-language cpp, docinfo, webfonts! (no font from the network),
+# reproducible (no date) and nofooter (a footer would hold nothing else). A page, its reference and the index's table are
+# made again on every build: what they read, the sections, the headers and
+# every library's description, is more than b2 tracks.
+#
+# MrDocs is -sMRDOCS=<path>, else .local/mrdocs/bin/mrdocs, else mrdocs on
+# PATH; clang++, which reads the headers for doc_comments.py, is
+# -sCLANG=<path>, else clang++ on PATH. When one is not there, the build
+# stops, naming it and where it was looked for. Node runs Asciidoctor.js,
+# which npm ci installs into tools/doc/node_modules from package-lock.json.
+#
+# This file is loaded as the module webcpp-doc: b2 has a module named doc of
+# its own, the one of --help.
+import alias ;
+import common ;
+import errors ;
+import feature ;
+import make ;
+import modules ;
+import notfile ;
+import os ;
+import path ;
+import project ;
+import stage ;
+
+# This directory, and the superproject's, absolute: an action starts in the
+# directory b2 was started in.
+.here = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
+.root = [ path.parent [ path.parent $(.here) ] ] ;
+
+if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
+
+# The page a target belongs to: the library's name, or index for the
+# superproject's index page (a name no library takes). Free, so that it
+# plays no part in a target's build directory.
+feature.feature webcpp-doc-page : : free incidental ;
+
+# A word made of one space, so that an action can repeat an option before
+# each element of a list: -a$(_)"$(ATTRIBUTES)" is -a "x" -a "y".
+_ = " " ;
+
+# Each of paths, as the system writes it.
+local rule natives ( paths * )
+{
+    local found ;
+    for local path in $(paths)
+    {
+        found += [ path.native $(path) ] ;
+    }
+    return $(found) ;
+}
+
+# The project of the Jamfile being loaded, which must be the directory
+# expected, relative to the superproject: libs/<library>/doc, or doc.
+local rule here ( rule-name : expected )
+{
+    local current = [ project.current ] ;
+    local jamfile = [ $(current).project-module ] ;
+    local location = [ path.root [ project.attribute $(jamfile) location ] [ path.pwd ] ] ;
+    if $(location) != [ path.join $(.root) $(expected) ]
+    {
+        local native = [ path.native $(location) ] ;
+        errors.user-error "webcpp.$(rule-name) is declared in $(native), which is not"
+            "$(expected)" ;
+    }
+    return $(current) ;
+}
+
+# Declares the page id, converted from source with the file the target
+# included-target writes included at the attribute {included}; the check of
+# it, which runs first; the check of what it rendered; and its installation
+# into the directory html beside the Jamfile.
+local rule page ( id : source : included-target : included : current )
+{
+    if $(.source.$(id))
+    {
+        errors.user-error "$(id) has a page already; a library has one, and so does the"
+            "superproject (index)" ;
+    }
+    .source.$(id) = [ path.root [ path.make $(source) ] [ path.root
+        [ project.attribute [ $(current).project-module ] location ] [ path.pwd ] ] ] ;
+    .included.$(id) = $(included) ;
+    .sections.$(id) = [ path.glob-tree $(.source.$(id):D) : *.adoc : html ] ;
+    notfile doc-check : @webcpp-doc%doc-check : : <webcpp-doc-page>$(id) ;
+    make index.html : $(source) $(included-target) : @webcpp-doc%convert
+      : <webcpp-doc-page>$(id)
+        <dependency>doc-check
+        <dependency>/webcpp/doc-tools//node-modules
+        <conditional>@webcpp-doc%needs-reference ;
+    $(current).mark-target-as-always index.html ;
+    notfile rendered-check : @webcpp-doc%rendered-check : index.html ;
+    install html : index.html : <location>html <dependency>rendered-check ;
+    for local name in doc-check index.html rendered-check
+    {
+        $(current).mark-target-as-explicit $(name) ;
+    }
+}
+
+# webcpp.doc <library> : <page>.adoc ; a library's page, from its doc
+# Jamfile, which declares webcpp.reference <library> too.
+rule doc ( library : source )
+{
+    local current = [ here doc : libs/$(library)/doc ] ;
+    page $(library) : $(source) : reference.adoc : reference : $(current) ;
+}
+
+# webcpp.reference <library> ; the library's API reference, the target
+# reference of its doc project.
+rule reference ( library )
+{
+    local current = [ here reference : libs/$(library)/doc ] ;
+    .reference.$(library) = true ;
+    make reference.adoc : : @webcpp-doc%write-reference
+      : <library>/webcpp/$(library)//$(library) <webcpp-doc-page>$(library) ;
+    $(current).mark-target-as-always reference.adoc ;
+    alias reference : reference.adoc ;
+}
+
+# webcpp.index <page>.adoc ; the superproject's index page, from doc/Jamfile.
+rule index ( source )
+{
+    local current = [ here index : doc ] ;
+    make libraries.adoc : : @webcpp-doc%write-libraries : <webcpp-doc-page>index ;
+    $(current).mark-target-as-always libraries.adoc ;
+    $(current).mark-target-as-explicit libraries.adoc ;
+    page index : $(source) : libraries.adoc : libraries : $(current) ;
+}
+
+# A library's page needs its reference: the conditional stops the build,
+# naming what is missing, before b2 looks for a target that is not there.
+rule needs-reference ( properties * )
+{
+    local id = [ feature.get-values <webcpp-doc-page> : $(properties) ] ;
+    if $(id) != index && ! $(.reference.$(id))
+    {
+        errors.user-error "webcpp.doc $(id): the page includes the library's reference,"
+            "and libs/$(id)/doc/Jamfile declares none; add webcpp.reference $(id) ;" ;
+    }
+}
+
+# A tool given with -s<variable>=<path>, made absolute, which must be a
+# file, or nothing when the variable is not given.
+local rule given ( variable )
+{
+    local value = [ modules.peek : $(variable) ] ;
+    if $(value)
+    {
+        local tool = [ path.native [ path.root [ path.make $(value) ] [ path.pwd ] ] ] ;
+        if ! [ CHECK_IF_FILE $(tool) ]
+        {
+            errors.user-error "-s$(variable)=$(value) is not a file" ;
+        }
+        return $(tool) ;
+    }
+}
+
+# MrDocs: -sMRDOCS=<path>, else .local/mrdocs/bin/mrdocs, else on PATH.
+local rule mrdocs ( )
+{
+    local tool = [ given MRDOCS ] ;
+    local installed = [ path.native $(.root)/.local/mrdocs/bin/mrdocs ] ;
+    if ! $(tool) && [ CHECK_IF_FILE $(installed) ]
+    {
+        tool = $(installed) ;
+    }
+    tool ?= [ common.find-tool mrdocs ] ;
+    if ! $(tool)
+    {
+        errors.user-error "MrDocs, which writes a library's API reference, was not found:"
+            "no -sMRDOCS=<path> was given, there is none at $(installed), and none on"
+            "PATH. Install MrDocs 2026.9.29 there or on PATH, or give its path with"
+            "-sMRDOCS=<path>." ;
+    }
+    return $(tool) ;
+}
+
+# clang++, which dumps the declarations doc_comments.py reads: -sCLANG=<path>,
+# else on PATH.
+local rule clang ( )
+{
+    local tool = [ given CLANG ] ;
+    tool ?= [ common.find-tool clang++ ] ;
+    if ! $(tool)
+    {
+        errors.user-error "clang++, which reads a library's headers for"
+            "tools/doc/doc_comments.py, was not found: no -sCLANG=<path> was given, and"
+            "there is none on PATH. Install clang, or give the path of its clang++ with"
+            "-sCLANG=<path>." ;
+    }
+    return $(tool) ;
+}
+
+rule write-reference ( targets * : sources * : properties * )
+{
+    MRDOCS on $(targets) = [ mrdocs ] ;
+    CLANG on $(targets) = [ clang ] ;
+    PYTHON on $(targets) = $(.python) ;
+    SCRIPT on $(targets) = [ path.native $(.here)/reference.py ] ;
+    ROOT on $(targets) = [ path.native $(.root) ] ;
+    LIBRARY on $(targets) = [ feature.get-values <webcpp-doc-page> : $(properties) ] ;
+    STD on $(targets) = [ feature.get-values <cxxstd> : $(properties) ] ;
+    INCLUDES on $(targets) = [ feature.get-values <include> : $(properties) ] ;
+    DEFINES on $(targets) = [ feature.get-values <define> : $(properties) ] ;
+}
+
+actions write-reference
+{
+    "$(PYTHON)" "$(SCRIPT)" --library "$(LIBRARY)" --root "$(ROOT)" --output "$(<)" --mrdocs "$(MRDOCS)" --clang "$(CLANG)" --std "$(STD)" --include$(_)"$(INCLUDES)" --define$(_)"$(DEFINES)"
+}
+
+rule write-libraries ( targets * : sources * : properties * )
+{
+    PYTHON on $(targets) = $(.python) ;
+    SCRIPT on $(targets) = [ path.native $(.here)/libraries.py ] ;
+    ROOT on $(targets) = [ path.native $(.root) ] ;
+    PAGES on $(targets) = [ path.native $(.root)/doc/html ] ;
+}
+
+actions write-libraries
+{
+    "$(PYTHON)" "$(SCRIPT)" --root "$(ROOT)" --pages "$(PAGES)" --output "$(<)"
+}
+
+# doc-check.py on a library's page, whole, and on the files of its
+# repository; on the index page, alone.
+rule doc-check ( targets * : sources * : properties * )
+{
+    local id = [ feature.get-values <webcpp-doc-page> : $(properties) ] ;
+    PYTHON on $(targets) = $(.python) ;
+    SCRIPT on $(targets) = [ path.native $(.here)/doc-check.py ] ;
+    PAGE on $(targets) = [ path.native $(.source.$(id)) ] ;
+    SECTIONS on $(targets) = [ natives $(.sections.$(id)) ] ;
+    # Each empty for the index page, which leaves its option out.
+    COMPLETE on $(targets) = ;
+    EXAMPLES on $(targets) = ;
+    REPOSITORY on $(targets) = ;
+    README on $(targets) = ;
+    if $(id) != index
+    {
+        local library = $(.root)/libs/$(id) ;
+        COMPLETE on $(targets) = --complete ;
+        EXAMPLES on $(targets) = [ path.native $(library)/example ] ;
+        REPOSITORY on $(targets) = [ path.native $(library) ] ;
+        README on $(targets) = [ path.native $(library)/README.md ] ;
+    }
+}
+
+actions doc-check
+{
+    "$(PYTHON)" "$(SCRIPT)" --page "$(PAGE)" $(COMPLETE) --examples$(_)"$(EXAMPLES)" --repository$(_)"$(REPOSITORY)" --readme$(_)"$(README)" "$(SECTIONS)"
+}
+
+rule convert ( targets * : sources * : properties * )
+{
+    local id = [ feature.get-values <webcpp-doc-page> : $(properties) ] ;
+    ASCIIDOCTOR on $(targets) = [ path.native $(.here)/node_modules/asciidoctor/bin/asciidoctor ] ;
+    EXTENSIONS on $(targets) = [ natives $(.here)/highlighter.mjs $(.here)/postprocess.mjs ] ;
+    INCLUDED on $(targets) = $(.included.$(id)) ;
+    # The included file, rooted here: Asciidoctor resolves a relative include
+    # against the page's own directory.
+    CWD on $(targets) = [ path.native [ path.pwd ] ] ;
+    local docinfo = [ path.native $(.here) ] ;
+    local attributes = source-highlighter=hljs-static source-language=cpp docinfo=shared
+        docinfodir=$(docinfo) webfonts! reproducible nofooter ;
+    if $(id) != index
+    {
+        local examples = [ path.native $(.root)/libs/$(id)/example ] ;
+        attributes += examples=$(examples) ;
+    }
+    ATTRIBUTES on $(targets) = $(attributes) ;
+}
+
+# Every message of Asciidoctor's fails the page: a warning, such as an
+# include that is not there, and the information, given with -v, of a
+# reference to no section.
+actions convert
+{
+    node "$(ASCIIDOCTOR)" -r$(_)"$(EXTENSIONS)" -v --failure-level INFO -S unsafe -a$(_)"$(ATTRIBUTES)" -a "$(INCLUDED)=$(>[2]:R=$(CWD))" -o "$(<)" "$(>[1])"
+}
+
+rule rendered-check ( targets * : sources * : properties * )
+{
+    PYTHON on $(targets) = $(.python) ;
+    SCRIPT on $(targets) = [ path.native $(.here)/doc-check.py ] ;
+}
+
+actions rendered-check
+{
+    "$(PYTHON)" "$(SCRIPT)" --rendered "$(>)"
+}
+
+rule npm-ci ( targets * : sources * : properties * )
+{
+    HERE on $(targets) = [ path.native $(.here) ] ;
+}
+
+# Installs the packages package-lock.json pins into node_modules, from npm's
+# cache when it holds them.
+actions npm-ci
+{
+    cd "$(HERE)" && npm ci --no-audit --no-fund --prefer-offline --loglevel=error
+}
