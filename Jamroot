@@ -1,0 +1,257 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# webcpp, the superproject: it finds the installed Boost and checks its
+# version, sets what every library shares, registers each library of libs/
+# as /webcpp/<name>, and declares the aggregates test, example, doc and
+# install.
+import boost ;
+import errors ;
+import feature ;
+import modules ;
+import numbers ;
+import os ;
+import package ;
+import path ;
+import type ;
+
+# A shell with CPATH (Homebrew sets it) puts its headers before the
+# configured Boost, and the compiler would use them without a word.
+for local variable in CPATH CPLUS_INCLUDE_PATH C_INCLUDE_PATH
+{
+    if [ os.environ $(variable) ]
+    {
+        errors.user-error "$(variable) is set; unset it, or the compiler reads"
+            "headers from it before the configured Boost" ;
+    }
+}
+
+# wasm32-wasip2 is no system b2 knows. It is registered after the toolsets
+# of user-config.jam have loaded gcc.jam, which computes as it loads the
+# systems that get Unix link options (--start-group, -Bstatic, rpath), which
+# wasm-component-ld rejects.
+if ! wasi in [ feature.values <target-os> ]
+{
+    feature.extend target-os : wasi ;
+}
+type.set-generated-target-suffix EXE : <target-os>wasi : wasm ;
+
+# /boost is the `using boost` of user-config.jam, else the Boost tree that
+# BOOST_ROOT names, else Boost on the compiler's default include path (b2's
+# contrib/boost.jam).
+boost.use-project ;
+
+# The directory that holds boost/version.hpp for /boost//headers, as
+# boost.use-project chose it: the <include> of `using boost`, else its
+# <root>, else BOOST_ROOT, both a Boost tree. Nothing when Boost is left to
+# the compiler's default include path. It is read from the boost module,
+# where use-project keeps it: the /boost project of a tree is loaded only
+# after this Jamroot.
+rule boost-include ( )
+{
+    local version = [ modules.peek boost : .initialized ] ;
+    local options = [ modules.peek boost : .boost.$(version) ] ;
+    local directory = [ $(options).get <include> ] ;
+    directory ?= [ $(options).get <root> ] ;
+    directory ?= [ modules.peek : BOOST_ROOT ] ;
+    return $(directory) ;
+}
+
+.boost-include = [ boost-include ] ;
+
+# The version the boost/version.hpp under directory defines, as its
+# BOOST_VERSION and as a name: 108000 1.80.0. Nothing when there is no such
+# file, or when its version cannot be read.
+rule boost-version ( directory )
+{
+    local header = $(directory)/boost/version.hpp ;
+    if [ path.exists $(header) ]
+    {
+        local line = [ SHELL "grep \"^#define BOOST_VERSION \" \"$(header)\"" ] ;
+        local digits = [ MATCH "BOOST_VERSION +(([0-9]+)([0-9][0-9][0-9])([0-9][0-9]))" : $(line) ] ;
+        if $(digits)
+        {
+            local minor = [ MATCH "^0*([0-9]+)$" : $(digits[3]) ] ;
+            local patch = [ MATCH "^0*([0-9]+)$" : $(digits[4]) ] ;
+            return $(digits[1]) $(digits[2]).$(minor).$(patch) ;
+        }
+    }
+}
+
+# Where package managers install Boost, in the order the advice of
+# boost-unusable prefers them.
+.boost-prefixes = /opt/homebrew/opt/boost /usr/local/opt/boost /opt/local /usr/local /usr ;
+
+# The first of .boost-prefixes that holds Boost 1.92 or newer, and that
+# Boost's version: /opt/homebrew/opt/boost 1.92.0. Nothing when none does.
+rule boost-installed ( )
+{
+    for local prefix in $(.boost-prefixes)
+    {
+        local version = [ boost-version $(prefix)/include ] ;
+        if $(version) && ! [ numbers.less $(version[1]) 109200 ]
+        {
+            return $(prefix) $(version[2]) ;
+        }
+    }
+}
+
+# The failure of the configuration check: it stops the build, saying what
+# was found and the `using boost` line that fixes it, for the user-config.jam
+# that b2 read.
+rule boost-unusable ( properties * )
+{
+    local status ;
+    if ! $(.boost-include)
+    {
+        status = "Boost 1.92 or newer was not found: no `using boost` is"
+            "configured, and the compiler's default include path has none" ;
+    }
+    else if ! [ path.exists $(.boost-include)/boost/version.hpp ]
+    {
+        status = "Boost 1.92 or newer was not found:"
+            "$(.boost-include)/boost/version.hpp does not exist" ;
+    }
+    else
+    {
+        local found = [ boost-version $(.boost-include) ] ;
+        if ! $(found)
+        {
+            status = "Boost 1.92 or newer is required, and the version of the"
+                "Boost in $(.boost-include) cannot be read" ;
+        }
+        else if [ numbers.less $(found[1]) 109200 ]
+        {
+            status = "Boost 1.92 or newer is required, and Boost $(found[2])"
+                "was found in $(.boost-include)" ;
+        }
+        else
+        {
+            errors.user-error "Boost $(found[2]) was found in"
+                "$(.boost-include), but a program that includes it does not"
+                "compile with these properties; bin/config.log says why" ;
+        }
+    }
+    local config = [ modules.binding user-config ] ;
+    config ?= user-config.jam ;
+    local installed = [ boost-installed ] ;
+    local prefix = $(installed[1]) ;
+    local advice = "Boost $(installed[2]) is installed in $(prefix): configure"
+        "it in $(config) with this line, in place of any other `using boost`:" ;
+    if ! $(prefix)
+    {
+        prefix = /path/to/boost ;
+        advice = "Install Boost 1.92 or newer, and configure it in $(config)"
+            "with this line, where /path/to/boost is where it is installed, in"
+            "place of any other `using boost`:" ;
+    }
+    errors.user-error $(status)
+        : $(advice)
+        : "    using boost : 1.92 : <include>$(prefix)/include <library>$(prefix)/lib ;" ;
+}
+
+# The configuration check: tools/test/boost_version.cpp compiles only against
+# Boost 1.92 or newer. b2 caches the answer in bin/project-cache.jam by the
+# check's name and the target's properties, so the name holds Boost's
+# directory: another Boost is checked again.
+.boost-check-name = "Boost 1.92 or newer" ;
+if $(.boost-include)
+{
+    .boost-check-name = "$(.boost-check-name) in $(.boost-include)" ;
+}
+.boost-check = [ check-target-builds /webcpp//boost_version $(.boost-check-name)
+    : : <conditional>@boost-unusable ] ;
+
+# The check's own target evaluates the project's requirements too, and the
+# check would wait on itself. The feature marks that target, so that its
+# requirements leave the check out; free and incidental, it changes neither
+# the target's properties nor its path.
+feature.feature webcpp-configuration-check : : free incidental ;
+
+rule boost-check ( properties * )
+{
+    if ! <webcpp-configuration-check>boost in $(properties)
+    {
+        return $(.boost-check) ;
+    }
+}
+
+project /webcpp
+  : requirements
+      <cxxstd>20
+      <warnings>extra
+      <warnings-as-errors>on
+      <implicit-dependency>/boost//headers
+      <library>/boost//headers
+      # Boost's directory again as a system one, so that its warnings are not
+      # ours: a directory given both ways is a system one. Quoted, as b2
+      # quotes its own -I, so that a path that holds a space builds: the shell
+      # removes the quotes, and so does cl from the response file b2 writes
+      # the options to.
+      <toolset>gcc:<cxxflags>"-isystem\"$(.boost-include)\""
+      <toolset>clang:<cxxflags>"-isystem\"$(.boost-include)\""
+      <toolset>msvc:<cxxflags>"\"/external:I$(.boost-include)\""
+      <toolset>msvc:<cxxflags>"/external:W0"
+      # Boost.Container's auto-link (reached through Boost.JSON) would ask
+      # for a compiled library on MSVC.
+      <toolset>msvc:<define>BOOST_ALL_NO_LIB
+      <toolset>msvc,<exception-handling>off:<define>_HAS_EXCEPTIONS=0
+      <target-os>windows:<define>_WIN32_WINNT=0x0A00
+      # The toolsets clang-wasip2 and clang-wasip3 (user-config.jam) build
+      # for wasm32-wasip2 and wasm32-wasip3, which have no shared libraries.
+      <toolset>clang-wasip2:<target-os>wasi
+      <toolset>clang-wasip3:<target-os>wasi
+      <target-os>wasi:<link>static
+      <conditional>@boost-check
+  : default-build <variant>debug
+  : build-dir bin
+  ;
+
+# The check compiles this again each time it runs: the object's path is the
+# same for every Boost, and installed headers keep their package's dates, so
+# another Boost is often older than the object and would leave it up to date.
+obj boost_version : tools/test/boost_version.cpp
+  : <webcpp-configuration-check>boost ;
+always boost_version ;
+
+# The projects in the directories that pattern matches, each named
+# ./<directory>: b2 takes a directory for the project in it, and a bare doc
+# would name the alias doc itself.
+rule projects ( pattern )
+{
+    local directories = [ glob $(pattern) ] ;
+    return ./$(directories) ;
+}
+
+# Headers are installed under <prefix>/include, --prefix=/usr/local by
+# default, or under --includedir.
+.package-paths = [ package.paths webcpp ] ;
+.includedir = [ $(.package-paths).includedir ] ;
+
+# A library is a directory of libs/ with a build.jam (a submodule not
+# checked out has none), registered as /webcpp/<name>. Its test, example and
+# doc directories join the aggregates, and its headers the installation,
+# which keeps their tree; the patterns are those Boost installs.
+for local build in [ glob libs/*/build.jam ]
+{
+    local library = $(build:D) ;
+    local name = $(library:B) ;
+    use-project /webcpp/$(name) : $(library) ;
+    build-project $(library) ;
+    .test += [ projects $(library)/test ] ;
+    .example += [ projects $(library)/example ] ;
+    .doc += [ projects $(library)/doc ] ;
+    install install-$(name)
+      : [ glob-tree-ex $(library)/include/webcpp : *.hpp *.ipp *.h *.inc ]
+      : <location>$(.includedir) <install-source-root>$(library)/include ;
+    .install += install-$(name) ;
+}
+
+alias test : $(.test) ;
+alias example : $(.example) ;
+alias doc : [ projects doc ] $(.doc) ;
+alias install : $(.install) ;
+explicit boost_version test example doc install $(.install) ;

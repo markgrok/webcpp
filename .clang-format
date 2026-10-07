@@ -1,0 +1,31 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+Standard: c++20
+
+ColumnLimit: 100
+IndentWidth: 4
+AccessModifierOffset: -4
+ContinuationIndentWidth: 4
+UseTab: Never
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: true
+
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# Headers are grouped so that a reader sees the product's own dependencies
+# first, then Boost, then the standard library.
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+
+SeparateDefinitionBlocks: Always
+EmptyLineBeforeAccessModifier: LogicalBlock
+
+# A comment line that starts with "|" is a row of a table, and a table is read
+# by its columns: clang-format neither splits such a line at the column limit
+# nor joins it with the next. The first alternative is clang-format's default.
+CommentPragmas: '^ IWYU pragma:|^ *\|'

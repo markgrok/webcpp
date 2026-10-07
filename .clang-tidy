@@ -1,0 +1,87 @@
+# Static analysis for webcpp.
+#
+# Three of the libraries' rules have no clang-tidy check that expresses
+# them: the ban on io_context::run, run_one and run_for, the ban on fluent
+# chains that return *this, and the em dash ban. tools/lint/lint.sh enforces
+# those by pattern, and says so when it does.
+#
+# performance-enum-size is off because the two enums the product exposes to
+# a reader, xactor::errc and xstate::errc, have to be int:
+# boost::system::error_code::value() returns int, so a narrower base type
+# would only move the conversion.
+#
+# misc-header-include-cycle is off because it reports Boost's .ipp idiom,
+# where a header includes an implementation file that includes the header
+# back behind an include guard. The product's own headers are flat and have
+# no cycle, and the check fires on a dependency the product cannot change.
+#
+# readability-redundant-member-init is off: every aggregate member a user can
+# designate-initialize gets a {} default member initializer (actor_options,
+# budgets, event and the others), so that a designated initializer leaving
+# members out never triggers GCC's -Wmissing-field-initializers in a user's
+# own -Wextra build; this check would ask for those initializers to be
+# removed again.
+---
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  cppcoreguidelines-avoid-non-const-global-variables,
+  cppcoreguidelines-init-variables,
+  cppcoreguidelines-pro-type-cstyle-cast,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-virtual-class-destructor,
+  misc-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -bugprone-easily-swappable-parameters,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-uppercase-literal-suffix,
+  -performance-enum-size,
+  -misc-header-include-cycle,
+  -readability-redundant-member-init
+
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(^|/)include/webcpp/'
+FormatStyle: file
+
+CheckOptions:
+  # snake_case everywhere, which is the libraries' rule and Boost's convention.
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key: readability-identifier-naming.ClassCase
+    value: lower_case
+  - key: readability-identifier-naming.StructCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: '_'
+  - key: readability-identifier-naming.TypeAliasCase
+    value: lower_case
+  - key: readability-identifier-naming.TypedefCase
+    value: lower_case
+  - key: readability-identifier-naming.ConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-function-cognitive-complexity.Threshold
+    value: 25
