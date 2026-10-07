@@ -9,12 +9,15 @@
 MrDocs; a public function without a Doc Comment, a template parameter without @tparam and a
 detail symbol without a brief each fail it, naming the symbol and the file; doc-check and the
 check of the rendered page run on it; MrDocs is found where the build looks for it, or named when
-it is not there; and `b2 doc` builds the index page from every library's meta/libraries.json,
-linking each page in the tree, or, with -sWEBCPP_INDEX=site, where the site serves it.
+it is not there; `b2 doc` builds the index page from every library's meta/libraries.json,
+linking each page in the tree, or, with -sWEBCPP_INDEX=site, where the site serves it; a page
+shows the counts its build computes, of the programs b2 recorded and of the twins of the fixture
+library oracle_demo, whose divergent twin's output the page must show; and a page's link into
+another library's page, in either layout, is checked against that page, built first.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
-fixture library demo, a git repository of its own as a library's submodule is. Run with the
-names of some cases to run only those.
+fixture library demo, a git repository of its own as a library's submodule is; the cases of
+twins and links add oracle_demo beside it. Run with the names of some cases to run only those.
 """
 
 from __future__ import annotations
@@ -32,6 +35,10 @@ import harness
 HEADER = 'libs/demo/include/webcpp/demo/answer.hpp'
 
 PAGE = 'libs/demo/doc/html/index.html'
+
+ORACLE_PAGE = 'libs/oracle_demo/doc/html/index.html'
+ORACLE_SOURCE = 'libs/oracle_demo/doc/oracle_demo.adoc'
+ORACLE_HEADER = 'libs/oracle_demo/include/webcpp/oracle_demo.hpp'
 
 # U+2010, the hyphen MrDocs writes for -, written as an escape.
 HYPHEN = '\u2010'
@@ -69,11 +76,20 @@ def at(root: Path, path: str, text: str) -> str:
     return f'{(root / path).resolve()}:{lines[0]}'
 
 
-def page_text(root: Path) -> str:
-    """The text of the demo page's content, without its markup, as a reader sees it."""
-    html = (root / PAGE).read_text()
+def add_oracle_demo(root: Path) -> None:
+    """Places the fixture library oracle_demo beside demo in the scratch superproject root, a git
+    repository of its own too."""
+    shutil.copytree(harness.FIXTURES / 'oracle_demo', root / 'libs/oracle_demo',
+                    ignore=harness.built)
+    subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=root / 'libs/oracle_demo', check=True)
+
+
+def page_text(root: Path, page: str = PAGE) -> str:
+    """The text of a page's content, the demo page's by default, without its markup, as a reader
+    sees it, its lines joined."""
+    html = (root / page).read_text()
     content = html[html.index('<div id="content">'):]
-    return re.sub(r'<[^>]+>', '', content)
+    return ' '.join(re.sub(r'<[^>]+>', '', content).split())
 
 
 def test_page_builds_with_its_reference(root):
@@ -313,6 +329,79 @@ def test_doc_check_and_rendered_check_run(root):
     assert not (root / PAGE).exists()
 
 
+def test_page_shows_the_counts_of_its_programs(root):
+    # Counted from what demo's test and example Jamfiles declare, as b2 recorded it: a run's
+    # -noexcept variant is no second test, and each header compiled alone is one.
+    prepare(root)
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
+    text = page_text(root)
+    assert ('demo has 2 examples: 2 built natively, 1 for wasip2 and 2 for wasip3. It has 9 '
+            'tests, 1 of them a Boost.Test suite: 9 run natively, 6 on wasip2 and 6 on wasip3. '
+            'Each of its 2 headers compiles alone.') in text, text
+    # A program more is counted at the next build.
+    edit(root, 'libs/demo/test/Jamfile', 'webcpp.run pass :',
+         'webcpp.run pass_again : pass.cpp : <library>/webcpp/demo//demo : wasip2 ;\n'
+         'webcpp.run pass :')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
+    assert 'It has 10 tests, 1 of them a Boost.Test suite: 9 run natively, 7 on wasip2 and 6 ' \
+        'on wasip3.' in page_text(root), page_text(root)
+
+
+def test_page_shows_twins_and_their_counts(root):
+    prepare(root)
+    add_oracle_demo(root)
+    # No Node: the twins are counted, not run.
+    harness.expect(harness.run_b2(root, 'libs/oracle_demo/doc'), True)
+    text = page_text(root, ORACLE_PAGE)
+    assert ('Of its 3 examples, 2 have a twin, the same program in JavaScript: 1 prints what its '
+            'example prints, and 1 prints an output of its own. 1 has no twin.') in text, text
+    # The twin's code and its own output, from the twins' directory webcpp.twins declares.
+    html = (root / ORACLE_PAGE).read_text()
+    assert 'Half of 7 is 3.5.' in html and 'squared is' in html, html
+    # And the page must show every divergent twin's own output: doc-check is given the twins.
+    edit(root, ORACLE_SOURCE, '[listing]\n----\ninclude::{twins}/half.expected[]\n----\n', '')
+    harness.expect(harness.run_b2(root, 'libs/oracle_demo/doc'), False,
+                   'half.expected: the page does not show this difference from the original')
+
+
+def test_links_between_pages(root):
+    prepare(root)
+    add_oracle_demo(root)
+    link = 'link:{webcpp-libs}/demo/{webcpp-page}#quick-start[demo]'
+    edit(root, ORACLE_SOURCE, 'superproject.\n', f'superproject. It is built as {link} is.\n')
+    reference = 'doc' + ': demo#holds'
+    edit(root, ORACLE_HEADER, 'namespace webcpp::oracle_demo {\n',
+         f'// See ({reference}).\nnamespace webcpp::oracle_demo {{\n')
+    # In the tree, the link goes from libs/oracle_demo/doc/html/ to demo's page there; on the
+    # site, from libs/oracle_demo/ to libs/demo/. Either is checked against demo's page, which
+    # is built first.
+    layouts = (((), '../../../demo/doc/html/index.html'),
+               (('-sWEBCPP_INDEX=site',), '../demo/index.html'))
+    for options, href in layouts:
+        harness.expect(harness.run_b2(root, *options, 'libs/oracle_demo/doc'), True)
+        html = (root / ORACLE_PAGE).read_text()
+        assert f'href="{href}#quick-start"' in html, html
+    assert list((root / 'bin/libs/demo/doc').rglob('index.html')), 'demo\'s page was not built'
+    for options, href in layouts:
+        for anchor, fault in (('nowhere', 'names no anchor of the page of demo: demo#nowhere'),
+                              ('quick-start-01', 'demo#quick-start-01 ends in the number MrDocs '
+                                                 'gives an overload')):
+            edit(root, ORACLE_SOURCE, '#quick-start[demo]', f'#{anchor}[demo]')
+            harness.expect(harness.run_b2(root, *options, 'libs/oracle_demo/doc'), False,
+                           f'{href}#{anchor}: {fault}')
+            edit(root, ORACLE_SOURCE, f'#{anchor}[demo]', '#quick-start[demo]')
+    # A reference of the library's code to an anchor of another library's page.
+    edit(root, ORACLE_HEADER, reference, 'doc' + ': demo#gone')
+    harness.expect(harness.run_b2(root, 'libs/oracle_demo/doc'), False,
+                   f'{at(root, ORACLE_HEADER, "// See (")}: names no anchor of the page of demo: '
+                   'demo#gone')
+    # And one to a library that has no page.
+    edit(root, ORACLE_HEADER, 'demo#gone', 'nowhere#gone')
+    harness.expect(harness.run_b2(root, 'libs/oracle_demo/doc'), False,
+                   'libs/oracle_demo links the page of nowhere, and libs/nowhere/doc/Jamfile does '
+                   'not exist')
+
+
 def test_index_lists_every_library(root):
     prepare(root)
     # A second library, a port, with a page of its own to link to.
@@ -390,6 +479,9 @@ CASES = [
     test_clang_is_given,
     test_library_settings_only_present_the_reference,
     test_doc_check_and_rendered_check_run,
+    test_page_shows_the_counts_of_its_programs,
+    test_page_shows_twins_and_their_counts,
+    test_links_between_pages,
     test_index_lists_every_library,
 ]
 

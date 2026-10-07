@@ -48,6 +48,7 @@ import errors ;
 import feature ;
 import make ;
 import modules ;
+import numbers ;
 import os ;
 import path ;
 import project ;
@@ -204,10 +205,13 @@ rule targets ( targets + )
     .targets.$(jamfile) = $(targets) ;
 }
 
-# The requirements that build a program only for targets, else for its
-# Jamfile's, else for native; each pair <library> <target> is recorded for
-# declared.
-local rule program ( targets * )
+# The requirements that build programs of kind, named names, only for
+# targets, else for their Jamfile's, else for native. Each pair <library>
+# <target> is recorded for declared, and each program as "<kind> <name>
+# <target>..." for programs: kind is the rule that declares it, run,
+# run-fail, compile, compile-fail, boost-test, example or headers-alone, and
+# a native run's -noexcept variant is no program of its own.
+local rule program ( kind : names + : targets * )
 {
     local jamfile = [ jamfile ] ;
     check "a program's targets" : $(targets) ;
@@ -216,6 +220,7 @@ local rule program ( targets * )
     .programs.$(jamfile) = true ;
     local library = [ library-of ] ;
     .declared += "$(library) $(targets)" ;
+    .recorded.$(library) += "$(kind) $(names) $(targets:J= )" ;
     # Qualified by its module, so that it resolves whatever names the
     # Jamfile imported this module's rules under.
     return <webcpp-targets>$(targets) <conditional>@webcpp%filter ;
@@ -226,7 +231,7 @@ local rule program ( targets * )
 # exceptions and without RTTI.
 rule run ( name : sources + : requirements * : targets * )
 {
-    local only = [ program $(targets) ] ;
+    local only = [ program run : $(name) : $(targets) ] ;
     testing.run $(sources) : : : $(requirements) $(only) $(.handler) : $(name) ;
     if native in [ feature.get-values <webcpp-targets> : $(only) ]
     {
@@ -251,7 +256,7 @@ rule run ( name : sources + : requirements * : targets * )
 # terminal's escape sequences, which Boost.Test writes even to a file.
 rule boost-test ( name : sources + : requirements * )
 {
-    local only = [ program native ] ;
+    local only = [ program boost-test : $(name) : native ] ;
     local identifier = [ regex.replace $(name) "-" "_" ] ;
     local framework = <define>BOOST_TEST_MODULE=$(identifier) <exception-handling>on ;
     local current = [ project.current ] ;
@@ -269,20 +274,22 @@ rule boost-test ( name : sources + : requirements * )
 # status other than 0.
 rule run-fail ( name : sources + : requirements * : targets * )
 {
-    testing.run-fail $(sources) : : : $(requirements) [ program $(targets) ] $(.handler)
-        : $(name) ;
+    testing.run-fail $(sources) : : : $(requirements) [ program run-fail : $(name) : $(targets) ]
+        $(.handler) : $(name) ;
 }
 
 # A test that passes when sources compile, which builds no program.
 rule compile ( name : sources + : requirements * : targets * )
 {
-    testing.compile $(sources) : $(requirements) [ program $(targets) ] : $(name) ;
+    testing.compile $(sources) : $(requirements) [ program compile : $(name) : $(targets) ]
+        : $(name) ;
 }
 
 # A test that passes when sources do not compile.
 rule compile-fail ( name : sources + : requirements * : targets * )
 {
-    testing.compile-fail $(sources) : $(requirements) [ program $(targets) ] : $(name) ;
+    testing.compile-fail $(sources) : $(requirements)
+        [ program compile-fail : $(name) : $(targets) ] : $(name) ;
 }
 
 # An example: the program built from source, run (through testing.launcher
@@ -293,7 +300,7 @@ rule compile-fail ( name : sources + : requirements * : targets * )
 rule example ( source : requirements * : targets * )
 {
     local name = $(source:B) ;
-    local only = [ program $(targets) ] ;
+    local only = [ program example : $(name) : $(targets) ] ;
     exe $(name) : $(source) : $(requirements) $(only) $(.handler) ;
     # The program's main target can generate more than the executable, which
     # it lists first: MSVC's debug link adds the .pdb after the .exe. So the
@@ -346,7 +353,6 @@ actions run-and-compare
 rule headers-alone ( library : include-root )
 {
     local current = [ project.current ] ;
-    local only = [ program ] ;
     local root = [ path.make $(include-root) ] ;
     local headers =
         [ project.glob-internal-ex $(current) : $(root)/webcpp : $(library).hpp : : glob ]
@@ -356,13 +362,21 @@ rule headers-alone ( library : include-root )
         errors.user-error "webcpp.headers-alone: $(include-root) holds neither"
             "webcpp/$(library).hpp nor a header under webcpp/$(library)/" ;
     }
+    local included ;
+    local names ;
     for local header in $(headers)
     {
-        local included = [ path.relative-to $(root) $(header) ] ;
-        local stem = [ MATCH "^webcpp/(.*)[.]hpp$" : $(included) ] ;
+        local path = [ path.relative-to $(root) $(header) ] ;
+        local stem = [ MATCH "^webcpp/(.*)[.]hpp$" : $(path) ] ;
         local dashed = [ regex.replace $(stem) "/" "-" ] ;
-        local name = alone-$(dashed) ;
-        make $(name).cpp : : @webcpp%write-include : <webcpp-include>$(included) ;
+        included += $(path) ;
+        names += alone-$(dashed) ;
+    }
+    local only = [ program headers-alone : $(names) ] ;
+    for local index in [ numbers.range 1 [ sequence.length $(names) ] ]
+    {
+        local name = $(names[$(index)]) ;
+        make $(name).cpp : : @webcpp%write-include : <webcpp-include>$(included[$(index)]) ;
         $(current).mark-target-as-explicit $(name).cpp ;
         testing.compile $(name).cpp : <library>/webcpp/$(library)//$(library) $(only)
             : $(name) ;
@@ -426,6 +440,32 @@ rule lanes ( directories * )
 {
     load-jamfiles $(directories) ;
     return [ sequence.unique $(.lanes) ] ;
+}
+
+# The test and example directories of library, absolute, in b2's form.
+local rule directories-of ( library )
+{
+    return $(.root)/libs/$(library)/test $(.root)/libs/$(library)/example ;
+}
+
+# The programs that the test and example Jamfiles of library declare, each
+# "<kind> <name> <target>..." as program records it, which
+# tools/doc/counts.py counts for the library's page. It loads those
+# Jamfiles.
+rule programs-of ( library )
+{
+    load-jamfiles [ directories-of $(library) ] ;
+    return $(.recorded.$(library)) ;
+}
+
+# What the oracle of library declares with webcpp.twins: its examples and
+# twins directories, absolute and as the system writes them, and the
+# twins' suffix; nothing when it declares none. It loads the library's test
+# and example Jamfiles, the oracle's among them, as declared-lanes does.
+rule twins-of ( library )
+{
+    load-jamfiles [ directories-of $(library) ] ;
+    return [ webcpp-oracle.twins-of $(library) ] ;
 }
 
 # A library's page, libs/<library>/doc/html/index.html, from page and the

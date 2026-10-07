@@ -8,9 +8,9 @@
 """Checks tools/oracle/oracle.jam and webcpp.lane: a library's oracle lane runs its twins and its
 cases on the original and fails naming a difference; update-expected rewrites what the original
 writes, refuses an own output that agrees, and stays red when the original fails; `b2
-declared-lanes` lists the lanes the libraries declare; and only an oracle target needs Node. Each
-case builds a scratch superproject with the fixture library oracle_demo. Run with the names of
-some cases to run only those."""
+declared-lanes` lists the lanes the libraries declare; a library declares its twins once; and only
+an oracle target needs Node. Each case builds a scratch superproject with the fixture library
+oracle_demo. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -284,6 +284,23 @@ def test_rules_in_their_order(root):
         assert f'{ORACLE}/Jamfile:' in result.stdout, result.stdout[-4000:]
 
 
+def test_twins_declared_once_per_library(root):
+    # A library's page shows one set of twins, and counts it: a second oracle Jamfile that
+    # declares twins is refused as it loads.
+    second = root / LIBRARY / 'test/second'
+    second.mkdir()
+    for name in ('package.json', 'package-lock.json'):
+        shutil.copy2(root / ORACLE / name, second / name)
+    (second / 'Jamfile').write_text('import webcpp ;\n'
+                                    '\n'
+                                    'webcpp.original node ;\n'
+                                    'webcpp.twins ../../example : ../oracle/twins : .mjs ;\n')
+    result = harness.run_b2(root, '-d0', 'declared-lanes')
+    harness.expect(result, False, 'webcpp.twins is declared for oracle_demo in',
+                   f'{LIBRARY}/test/second/Jamfile', f'{ORACLE}/Jamfile', 'already',
+                   'one set of twins')
+
+
 CASES = [
     test_lane_runs_twins_and_cases_green,
     test_twin_difference_fails_the_lane,
@@ -299,6 +316,7 @@ CASES = [
     test_missing_node_or_npm_names_it,
     test_missing_lockfile_names_it,
     test_rules_in_their_order,
+    test_twins_declared_once_per_library,
 ]
 
 

@@ -1,0 +1,78 @@
+// Copyright (c) 2026 WebCpp.org
+//
+// Distributed under the Boost Software License, Version 1.0. (See
+// accompanying file LICENSE_1_0.txt or copy at
+// https://www.boost.org/LICENSE_1_0.txt)
+
+= oracle_demo: the fixture library of an oracle
+:toc: left
+:toclevels: 2
+:idprefix:
+:sectanchors:
+
+oracle_demo ports two functions of JavaScript to {cpp}, which the tests of its
+build place in `libs/oracle_demo` of a scratch superproject.
+
+Of its {n-examples} examples, {n-examples-with-original} have a twin, the same
+program in JavaScript: {n-twins-agreeing} prints what its example prints, and
+{n-twins-divergent} prints an output of its own. {n-examples-without-twin} has
+no twin.
+
+[#square]
+== Square
+
+A program squares a number:
+
+[source]
+----
+include::{examples}/square.cpp[lines=11..-1]
+----
+
+It prints what its twin prints:
+
+[source,javascript]
+----
+include::{twins}/square.mjs[lines=9..-1]
+----
+
+[listing]
+----
+include::{examples}/square.expected[]
+----
+
+[#half]
+== Half
+
+A program halves a number, rounding toward zero:
+
+[source]
+----
+include::{examples}/half.cpp[lines=11..-1]
+----
+
+[listing]
+----
+include::{examples}/half.expected[]
+----
+
+Its twin keeps the fraction, which JavaScript's division does not drop:
+
+[listing]
+----
+include::{twins}/half.expected[]
+----
+
+[#compile-time]
+== At compile time
+
+A program squares a number before it runs, which JavaScript cannot:
+
+[source]
+----
+include::{examples}/compile_time.cpp[lines=11..-1]
+----
+
+[#reference]
+== Reference
+
+include::{reference}[leveloffset=+1]

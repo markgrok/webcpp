@@ -18,7 +18,9 @@
 # explicit target node-modules installs with npm ci, again when the lockfile
 # changes. webcpp.twins declares the explicit target twins: twins.py runs
 # every twin of the examples with the original's words and the extra words,
-# and compares what each prints. webcpp.cases declares the explicit target
+# and compares what each prints; a library declares it once, since its page
+# shows and counts its twins, whose directories and suffix twins-of gives
+# tools/doc/doc.jam. webcpp.cases declares the explicit target
 # cases-<name>: the original runs <script> <cases-dir> <output>, which writes
 # its results under the Jamfile's build directory, and compare.py finds them
 # equal to <expected-dir>. The first of twins and cases also declares the
@@ -159,9 +161,32 @@ rule twins ( found + : examples : twins : suffix : extra * )
     .twins.$(key) = [ natives $(found[2]) : $(examples) $(twins) ] ;
     .suffix.$(key) = $(suffix) ;
     .extra.$(key) = $(extra) ;
+    # The library's page shows its twins and counts them, so a library has one
+    # webcpp.twins, whichever oracle Jamfile declares it.
+    local library = [ MATCH "^libs/([^/]+)/" : $(key) ] ;
+    if $(library)
+    {
+        if $(.library-twins.$(library))
+        {
+            errors.user-error "webcpp.twins is declared for $(library) in $(found[4]), and in"
+                "$(.library-twins-jamfile.$(library)) already: the library's page shows one set"
+                "of twins" ;
+        }
+        .library-twins.$(library) = $(.twins.$(key)) $(suffix) ;
+        .library-twins-jamfile.$(library) = $(found[4]) ;
+    }
     notfile twins : @webcpp-oracle%run-twins : : [ requirements $(key) ] ;
     $(found[1]).mark-target-as-explicit twins ;
     update-expected $(found[1]) : $(key) ;
+}
+
+# What the Jamfiles loaded so far declare of library with webcpp.twins: the
+# examples and twins directories, absolute and as the system writes them,
+# and the suffix; nothing when none does. tools/doc/doc.jam gives them to
+# the library's page, its check and its counts.
+rule twins-of ( library )
+{
+    return $(.library-twins.$(library)) ;
 }
 
 # webcpp.cases <name> : <script> : <cases-dir> : <expected-dir> ; the

@@ -33,8 +33,15 @@ library that sends its reader to the page, with `doc: #<anchor>`, or a list or a
 one line, `doc: #<a>, #<b> and #<c>` or `doc: #<a> to #<b>`, or with a link `index.html#<anchor>`,
 names anchors a reached section defines, each of them; with `--repository`, every file git lists
 there, those it tracks and those it would track, is read for one, skipping what does not decode as
-UTF-8. Among those files, a Doc Comment of the library's C++ that sends its reader to a section by
-its title, `@see "<title>"` or `\\see "<title>"`, names the title of a section the page reaches, as
+UTF-8. A reference to another library's page is left to the check of the rendered page:
+`doc: <library>#<anchor>`, the list or the range after it naming that library's anchors too; a
+link whose path names the library's directory before its page, `libs/<library>/` or
+`../<library>/`, then `index.html#<anchor>` or `doc/html/index.html#<anchor>`; and a link of a
+page written with the two attributes webcpp.doc sets by the layout,
+`link:{webcpp-libs}/<library>/{webcpp-page}#<anchor>[...]`, which is a fault written any other
+way after `{webcpp-libs}/`. `--library` names the library, whose own name sends to its own page.
+Among those files, a Doc Comment of the library's C++ that sends its reader to a section by its
+title, `@see "<title>"` or `\\see "<title>"`, names the title of a section the page reaches, as
 its heading writes it after its `=` marks, and keeps it on one line: MrDocs writes the title as
 text, which no link checks. With `--readme`, each fenced block of the README that a comment
 `<!-- include::<file>[<attributes>] -->` opens is that file's region, as an include with those
@@ -52,11 +59,22 @@ run together by a passthrough, and one outside it of a span that did not close (
 keeps a + and a backtick MrDocs escaped as references, as Asciidoctor writes {cpp}); no escape of
 MrDocs's left undecoded and no U+2010, which MrDocs writes for an ASCII hyphen; and no link of a
 synopsis left as text in a block of code, which a highlighter that broke the link leaves; and no
-link to #index or #webcpp, the sections of MrDocs's reference that reference.py drops.
+link to #index or #webcpp, the sections of MrDocs's reference that reference.py drops. With the
+library's `--repository` and `--library`, each reference of its files to another library's page,
+and with `--webcpp-libs` and `--webcpp-page`, the values webcpp.doc gave those attributes, each
+link of the rendered page into one, names an anchor of that page as the build made it, before
+this check: `--linked-library <library>` and `--linked-page <page.html>` name each such page, in
+pairs, and a reference to a library's page that is not among them is a fault, as is an anchor that
+ends in the number MrDocs gives an overload, `-0<digit>`, which it may renumber.
+`--linked-libraries`, with `--repository` and `--library`, prints the other libraries whose pages
+the library's files refer to, one per line: the pages the build makes first.
 
 Usage: doc-check.py --page <page.adoc> [--examples <dir>] [--twins <dir>] [--repository <dir>]
-[--readme <README.md>] [--complete] <section.adoc>...; or doc-check.py --rendered <page.html>.
-Prints each fault and exits 1 when there is one.
+[--library <name>] [--readme <README.md>] [--complete] <section.adoc>...; doc-check.py
+--rendered <page.html> [--repository <dir> --library <name>] [--webcpp-libs <path> --webcpp-page
+<path>] [--linked-library <name> --linked-page <page.html>]...; or doc-check.py
+--linked-libraries --repository <dir> [--library <name>]. Prints each fault and exits 1 when there
+is one, or 2 on a usage error.
 """
 
 from __future__ import annotations
@@ -64,10 +82,12 @@ from __future__ import annotations
 import argparse
 import re
 from html import unescape
+from html.parser import HTMLParser
 import subprocess
 import sys
 from collections.abc import Iterable, Iterator
 from pathlib import Path
+from typing import NamedTuple
 
 INCLUDE = re.compile(r'^include::([^\[]+)\[(.*)\]$')
 # A table opens with |, a comma, a colon or ! and three or more =, and closes with the same line;
@@ -83,14 +103,27 @@ EXAMPLE_SOURCE = re.compile(rf'^include::\{{examples\}}/{NESTED}\.(cpp|hpp)\[[^\
 SHOWN = re.compile(rf'^include::\{{(examples|twins)\}}/{NESTED}\.(cpp|expected)\[')
 REFERENCE = '{reference}'
 ANCHOR = re.compile(r'^\[#([\w-]+)[\],.]|\[\[([\w-]+)\]\]')
+# A library's name, the directory of libs/ that holds it.
+LIBRARY_NAME = r'[a-z][a-z0-9_]*'
 # `doc: #<a>`, or a list or a range of anchors, `doc: #<a>, #<b> and #<c>` or `doc: #<a> to
-# #<b>`, on one line; or a link to the built page.
-DOC_REFERENCE = re.compile(r'doc: (#[\w-]+(?:(?:,| and| or| to) #[\w-]+)*)')
+# #<b>`, on one line; each an anchor of another library's page when a library's name comes
+# before the first, `doc: <library>#<a> and #<b>`.
+DOC_REFERENCE = re.compile(rf'doc: ({LIBRARY_NAME})?(#[\w-]+(?:(?:,| and| or| to) #[\w-]+)*)')
 DOC_ANCHOR = re.compile(r'#([\w-]+)')
-PAGE_LINK = re.compile(r'index\.html#([\w-]+)')
 # A list cut at the end of its line, whose rest the line-by-line read would miss.
 DOC_REFERENCE_CUT = re.compile(
-    r'doc: #[\w-]+(?:(?:,| and| or| to) #[\w-]+)*(?:,| and| or| to)\s*$')
+    rf'doc: (?:{LIBRARY_NAME})?#[\w-]+(?:(?:,| and| or| to) #[\w-]+)*(?:,| and| or| to)\s*$')
+# A link to a built page; another library's when its path names the library's directory before
+# it, `libs/<library>/` or `../<library>/`, then `doc/html/` in the tree's layout.
+PAGE_LINK = re.compile(r'index\.html#([\w-]+)')
+LIBRARY_PAGE = re.compile(rf'(?:^|[^\w.-])(?:libs|\.\.)/({LIBRARY_NAME})/(?:doc/html/)?$')
+# A link of a page into another library's page, written with the two attributes webcpp.doc sets
+# by the layout, which reach libs/ and a library's page in it from the page; a placeholder,
+# `{webcpp-libs}/<library>/`, is none.
+WEBCPP_LIBS = re.compile(rf'\{{webcpp-libs\}}/(?={LIBRARY_NAME}/)')
+WEBCPP_LINK = re.compile(rf'({LIBRARY_NAME})/\{{webcpp-page\}}(?:#([\w-]+))?(?![\w/.{{-])')
+# The number MrDocs appends to the anchor of an overload, which it may renumber.
+OVERLOAD = re.compile(r'-0[0-9]$')
 ATTRIBUTE_ENTRY = re.compile(r'^:([\w-]+!?):\s*(.*)$')
 # A section's heading, `== <title>`, at any level; the document's title is `= <title>`.
 HEADING = re.compile(r'^={1,6} +(\S.*?)\s*$')
@@ -423,9 +456,17 @@ def listed_files(repository: Path) -> list[Path] | None:
     return [repository / name for name in names]
 
 
-def reference_faults(paths: list[Path], defined: set[str]) -> list[str]:
-    """Each reference of a text file among `paths` to the page that names no anchor of it."""
-    found = []
+class Link(NamedTuple):
+    """A link into another library's page: where it is written, the library and the anchor, None
+    for the page's top."""
+    where: str
+    library: str
+    anchor: str | None
+
+
+def text_lines(paths: list[Path]) -> Iterator[tuple[Path, int, str]]:
+    """Each line of each text file among `paths`, with its number, skipping what does not decode
+    as UTF-8."""
     for path in paths:
         if not path.is_file():
             continue
@@ -434,14 +475,120 @@ def reference_faults(paths: list[Path], defined: set[str]) -> list[str]:
         except UnicodeDecodeError:
             continue
         for number, line in enumerate(text.split('\n'), start=1):
-            if DOC_REFERENCE_CUT.search(line):
-                found.append(f'{path}:{number}: a doc: reference goes on to the next line; '
-                             'keep its anchors on one line')
-            named = [anchor for match in DOC_REFERENCE.finditer(line)
-                     for anchor in DOC_ANCHOR.findall(match.group(1))]
-            for anchor in named + PAGE_LINK.findall(line):
-                if anchor not in defined:
-                    found.append(f'{path}:{number}: names no anchor of the page: #{anchor}')
+            yield path, number, line
+
+
+def references(paths: list[Path], own: str | None
+               ) -> tuple[list[tuple[str, str]], list[Link], list[str]]:
+    """What the text files among `paths` send their reader to: each anchor of the page, with
+    where it is named; each link into another library's page; and each reference that cannot be
+    read whole. `own` is the library's name, which names its own page."""
+    anchors: list[tuple[str, str]] = []
+    links: list[Link] = []
+    found: list[str] = []
+    for path, number, line in text_lines(paths):
+        where = f'{path}:{number}'
+        if DOC_REFERENCE_CUT.search(line):
+            found.append(f'{where}: a doc: reference goes on to the next line; keep its anchors '
+                         'on one line')
+        for match in DOC_REFERENCE.finditer(line):
+            library = match.group(1)
+            for anchor in DOC_ANCHOR.findall(match.group(2)):
+                if library is None or library == own:
+                    anchors.append((where, anchor))
+                else:
+                    links.append(Link(where, library, anchor))
+        for match in PAGE_LINK.finditer(line):
+            before = LIBRARY_PAGE.search(line[:match.start()])
+            library = None if before is None else before.group(1)
+            if library is None or library == own:
+                anchors.append((where, match.group(1)))
+            else:
+                links.append(Link(where, library, match.group(1)))
+        for match in WEBCPP_LIBS.finditer(line):
+            link = WEBCPP_LINK.match(line, match.end())
+            if link is None:
+                found.append(f'{where}: a link into another library\'s page is written '
+                             'link:{webcpp-libs}/<library>/{webcpp-page}#<anchor>[...], which '
+                             f'both layouts resolve: {line[match.start():].split()[0]}')
+            elif link.group(1) == own:
+                found.append(f'{where}: links the library\'s own page as another library\'s; '
+                             f'write <<{link.group(2) or "id"}>>')
+            else:
+                links.append(Link(where, link.group(1), link.group(2)))
+    return anchors, links, found
+
+
+def reference_faults(paths: list[Path], defined: set[str], own: str | None) -> list[str]:
+    """Each reference of a text file among `paths` to the page that names no anchor of it, and
+    each that cannot be read whole; a link into another library's page is the rendered check's.
+    """
+    anchors, _, found = references(paths, own)
+    for where, anchor in anchors:
+        if anchor not in defined:
+            found.append(f'{where}: names no anchor of the page: #{anchor}')
+    return found
+
+
+class Targets(HTMLParser):
+    """The links of a page, each href, and the anchors it defines, each id and each name of an
+    <a>."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.links: list[str] = []
+        self.anchors: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        for name, value in attrs:
+            if value is None:
+                continue
+            if name == 'href':
+                self.links.append(value)
+            elif name == 'id' or (name == 'name' and tag == 'a'):
+                self.anchors.add(value)
+
+
+def targets(page: Path) -> Targets:
+    """The links and the anchors of the HTML page."""
+    parsed = Targets()
+    parsed.feed(page.read_text(encoding='utf-8', errors='replace'))
+    parsed.close()
+    return parsed
+
+
+def page_links(page: Path, libs: str, linked_page: str) -> list[Link]:
+    """Each link of the rendered `page` into another library's page, as webcpp.doc writes one
+    with {webcpp-libs}, here `libs`, and {webcpp-page}, here `linked_page`."""
+    shape = re.compile(rf'^{re.escape(libs)}/({LIBRARY_NAME})/{re.escape(linked_page)}'
+                       r'(?:#(.*))?$')
+    found = []
+    for href in targets(page).links:
+        match = shape.match(href)
+        if match is not None:
+            found.append(Link(f'{page}: {href}', match.group(1), match.group(2)))
+    return found
+
+
+def link_faults(links: list[Link], pages: dict[str, Path], own: str | None) -> list[str]:
+    """Each of `links` that names no anchor of the page of its library, as the build made it
+    first (`pages`, by library), or an overload's number, which MrDocs may renumber."""
+    anchors = {library: targets(page).anchors for library, page in pages.items()}
+    found = []
+    for link in links:
+        named = f'{link.library}#{link.anchor}'
+        if link.library == own:
+            found.append(f'{link.where}: links the library\'s own page as another library\'s')
+        elif link.library not in anchors:
+            found.append(f'{link.where}: names the page of {link.library}, which the build did '
+                         'not make first')
+        elif link.anchor is None:
+            continue
+        elif OVERLOAD.search(link.anchor):
+            found.append(f'{link.where}: {named} ends in the number MrDocs gives an overload, '
+                         'which it may renumber; name an anchor that holds')
+        elif link.anchor not in anchors[link.library]:
+            found.append(f'{link.where}: names no anchor of the page of {link.library}: {named}')
     return found
 
 
@@ -827,28 +974,33 @@ def rendered_faults(page: Path) -> list[str]:
     return found
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description='Finds what Asciidoctor would get wrong in a page without a warning.')
-    parser.add_argument('--examples', type=Path)
-    parser.add_argument('--twins', type=Path)
-    parser.add_argument('--page', type=Path)
-    parser.add_argument('--repository', type=Path)
-    parser.add_argument('--readme', type=Path)
-    parser.add_argument('--complete', action='store_true')
-    parser.add_argument('--rendered', type=Path)
-    parser.add_argument('sections', type=Path, nargs='*')
-    arguments = parser.parse_args()
-    if arguments.rendered is not None:
-        if arguments.sections or arguments.page or arguments.examples or arguments.twins or \
-                arguments.repository or arguments.readme or arguments.complete:
-            parser.error('--rendered checks the rendered page alone')
-        found = rendered_faults(arguments.rendered)
-        for fault in found:
-            print(fault)
-        return 1 if found else 0
-    if not (arguments.page and arguments.sections):
-        parser.error('--page and at least one section are required')
+def repository_files(repository: Path) -> tuple[list[Path], list[str]]:
+    """Every file git lists in `repository`, or the fault that it is not a git checkout."""
+    files = listed_files(repository)
+    if files is None:
+        return [], [f'{repository}: is not a git checkout, whose files the check reads']
+    return files, []
+
+
+def rendered_check(arguments: argparse.Namespace) -> list[str]:
+    """The faults of the rendered page, and of its library's links into other libraries'
+    pages."""
+    rendered: Path = arguments.rendered
+    found = rendered_faults(rendered)
+    own: str | None = arguments.library
+    links: list[Link] = []
+    if arguments.repository is not None:
+        files, found_files = repository_files(arguments.repository)
+        found += found_files
+        links += references(files, own)[1]
+    if arguments.webcpp_libs is not None:
+        links += page_links(rendered, arguments.webcpp_libs, arguments.webcpp_page)
+    pages = dict(zip(arguments.linked_library, arguments.linked_page))
+    return found + link_faults(links, pages, own)
+
+
+def page_check(arguments: argparse.Namespace) -> list[str]:
+    """The faults of the page's sources, and of the files of its library."""
     library = Library(arguments.examples, arguments.twins)
     page: Path = arguments.page
     sections: list[Path] = arguments.sections
@@ -862,19 +1014,64 @@ def main() -> int:
     visited = reached(page, sections, library)
     reached_sections = [section for section in sections if section.resolve() in visited]
     if arguments.repository is not None:
-        files = listed_files(arguments.repository)
-        if files is None:
-            found.append(f'{arguments.repository}: is not a git checkout, whose files the check '
-                         'reads')
-        else:
-            found += reference_faults(files, anchors(reached_sections))
-            found += see_faults(files, titles(reached_sections))
+        files, found_files = repository_files(arguments.repository)
+        found += found_files
+        found += reference_faults(files, anchors(reached_sections), arguments.library)
+        found += see_faults(files, titles(reached_sections))
     if arguments.readme is not None:
         found += readme_faults(arguments.readme)
     if arguments.complete:
         for section in sections:
             found += block_faults(section)
         found += completeness_faults(page, reached_sections, library)
+    return found
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description='Finds what Asciidoctor would get wrong in a page without a warning.')
+    parser.add_argument('--examples', type=Path)
+    parser.add_argument('--twins', type=Path)
+    parser.add_argument('--page', type=Path)
+    parser.add_argument('--repository', type=Path)
+    parser.add_argument('--library')
+    parser.add_argument('--readme', type=Path)
+    parser.add_argument('--complete', action='store_true')
+    parser.add_argument('--rendered', type=Path)
+    parser.add_argument('--webcpp-libs')
+    parser.add_argument('--webcpp-page')
+    parser.add_argument('--linked-library', action='append', default=[])
+    parser.add_argument('--linked-page', type=Path, action='append', default=[])
+    parser.add_argument('--linked-libraries', action='store_true')
+    parser.add_argument('sections', type=Path, nargs='*')
+    arguments = parser.parse_args()
+    of_the_page = (arguments.sections or arguments.page or arguments.examples or
+                   arguments.twins or arguments.readme or arguments.complete)
+    of_the_rendered = (arguments.webcpp_libs is not None or arguments.webcpp_page is not None or
+                       arguments.linked_library or arguments.linked_page)
+    if arguments.linked_libraries:
+        if of_the_page or of_the_rendered or arguments.rendered or not arguments.repository:
+            parser.error('--linked-libraries reads the files of --repository alone')
+        files, found = repository_files(arguments.repository)
+        if not found:
+            linked = {link.library for link in references(files, arguments.library)[1]}
+            print(''.join(f'{library}\n' for library in sorted(linked)), end='')
+    elif arguments.rendered is not None:
+        if of_the_page:
+            parser.error('--rendered checks the rendered page, and the links of its library')
+        if (arguments.webcpp_libs is None) != (arguments.webcpp_page is None):
+            parser.error('--webcpp-libs and --webcpp-page go together: the attributes of a link '
+                         'into another library\'s page')
+        if len(arguments.linked_library) != len(arguments.linked_page):
+            parser.error('each --linked-library with its --linked-page, the page the build made '
+                         'of that library')
+        found = rendered_check(arguments)
+    else:
+        if of_the_rendered:
+            parser.error('--webcpp-libs, --webcpp-page and the linked pages are --rendered\'s')
+        if not (arguments.page and arguments.sections):
+            parser.error('--page and at least one section are required')
+        found = page_check(arguments)
     for fault in found:
         print(fault)
     return 1 if found else 0

@@ -33,6 +33,22 @@
 # what they read, the sections, the headers and every library's
 # description, is more than b2 tracks.
 #
+# A library's page is also given what its build knows of the library, which
+# its text states without typing it:
+#
+# - {twins}, the twins' directory, for a library whose oracle declares
+#   webcpp.twins, which doc-check.py is given too (--twins): the page shows
+#   every divergent twin's own output;
+# - the counts tools/doc/counts.py computes as the page is made, {n-examples}
+#   and the others its comment lists: from the programs tools/webcpp.jam
+#   records as it loads the library's test and example Jamfiles, from its
+#   headers, from its twins, and from its own doc/counts.py;
+# - {webcpp-libs} and {webcpp-page}, with which it links another library's
+#   page, link:{webcpp-libs}/<library>/{webcpp-page}#<anchor>[...], in the
+#   layout -sWEBCPP_INDEX names (below). The check of the rendered page reads
+#   the linked page, which the build makes first, for each anchor such a
+#   link or a doc: <library>#<anchor> of the library's files names.
+#
 # MrDocs is -sMRDOCS=<path>, else .local/mrdocs/bin/mrdocs, else mrdocs on
 # PATH; clang++, which reads the headers for doc_comments.py, is
 # -sCLANG=<path>, else clang++ on PATH. When one is not there, the build
@@ -100,7 +116,7 @@ local rule here ( rule-name : expected )
 # included-target writes included at the attribute {included}; the check of
 # it, which runs first; the check of what it rendered; and its installation
 # into the directory html beside the Jamfile.
-local rule page ( id : source : included-target : included : current )
+local rule page ( id : source : included-target : included : current : linked * )
 {
     if $(.source.$(id))
     {
@@ -118,7 +134,8 @@ local rule page ( id : source : included-target : included : current )
         <dependency>/webcpp/doc-tools//node-modules
         <conditional>@webcpp-doc%needs-reference ;
     $(current).mark-target-as-always index.html ;
-    notfile rendered-check : @webcpp-doc%rendered-check : index.html ;
+    notfile rendered-check : @webcpp-doc%rendered-check : index.html $(linked)
+      : <webcpp-doc-page>$(id) ;
     install html : index.html : <location>html <dependency>rendered-check ;
     for local name in doc-check index.html rendered-check
     {
@@ -131,7 +148,44 @@ local rule page ( id : source : included-target : included : current )
 rule doc ( library : source )
 {
     local current = [ here doc : libs/$(library)/doc ] ;
-    page $(library) : $(source) : reference.adoc : reference : $(current) ;
+    # A layout that is neither tree nor site stops the build as the Jamfile
+    # loads, as the index's does.
+    layout ;
+    page $(library) : $(source) : reference.adoc : reference : $(current)
+        : [ linked-pages $(library) ] ;
+}
+
+# The pages of the other libraries that the files of library link, each
+# named by its converted page, ../../<other>/doc//index.html from the doc
+# project: the check of the rendered page reads each for the anchors its
+# links name, so the build makes them first. Not the installed pages: two
+# libraries may link each other, and neither page's installation then waits
+# for the other's. The names of those libraries are recorded in the same
+# order, for the check to tell which page is whose.
+local rule linked-pages ( library )
+{
+    local repository = [ path.native $(.root)/libs/$(library) ] ;
+    local script = [ path.native $(.here)/doc-check.py ] ;
+    local command = \"$(.python)\" \"$(script)\" --linked-libraries
+        --repository \"$(repository)\" --library $(library) 2>&1 ;
+    local listed = [ SHELL "$(command:J= )" : exit-status : strip-eol ] ;
+    if $(listed[2]) != 0
+    {
+        errors.user-error "webcpp.doc $(library): tools/doc/doc-check.py could not list the"
+            "pages libs/$(library) links:" $(listed[1]) ;
+    }
+    local pages ;
+    for local other in [ SPLIT_BY_CHARACTERS $(listed[1]) : "\n" ]
+    {
+        if ! [ CHECK_IF_FILE [ path.native $(.root)/libs/$(other)/doc/Jamfile ] ]
+        {
+            errors.user-error "libs/$(library) links the page of $(other), and"
+                "libs/$(other)/doc/Jamfile does not exist" ;
+        }
+        .linked.$(library) += $(other) ;
+        pages += ../../$(other)/doc//index.html ;
+    }
+    return $(pages) ;
 }
 
 # webcpp.reference <library> ; the library's API reference, the target
@@ -146,26 +200,40 @@ rule reference ( library )
     alias reference : reference.adoc ;
 }
 
-# Where the index page links each library's page, by -sWEBCPP_INDEX: tree,
-# the default, where b2 builds it (../../libs/<name>/doc/html/index.html from
-# doc/html), or site, where tools/ci/assemble.py publishes it beside the
-# index (libs/<name>/). Each sets the two attributes that libraries.adoc
-# writes its links with: {library-pages}<name>/{library-page}.
+# Where a page links another, by -sWEBCPP_INDEX: tree, the default, where b2
+# builds each, the index at doc/html/index.html and a library's at
+# libs/<name>/doc/html/index.html, or site, where tools/ci/assemble.py
+# publishes them, the index at the site's root and a library's at
+# libs/<name>/. The index's table writes its links with two attributes,
+# {library-pages}<name>/{library-page}, and a library's page links another's
+# with two more, link:{webcpp-libs}/<name>/{webcpp-page}#<anchor>[...]:
+# {webcpp-libs} reaches libs/ from the page.
 .index-links.tree = library-pages=../../libs/ library-page=doc/html/index.html ;
 .index-links.site = library-pages=libs/ library-page= ;
+.webcpp-libs.tree = ../../.. ;
+.webcpp-page.tree = doc/html/index.html ;
+.webcpp-libs.site = .. ;
+.webcpp-page.site = index.html ;
 
-# webcpp.index <page>.adoc ; the superproject's index page, from doc/Jamfile.
-rule index ( source )
+# The layout -sWEBCPP_INDEX names, tree or site, tree when it names none.
+local rule layout ( )
 {
     local links = [ modules.peek : WEBCPP_INDEX ] ;
     links ?= tree ;
     if ! $(.index-links.$(links)) || $(links[2])
     {
-        errors.user-error "-sWEBCPP_INDEX=$(links:J= ) is neither tree nor site: the index"
-            "links each library's page where b2 builds it (tree, the default) or where the"
-            "site publishes it (site)" ;
+        errors.user-error "-sWEBCPP_INDEX=$(links:J= ) is neither tree nor site: the pages"
+            "link one another where b2 builds them (tree, the default) or where the site"
+            "publishes them (site)" ;
     }
-    .index-links = $(.index-links.$(links)) ;
+    return $(links) ;
+}
+
+# webcpp.index <page>.adoc ; the superproject's index page, from doc/Jamfile.
+rule index ( source )
+{
+    local layout = [ layout ] ;
+    .index-links = $(.index-links.$(layout)) ;
     local current = [ here index : doc ] ;
     make libraries.adoc : : @webcpp-doc%write-libraries : <webcpp-doc-page>index ;
     $(current).mark-target-as-always libraries.adoc ;
@@ -276,24 +344,67 @@ rule doc-check ( targets * : sources * : properties * )
     SCRIPT on $(targets) = [ path.native $(.here)/doc-check.py ] ;
     PAGE on $(targets) = [ path.native $(.source.$(id)) ] ;
     SECTIONS on $(targets) = [ natives $(.sections.$(id)) ] ;
-    # Each empty for the index page, which leaves its option out.
+    # Each empty for the index page, which leaves its option out, and TWINS
+    # for a library that declares none.
     COMPLETE on $(targets) = ;
     EXAMPLES on $(targets) = ;
+    TWINS on $(targets) = ;
     REPOSITORY on $(targets) = ;
+    LIBRARY on $(targets) = ;
     README on $(targets) = ;
     if $(id) != index
     {
         local library = $(.root)/libs/$(id) ;
         COMPLETE on $(targets) = --complete ;
         EXAMPLES on $(targets) = [ path.native $(library)/example ] ;
+        local twins = [ twins-of $(id) ] ;
+        TWINS on $(targets) = $(twins[2]) ;
         REPOSITORY on $(targets) = [ path.native $(library) ] ;
+        LIBRARY on $(targets) = $(id) ;
         README on $(targets) = [ path.native $(library)/README.md ] ;
     }
 }
 
 actions doc-check
 {
-    "$(PYTHON)" "$(SCRIPT)" --page "$(PAGE)" $(COMPLETE) --examples$(_)"$(EXAMPLES)" --repository$(_)"$(REPOSITORY)" --readme$(_)"$(README)" "$(SECTIONS)"
+    "$(PYTHON)" "$(SCRIPT)" --page "$(PAGE)" $(COMPLETE) --examples$(_)"$(EXAMPLES)" --twins$(_)"$(TWINS)" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --readme$(_)"$(README)" "$(SECTIONS)"
+}
+
+# What the oracle of library declares with webcpp.twins, its examples and
+# twins directories and its suffix, or nothing: tools/webcpp.jam loads the
+# library's test and example Jamfiles to know it, as declared-lanes does.
+local rule twins-of ( library )
+{
+    return [ modules.call-in webcpp : twins-of $(library) ] ;
+}
+
+# The counts of library that its page is given, each name=value: those of
+# tools/doc/counts.py from the programs tools/webcpp.jam recorded as it
+# loaded the library's test and example Jamfiles, from its headers, from
+# twins, and from the library's own doc/counts.py. Computed as the page is
+# made, at every build; a count that cannot be made stops the build,
+# naming its fault.
+local rule counts ( library : twins * )
+{
+    local programs = [ modules.call-in webcpp : programs-of $(library) ] ;
+    local script = [ path.native $(.here)/counts.py ] ;
+    local directory = [ path.native $(.root)/libs/$(library) ] ;
+    local command = \"$(.python)\" \"$(script)\" --library \"$(directory)\" ;
+    for local program in $(programs)
+    {
+        command += --program \"$(program)\" ;
+    }
+    if $(twins)
+    {
+        command += --examples \"$(twins[1])\" --twins \"$(twins[2])\" --suffix \"$(twins[3])\" ;
+    }
+    local counted = [ SHELL "$(command:J= ) 2>&1" : exit-status : strip-eol ] ;
+    if $(counted[2]) != 0
+    {
+        errors.user-error "webcpp.doc $(library): tools/doc/counts.py could not count what the"
+            "page states:" $(counted[1]) ;
+    }
+    return [ SPLIT_BY_CHARACTERS $(counted[1]) : "\n" ] ;
 }
 
 rule convert ( targets * : sources * : properties * )
@@ -311,7 +422,11 @@ rule convert ( targets * : sources * : properties * )
     if $(id) != index
     {
         local examples = [ path.native $(.root)/libs/$(id)/example ] ;
-        attributes += examples=$(examples) ;
+        local twins = [ twins-of $(id) ] ;
+        local layout = [ layout ] ;
+        attributes += examples=$(examples) twins=$(twins[2])
+            webcpp-libs=$(.webcpp-libs.$(layout)) webcpp-page=$(.webcpp-page.$(layout))
+            [ counts $(id) : $(twins) ] ;
     }
     else
     {
@@ -328,15 +443,34 @@ actions convert
     node "$(ASCIIDOCTOR)" -r$(_)"$(EXTENSIONS)" -v --failure-level INFO -S unsafe -a$(_)"$(ATTRIBUTES)" -a "$(INCLUDED)=$(>[2]:R=$(CWD))" -o "$(<)" "$(>[1])"
 }
 
+# A library's page is checked with the links of its library into the pages
+# of others, which its sources after the first are: the converted page of
+# each library .linked names, in that order.
 rule rendered-check ( targets * : sources * : properties * )
 {
+    local id = [ feature.get-values <webcpp-doc-page> : $(properties) ] ;
     PYTHON on $(targets) = $(.python) ;
     SCRIPT on $(targets) = [ path.native $(.here)/doc-check.py ] ;
+    # Each empty for the index page, which leaves its option out.
+    REPOSITORY on $(targets) = ;
+    LIBRARY on $(targets) = ;
+    WEBCPP_LIBS on $(targets) = ;
+    WEBCPP_PAGE on $(targets) = ;
+    LINKED on $(targets) = ;
+    if $(id) != index
+    {
+        local layout = [ layout ] ;
+        REPOSITORY on $(targets) = [ path.native $(.root)/libs/$(id) ] ;
+        LIBRARY on $(targets) = $(id) ;
+        WEBCPP_LIBS on $(targets) = $(.webcpp-libs.$(layout)) ;
+        WEBCPP_PAGE on $(targets) = $(.webcpp-page.$(layout)) ;
+        LINKED on $(targets) = $(.linked.$(id)) ;
+    }
 }
 
 actions rendered-check
 {
-    "$(PYTHON)" "$(SCRIPT)" --rendered "$(>)"
+    "$(PYTHON)" "$(SCRIPT)" --rendered "$(>[1])" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --webcpp-libs$(_)"$(WEBCPP_LIBS)" --webcpp-page$(_)"$(WEBCPP_PAGE)" --linked-library$(_)"$(LINKED)" --linked-page$(_)"$(>[2-])"
 }
 
 rule npm-ci ( targets * : sources * : properties * )

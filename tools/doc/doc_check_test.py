@@ -487,6 +487,105 @@ def check_rendered(root: Path) -> None:
             expect(result, 1, f'index.html: {fault}')
 
 
+def linked(root: Path, page: Path, site: bool = False) -> subprocess.CompletedProcess:
+    """Runs the check of the rendered page as webcpp.doc runs it for the library at root, named
+    fixture, whose build made the page of other first: in the tree's layout, or the site's."""
+    links = ('..', 'index.html') if site else ('../../..', 'doc/html/index.html')
+    return run('--rendered', str(page), '--repository', str(root), '--library', 'fixture',
+               '--webcpp-libs', links[0], '--webcpp-page', links[1],
+               '--linked-library', 'other', '--linked-page', str(root / 'scratch/other.html'))
+
+
+def check_links(root: Path) -> None:
+    """A link into another library's page: the page's own check leaves it to the check of the
+    rendered page, which reads the linked page as the build made it, for its anchor."""
+    # Outside what git lists (check_references ignores scratch/), so that no file of the library
+    # holds them.
+    write(root / 'scratch/other.html',
+          '<html><body><h2 id="present">Present</h2><h3 id="webcpp-other-f-02">f</h3>'
+          '<a name="named">n</a></body></html>')
+    rendered = root / 'scratch/index.html'
+    write(rendered, '<html><body><p>Clean.</p></body></html>')
+    header = root / 'include/header.hpp'
+
+    # The page's own check: an anchor of another library's is none of the page's, in a doc:
+    # reference or in a link to that library's page.
+    write(header, f'// Why ({DOC} other#missing).\n')
+    expect(check(root, '--complete'), 0, '')
+    stale = README + (f'See ../other/doc/html/{INDEX}#missing and libs/other/{INDEX}#present.\n')
+    write(root / 'README.md', stale)
+    expect(check(root, '--complete'), 0, '')
+    # The library's own name is its own page.
+    write(header, f'// Why ({DOC} fixture#nowhere11).\n')
+    expect(check(root, '--library', 'fixture'), 1,
+           'header.hpp:1: names no anchor of the page: #nowhere11')
+    write(header, f'// Why ({DOC} fixture#machines).\n')
+    expect(check(root, '--library', 'fixture'), 0, '')
+    # A page links another library's with the two attributes webcpp.doc sets, never with a path
+    # of one layout.
+    write(root / 'doc/page.adoc', PAGE + '\nSee link:{webcpp-libs}/other/doc/html/index.html'
+                                         '#present[other].\n')
+    expect(check(root), 1, f'page.adoc:{NEXT}: a link into another library\'s page is written '
+                           'link:{webcpp-libs}/<library>/{webcpp-page}#<anchor>[...]')
+    write(root / 'doc/page.adoc', PAGE + '\nSee link:{webcpp-libs}/other/{webcpp-page}#present'
+                                         '[other].\n')
+    expect(check(root, '--complete'), 0, '')
+    # A text that shows the form, with placeholders, writes no link.
+    write(root / 'README.md',
+          stale + 'Link as link:{webcpp-libs}/<library>/doc/html/index.html#<anchor>[...].\n')
+    expect(check(root, '--complete'), 0, '')
+    write(root / 'README.md', stale)
+
+    # The libraries whose pages the build makes first: those the library's files link.
+    write(header, f'// Why ({DOC} other#present, #named and ({DOC} third#a)).\n')
+    listing = run('--linked-libraries', '--repository', str(root), '--library', 'fixture')
+    assert (listing.returncode, listing.stdout) == (0, 'other\nthird\n'), listing
+    write(header, f'// Why ({DOC} fixture#machines).\n')
+
+    # The rendered check reads the linked page: each anchor a file of the library or a link of
+    # the page names is there, and is not an overload's number, which MrDocs may renumber.
+    expect(linked(root, rendered), 1, f'README.md:{stale.count(chr(10))}: names no anchor of the '
+                                      'page of other: other#missing')
+    write(root / 'README.md', README)
+    write(header, f'// Why ({DOC} other#present, #named and #missing).\n')
+    expect(linked(root, rendered), 1,
+           'header.hpp:1: names no anchor of the page of other: other#missing')
+    write(header, f'// Why ({DOC} other#present and #named).\n')
+    expect(linked(root, rendered), 0, '')
+    write(header, f'// Why ({DOC} other#webcpp-other-f-02).\n')
+    expect(linked(root, rendered), 1, 'header.hpp:1: other#webcpp-other-f-02 ends in the number '
+                                      'MrDocs gives an overload')
+    # A page that the build did not make first, which it cannot read.
+    write(header, f'// Why ({DOC} third#present).\n')
+    expect(linked(root, rendered), 1, 'header.hpp:1: names the page of third, which the build '
+                                      'did not make first')
+    write(header, f'// Why ({DOC} other#present).\n')
+    # A link of the rendered page, in the tree's layout and in the site's.
+    for site, href in ((False, '../../../other/doc/html/index.html'),
+                       (True, '../other/index.html')):
+        for anchor, fault in (('#present', None), ('', None), ('#named', None),
+                              ('#missing', 'names no anchor of the page of other: other#missing'),
+                              ('#webcpp-other-f-02',
+                               'other#webcpp-other-f-02 ends in the number MrDocs gives an '
+                               'overload')):
+            write(rendered, f'<html><body><p><a href="{href}{anchor}">other</a></p></body></html>')
+            if fault is None:
+                expect(linked(root, rendered, site=site), 0, '')
+            else:
+                expect(linked(root, rendered, site=site), 1, f'{href}{anchor}: {fault}')
+    write(rendered, '<html><body><p><a href="../../../third/doc/html/index.html#a">t</a></p>'
+                    '</body></html>')
+    expect(linked(root, rendered), 1, '../../../third/doc/html/index.html#a: names the page of '
+                                      'third, which the build did not make first')
+    # Each page the build made is named with its library.
+    unpaired = run('--rendered', str(rendered), '--linked-library', 'other')
+    expect(unpaired, 2, '')
+    assert 'each --linked-library with its --linked-page' in unpaired.stderr, unpaired.stderr
+    write(header, f'// Why ({DOC} #machines).\n')
+    write(root / 'doc/page.adoc', PAGE)
+    expect(check(root, '--complete'), 0, '')
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix='doc check ') as scratch:
         root = Path(scratch)
@@ -502,7 +601,7 @@ def main() -> int:
         write(root / 'README.md', README)
         write(root / 'doc/page.adoc', PAGE)
         for part in (check_page, check_reference, check_examples, check_graph, check_references,
-                     check_see_titles, check_readme, check_rendered):
+                     check_see_titles, check_readme, check_rendered, check_links):
             part(root)
             print(f'{part.__name__}: ok')
     print('doc-check.py: ok')

@@ -39,6 +39,15 @@ on:
 include::{examples}/catches.expected[]
 ----
 
+[#holds]
+== What it holds
+
+demo has {n-examples} examples: {n-examples-native} built natively,
+{n-examples-wasip2} for wasip2 and {n-examples-wasip3} for wasip3. It has
+{n-tests} tests, {n-boost-test-suites} of them a Boost.Test suite:
+{n-tests-native} run natively, {n-tests-wasip2} on wasip2 and {n-tests-wasip3}
+on wasip3. Each of its {n-headers} headers compiles alone.
+
 [#reference]
 == Reference
 
