@@ -4,6 +4,12 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-import testing ;
+import webcpp ;
 
-run demo_pass.cpp : : : <library>/webcpp/demo//demo ;
+webcpp.targets native wasip2 wasip3 ;
+
+webcpp.run pass : pass.cpp : <library>/webcpp/demo//demo ;
+webcpp.run-fail fails : fails.cpp : <library>/webcpp/demo//demo ;
+webcpp.compile-fail rejects : rejects.cpp : <library>/webcpp/demo//demo ;
+webcpp.run native_only : native_only.cpp : <library>/webcpp/demo//demo : native ;
+webcpp.headers-alone demo : ../include ;

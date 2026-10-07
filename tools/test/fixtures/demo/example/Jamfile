@@ -1,0 +1,13 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+import webcpp ;
+
+webcpp.targets native wasip2 wasip3 ;
+
+webcpp.example hello.cpp : <library>/webcpp/demo//demo ;
+# It throws, so it is built only where exceptions are on.
+webcpp.example catches.cpp : : native wasip3 ;

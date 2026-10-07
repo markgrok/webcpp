@@ -1,0 +1,297 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The rules a library's test and example Jamfiles declare their programs
+# with, in place of b2's run, exe and compile:
+#
+#     import webcpp ;
+#     webcpp.targets native wasip2 wasip3 ;
+#     webcpp.run name : sources + : requirements * : targets * ;
+#     webcpp.run-fail name : sources + : requirements * : targets * ;
+#     webcpp.compile-fail name : sources + : requirements * : targets * ;
+#     webcpp.example source : requirements * : targets * ;
+#     webcpp.headers-alone library : include-root ;
+#
+# A target is what a program is built for: emscripten (b2's toolset
+# emscripten), wasip2 and wasip3 (the clang toolsets of user-config.jam
+# whose versions are wasip2 and wasip3), and native (any other toolset). A
+# program is built for its own targets, else for those of its Jamfile's
+# webcpp.targets, else for native only. For any other target, b2 skips it
+# without a word.
+import errors ;
+import feature ;
+import make ;
+import modules ;
+import os ;
+import path ;
+import project ;
+import regex ;
+import sequence ;
+import testing ;
+
+.known = native emscripten wasip2 wasip3 ;
+
+# A program's targets, which filter reads. Free, so that a program's
+# targets play no part in its build directory.
+feature.feature webcpp-targets : : free incidental ;
+
+# The header a translation unit of headers-alone includes, as
+# webcpp/<library>/<name>.hpp.
+feature.feature webcpp-include : : free incidental ;
+
+# What links tools/throw_exception.cpp, the handler Boost calls in place of
+# a throw, into a program built without exceptions.
+.handler = <exception-handling>off:<source>/webcpp//throw_exception ;
+
+# The variant -noexcept of a native webcpp.run: a user may build without
+# exceptions and without RTTI, and the library must work for them.
+.noexcept = <exception-handling>off <rtti>off <define>BOOST_NO_EXCEPTIONS ;
+
+if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
+
+# The example runner, beside this file, as an absolute native path: the
+# action that runs it starts in the directory b2 was started in.
+.runner = [ path.native [ path.join
+    [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ]
+    example/run_example.py ] ] ;
+
+.nl = "\n" ;
+
+# The target the toolset of properties builds for.
+local rule target-of ( properties * )
+{
+    local toolset = [ feature.get-values <toolset> : $(properties) ] ;
+    if $(toolset) = emscripten
+    {
+        return emscripten ;
+    }
+    if $(toolset) = clang
+    {
+        local version = [ feature.get-values <toolset-clang:version> : $(properties) ] ;
+        if $(version) in wasip2 wasip3
+        {
+            return $(version) ;
+        }
+    }
+    return native ;
+}
+
+# The conditional requirement of every program: <build>no when the toolset
+# builds for a target that is not among the program's. It reads only
+# <toolset> and its version, which the build request sets. A condition on
+# <target-os>, which the Jamroot derives from the toolset, would keep b2's
+# evaluation of conditional requirements from settling: <build>no replaces
+# every other conditional result, <target-os>wasi among them (measured in
+# xstate-cpp).
+rule filter ( properties * )
+{
+    if ! [ target-of $(properties) ] in [ feature.get-values <webcpp-targets> : $(properties) ]
+    {
+        return <build>no ;
+    }
+}
+
+# Fails, naming context, when any of targets is not a known one.
+local rule check ( context : targets * )
+{
+    for local target in $(targets)
+    {
+        if ! $(target) in $(.known)
+        {
+            errors.user-error "$(context): $(target) is not a target; the targets are"
+                "$(.known:J= )" ;
+        }
+    }
+}
+
+# The project module of the Jamfile being loaded.
+local rule jamfile ( )
+{
+    local current = [ project.current ] ;
+    return [ $(current).project-module ] ;
+}
+
+# The library a Jamfile belongs to: the directory of libs/ that holds it.
+# A Jamfile outside libs/ is named by its directory, relative to the Jamroot.
+local rule library-of ( jamfile )
+{
+    local root = [ path.root [ project.attribute $(jamfile) project-root ] [ path.pwd ] ] ;
+    local location = [ path.root [ project.attribute $(jamfile) location ] [ path.pwd ] ] ;
+    local relative = [ path.relative-to $(root) $(location) ] ;
+    local library = [ MATCH "^libs/([^/]+)" : $(relative) ] ;
+    return $(library:E=$(relative)) ;
+}
+
+# Declares the targets of every program its Jamfile declares after it
+# without targets of its own.
+rule targets ( targets + )
+{
+    local jamfile = [ jamfile ] ;
+    check webcpp.targets : $(targets) ;
+    if $(.programs.$(jamfile))
+    {
+        errors.user-error "webcpp.targets must come before the first program of its Jamfile" ;
+    }
+    if $(.targets.$(jamfile))
+    {
+        errors.user-error "webcpp.targets is called twice in the same Jamfile" ;
+    }
+    .targets.$(jamfile) = $(targets) ;
+}
+
+# The requirements that build a program only for targets, else for its
+# Jamfile's, else for native; each pair <library> <target> is recorded for
+# declared.
+local rule program ( targets * )
+{
+    local jamfile = [ jamfile ] ;
+    check "a program's targets" : $(targets) ;
+    targets ?= $(.targets.$(jamfile)) ;
+    targets ?= native ;
+    .programs.$(jamfile) = true ;
+    local library = [ library-of $(jamfile) ] ;
+    .declared += "$(library) $(targets)" ;
+    # Qualified by its module, so that it resolves whatever names the
+    # Jamfile imported this module's rules under.
+    return <webcpp-targets>$(targets) <conditional>@webcpp%filter ;
+}
+
+# A test that passes when its program, built from sources, exits with 0.
+# Built natively, it is also built and run as name-noexcept: without
+# exceptions and without RTTI.
+rule run ( name : sources + : requirements * : targets * )
+{
+    local only = [ program $(targets) ] ;
+    testing.run $(sources) : : : $(requirements) $(only) $(.handler) : $(name) ;
+    if native in [ feature.get-values <webcpp-targets> : $(only) ]
+    {
+        testing.run $(sources) : : : $(requirements) $(.noexcept) $(.handler)
+            <webcpp-targets>native <conditional>@webcpp%filter : $(name)-noexcept ;
+    }
+}
+
+# A test that passes when its program, built from sources, exits with a
+# status other than 0.
+rule run-fail ( name : sources + : requirements * : targets * )
+{
+    testing.run-fail $(sources) : : : $(requirements) [ program $(targets) ] $(.handler)
+        : $(name) ;
+}
+
+# A test that passes when sources do not compile.
+rule compile-fail ( name : sources + : requirements * : targets * )
+{
+    testing.compile-fail $(sources) : $(requirements) [ program $(targets) ] : $(name) ;
+}
+
+# An example: the program built from source, run (through testing.launcher
+# for a wasm build), and its standard output compared with the
+# <stem>.expected beside source, by tools/example/run_example.py. The
+# target <stem>.output, which holds that output, exists only when the two
+# are equal.
+rule example ( source : requirements * : targets * )
+{
+    local name = $(source:B) ;
+    local only = [ program $(targets) ] ;
+    exe $(name) : $(source) : $(requirements) $(only) $(.handler) ;
+    # The program's main target can generate more than the executable, which
+    # it lists first: MSVC's debug link adds the .pdb after the .exe. So the
+    # action reads the program as the first source and the expected output
+    # as the last, never as the second.
+    make $(name).output : $(name) $(source:S=.expected) : @webcpp%run-and-compare
+        : $(requirements) $(only) ;
+    # testing.launcher is a free feature: it plays no part in the target's
+    # build directory, so a .output left over from one launcher reads as up
+    # to date under another and the comparison is silently skipped. Always
+    # running it again closes that gap.
+    local current = [ project.current ] ;
+    $(current).mark-target-as-always $(name).output ;
+}
+
+rule run-and-compare ( targets * : sources * : properties * )
+{
+    PYTHON on $(targets) = $(.python) ;
+    RUNNER on $(targets) = $(.runner) ;
+    # A word made only of a reference to an empty variable disappears whole,
+    # quotes included, so a native build (no testing.launcher) would turn
+    # `--launcher "$(LAUNCHER)"` into a bare `--launcher`. LAUNCHER_ARGS is
+    # instead empty, or the two words `--launcher <value>` together. The
+    # value is quoted, so that a launcher whose path holds a space reaches
+    # the runner as one argument.
+    local launcher = [ feature.get-values <testing.launcher> : $(properties) ] ;
+    if $(launcher)
+    {
+        LAUNCHER_ARGS on $(targets) = --launcher \"$(launcher)\" ;
+    }
+    else
+    {
+        LAUNCHER_ARGS on $(targets) = ;
+    }
+}
+
+actions run-and-compare
+{
+    "$(PYTHON)" "$(RUNNER)" $(LAUNCHER_ARGS) --expected "$(>[-1])" --output "$(<)" -- "$(>[1])"
+}
+
+# A test per public header of library, each a translation unit that only
+# includes it, as <webcpp/...>, and compiles: a header that leans on an
+# include it does not make itself fails here, naming it. The headers are
+# webcpp/<library>.hpp and every .hpp under webcpp/<library>/, in
+# include-root; a translation unit is compiled against the library's main
+# target, /webcpp/<library>//<library>, and named alone-<path>, with the
+# header's path under webcpp/ written with dashes: alone-xactor-scheduler
+# for webcpp/xactor/scheduler.hpp.
+rule headers-alone ( library : include-root )
+{
+    local current = [ project.current ] ;
+    local only = [ program ] ;
+    local root = [ path.make $(include-root) ] ;
+    local headers =
+        [ project.glob-internal-ex $(current) : $(root)/webcpp : $(library).hpp : : glob ]
+        [ project.glob-internal-ex $(current) : $(root)/webcpp/$(library) : *.hpp : : glob-tree ] ;
+    if ! $(headers)
+    {
+        errors.user-error "webcpp.headers-alone: $(include-root) holds neither"
+            "webcpp/$(library).hpp nor a header under webcpp/$(library)/" ;
+    }
+    for local header in $(headers)
+    {
+        local included = [ path.relative-to $(root) $(header) ] ;
+        local stem = [ MATCH "^webcpp/(.*)[.]hpp$" : $(included) ] ;
+        local dashed = [ regex.replace $(stem) "/" "-" ] ;
+        local name = alone-$(dashed) ;
+        make $(name).cpp : : @webcpp%write-include : <webcpp-include>$(included) ;
+        $(current).mark-target-as-explicit $(name).cpp ;
+        testing.compile $(name).cpp : <library>/webcpp/$(library)//$(library) $(only)
+            : $(name) ;
+    }
+}
+
+rule write-include ( targets * : sources * : properties * )
+{
+    HEADER on $(targets) = [ feature.get-values <webcpp-include> : $(properties) ] ;
+}
+
+# Writes the file through b2 itself, which works under every shell.
+actions write-include
+{
+    @($(STDOUT):E=#include <$(HEADER)>$(.nl)) > "$(<)"
+}
+
+# The pairs "<library> <target>" that the programs of the Jamfiles under
+# directories (absolute, in b2's form) declare, at any depth, sorted and
+# unique. It loads those Jamfiles, which a build loads only once it reaches
+# them.
+rule declared ( directories * )
+{
+    local names = [ modules.peek project : JAMFILE ] ;
+    for local jamfile in [ path.glob-tree $(directories) : $(names) ]
+    {
+        project.load $(jamfile:D) ;
+    }
+    return [ sequence.unique $(.declared) ] ;
+}

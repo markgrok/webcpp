@@ -97,7 +97,7 @@ def search_list(output):
 def test_boost_found_and_fixture_builds(root):
     result = harness.run_b2(root, 'libs/demo/test')
     expect(result, True, '**passed**')
-    assert re.search(r'^\*\*passed\*\* .*demo_pass\.test$', result.stdout, re.MULTILINE), (
+    assert re.search(r'^\*\*passed\*\* .*/pass\.test$', result.stdout, re.MULTILINE), (
         result.stdout[-4000:])
 
 

@@ -6,17 +6,22 @@
 #
 # webcpp, the superproject: it finds the installed Boost and checks its
 # version, sets what every library shares, registers each library of libs/
-# as /webcpp/<name>, and declares the aggregates test, example, doc and
-# install.
+# as /webcpp/<name>, declares the aggregates test, example, doc and
+# install, and lists the targets the libraries declare (declared-targets).
 import boost ;
 import errors ;
 import feature ;
 import modules ;
+import notfile ;
 import numbers ;
 import os ;
 import package ;
 import path ;
 import type ;
+
+# The rules the libraries' test and example Jamfiles declare their programs
+# with, which import it as webcpp.
+import tools/webcpp ;
 
 # A shell with CPATH (Homebrew sets it) puts its headers before the
 # configured Boost, and the compiler would use them without a word.
@@ -168,15 +173,16 @@ if $(.boost-found)
 .boost-check = [ check-target-builds /webcpp//boost_version $(.boost-check-name)
     : : <conditional>@boost-unusable ] ;
 
-# The check's own target evaluates the project's requirements too, and the
-# check would wait on itself. The feature marks that target, so that its
-# requirements leave the check out; free and incidental, it changes neither
-# the target's properties nor its path.
-feature.feature webcpp-configuration-check : : free incidental ;
+# Two targets leave the check out of their requirements: the check's own
+# target, which evaluates the project's requirements too and would wait on
+# itself, and declared-targets, which reads only Jamfiles, for a CI job that
+# installs no Boost. The feature marks them; free and incidental, it changes
+# neither a target's properties nor its path.
+feature.feature webcpp-boost-check : : free incidental ;
 
 rule boost-check ( properties * )
 {
-    if ! <webcpp-configuration-check>boost in $(properties)
+    if ! <webcpp-boost-check>off in $(properties)
     {
         return $(.boost-check) ;
     }
@@ -214,6 +220,18 @@ project /webcpp
       <toolset>clang-wasip2:<target-os>wasi
       <toolset>clang-wasip3:<target-os>wasi
       <target-os>wasi:<link>static
+      # A library that declares wasip2 builds there without exceptions, a
+      # portability policy: some wasm hosts lack exception handling. Boost
+      # then calls boost::throw_exception in place of a throw: webcpp.jam
+      # links its definition, tools/throw_exception.cpp, into such a program.
+      <toolset>clang-wasip2:<exception-handling>off
+      <toolset>clang-wasip2:<define>BOOST_NO_EXCEPTIONS
+      # One that declares wasip3 may use exceptions, encoded as the standard
+      # exception handling of WebAssembly (exnref): the clang of wasi-sdk 34
+      # emits the legacy encoding by default, which wasmtime 47 refuses to
+      # run ("legacy_exceptions feature required"). The runtime is libunwind.
+      <toolset>clang-wasip3:<cxxflags>"-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
+      <toolset>clang-wasip3:<linkflags>"-fwasm-exceptions -lunwind"
       <conditional>@boost-check
   : default-build <variant>debug
   : build-dir bin
@@ -223,8 +241,14 @@ project /webcpp
 # same for every Boost, and installed headers keep their package's dates, so
 # another Boost is often older than the object and would leave it up to date.
 obj boost_version : tools/test/boost_version.cpp
-  : <webcpp-configuration-check>boost ;
+  : <webcpp-boost-check>off ;
 always boost_version ;
+
+# The handler of a program built without exceptions, which webcpp.jam links
+# as /webcpp//throw_exception. Compiled once per variant: the program's
+# <exception-handling>off reaches it, and Boost.Config then defines
+# BOOST_NO_EXCEPTIONS, which its definitions need.
+obj throw_exception : tools/throw_exception.cpp ;
 
 # The projects in the directories that pattern matches, each named
 # ./<directory>: b2 takes a directory for the project in it, and a bare doc
@@ -280,4 +304,23 @@ alias test : $(.test) ;
 alias example : $(.example) ;
 alias doc : [ projects doc ] $(.doc) ;
 alias install : $(.install) ;
-explicit boost_version test example doc install $(.install) ;
+
+# `b2 declared-targets` prints each pair "<library> <target>" that a program
+# of a library's test or example Jamfiles declares, one per line, sorted: the
+# lanes CI runs for each library. With -d0, b2 prints nothing else.
+rule declared-targets ( targets * : sources * : properties * )
+{
+    local root = [ path.make $(WEBCPP_ROOT) ] ;
+    local directories ;
+    for local directory in $(.test) $(.example)
+    {
+        directories += [ path.root [ path.make $(directory) ] $(root) ] ;
+    }
+    for local pair in [ webcpp.declared $(directories) ]
+    {
+        ECHO $(pair) ;
+    }
+}
+notfile declared-targets : @declared-targets : : <webcpp-boost-check>off ;
+
+explicit boost_version throw_exception test example doc install $(.install) declared-targets ;

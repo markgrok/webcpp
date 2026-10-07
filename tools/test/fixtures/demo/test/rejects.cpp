@@ -4,11 +4,8 @@
 // accompanying file LICENSE_1_0.txt or copy at
 // https://www.boost.org/LICENSE_1_0.txt)
 
+// Does not compile, on any target, which webcpp.compile-fail expects.
+
 #include <webcpp/demo.hpp>
 
-#include <boost/core/lightweight_test.hpp>
-
-int main() {
-    BOOST_TEST_EQ(webcpp::demo::answer(), 42);
-    return boost::report_errors();
-}
+static_assert(webcpp::demo::answer() == 41, "the answer is 42");
