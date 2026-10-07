@@ -8,8 +8,9 @@
 # tools/doc/reference.py fills in for a library: @LIBRARY@ is its name,
 # @MACROS@ the prefix of its macros, and the quoted @...@ are paths of its
 # checkout and of the reference's build directory. A library's
-# doc/mrdocs.yml replaces any of these keys, or adds others, but those that
-# say where MrDocs reads and writes, what it writes, and how strict it is.
+# doc/mrdocs.yml sets none of these keys: it may add only keys of how its
+# reference is presented (reference.py's PRESENTATION), such as
+# sort-members or overloads.
 
 # What MrDocs reads: one translation unit that includes every public header
 # of the library, compiled as compile_commands.json says, in which only the

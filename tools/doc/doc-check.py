@@ -48,7 +48,8 @@ its code; no backtick outside its blocks of code: one inside inline code is the 
 run together by a passthrough, and one outside it of a span that did not close (postprocess.mjs
 keeps a + and a backtick MrDocs escaped as references, as Asciidoctor writes {cpp}); no escape of
 MrDocs's left undecoded and no U+2010, which MrDocs writes for an ASCII hyphen; and no link of a
-synopsis left as text in a block of code, which a highlighter that broke the link leaves.
+synopsis left as text in a block of code, which a highlighter that broke the link leaves; and no
+link to #index or #webcpp, the sections of MrDocs's reference that reference.py drops.
 
 Usage: doc-check.py --page <page.adoc> [--examples <dir>] [--twins <dir>] [--repository <dir>]
 [--readme <README.md>] [--complete] <section.adoc>...; or doc-check.py --rendered <page.html>.
@@ -129,6 +130,9 @@ MRDOCS_ESCAPE = re.compile(r'&(circ|lowbar|ast|grave|num|lsqb|rsqb|lcub|rcub|bso
 HYPHEN = '\u2010'
 # A link of a synopsis, which the macros substitution reads only when the highlighter keeps it.
 LINK_MACRO = re.compile(r'link:[^\s\[]*\[')
+# A link to the section of the global namespace or of webcpp, which tools/doc/reference.py
+# drops from MrDocs's reference.
+DROPPED_SECTION = re.compile(r'href="#(index|webcpp)"')
 # A cross-reference as Asciidoctor leaves it when it reads none, <<id>> or <<id,text>>; not the
 # << of an operator<< that MrDocs names.
 CROSS_REFERENCE = re.compile(r'&lt;&lt;[\w-]+(?:,.*?)?&gt;&gt;')
@@ -746,6 +750,8 @@ def rendered_faults(page: Path) -> list[str]:
         report(f'an escape of MrDocs left undecoded: {match.group(0)}', html, match)
     for match in re.finditer(HYPHEN, html):
         report('a U+2010 hyphen where MrDocs read -', html, match)
+    for match in DROPPED_SECTION.finditer(html):
+        report(f'a link to a section the reference does not keep: #{match.group(1)}', html, match)
     # In the blocks of code, no link of a synopsis left as text.
     for block in re.finditer(r'<pre\b[^>]*>(.*?)</pre>', html, flags=re.S):
         code = unescape(re.sub(r'<[^>]+>', '', block.group(1)))

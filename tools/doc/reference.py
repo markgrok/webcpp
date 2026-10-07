@@ -20,19 +20,24 @@ Beside the output it writes:
 - compile_commands.json, that translation unit's one command, whose source root is
   ${MRDOCS_SOURCE_ROOT}, libs/<name>, and whose other include directories are system ones;
 - mrdocs.yml, tools/doc/mrdocs.yml.in filled in for the library, with the keys of
-  libs/<name>/doc/mrdocs.yml, when there is one, in place of its own.
+  libs/<name>/doc/mrdocs.yml, when there is one, added: only keys of how the reference is
+  presented, PRESENTATION below.
 
 Then MrDocs writes the reference, and any warning fails it; and tools/doc/doc_comments.py checks
 the @tparam of each public template and the brief of each detail symbol. Both run, and the
-output is written only when both pass: MrDocs's text, with the first row of each table, which
-names its columns, marked as the table's header. The character references MrDocs writes in
-place of the characters AsciiDoc could read as markup stay: postprocess.mjs decodes them in the
-converted page, where nothing reads them as markup. MrDocs reads CPATH, CPLUS_INCLUDE_PATH and
-C_INCLUDE_PATH as a compiler does, so neither tool sees them.
+output is written only when both pass: MrDocs's text from the library's namespace on, without
+the sections of the global namespace and of webcpp, which hold a table of one row each (a table
+of the library's macros, which the first holds, becomes a section of its own), and with the
+first row of each table, which names its columns, marked as the table's header. The character
+references MrDocs writes in place of the characters AsciiDoc could read as markup stay:
+postprocess.mjs decodes them in the converted page, where nothing reads them as markup.
+
+MrDocs reads CPATH, CPLUS_INCLUDE_PATH and C_INCLUDE_PATH as a compiler does, so neither tool
+sees them.
 
 Exit 0 with the reference written; 1 when MrDocs or doc_comments.py finds a fault, or the
-library's settings change one that is every library's; 2 on a usage error or a tool that does
-not run.
+library's settings hold a key that is not one of how the reference is presented; 2 on a usage
+error or a tool that does not run.
 """
 
 from __future__ import annotations
@@ -60,11 +65,16 @@ LIBRARY = re.compile(r'[a-z][a-z0-9_]*')
 
 STANDARD = re.compile(r'[0-9][0-9a-z]')
 
-# The keys of mrdocs.yml.in a library cannot replace: where MrDocs reads and writes, what it
-# writes, and how strict it is, every warn* key included.
-LOCKED = {'source-root', 'compilation-database', 'input', 'output', 'generator', 'multipage',
-          'embedded', 'base-url', 'auto-function-metadata', 'auto-relates', 'extract-all',
-          'error-on-empty-corpus', 'max-errors', 'log-level'}
+# The keys a library's doc/mrdocs.yml may set: how its reference is presented, never what it
+# documents or how strictly. Any other key, of mrdocs.yml.in or not, MrDocs's or not, is
+# refused: the corpus (include-symbols, exclude-symbols, implementation-defined, see-below,
+# file-patterns, exclude, the macros), the input, the output and every warning are every
+# library's alike.
+PRESENTATION = {'sort-members', 'sort-members-by', 'sort-namespace-members-by',
+                'sort-members-ctors-1st', 'sort-members-dtors-1st',
+                'sort-members-assignment-1st', 'sort-members-conversion-last',
+                'sort-members-relational-last', 'overloads', 'sfinae', 'inherit-base-members',
+                'inherit-hidden-friends', 'legible-names', 'show-enum-constants'}
 
 # A top-level key of a YAML mapping, at the start of its line.
 KEY = re.compile(r'([A-Za-z][\w-]*)\s*:(\s|$)')
@@ -83,6 +93,39 @@ DIAGNOSTIC = re.compile(r'^ {4}\d+\) ', re.MULTILINE)
 # A table of MrDocs's, whose first row names its columns, "| Name| Description", which MrDocs
 # does not mark as the header: Asciidoctor would show it as one more row.
 NAMED_COLUMNS = re.compile(r'^\[cols="([^"]*)"\]\n\|===\n\| Name\b', re.MULTILINE)
+
+# A section of MrDocs's reference: its anchor, [#<anchor>], then its title, == <title>.
+SECTION = re.compile(r'^\[#([^\]\n]+)\]\n== ', re.MULTILINE)
+
+# The sections of the global namespace, [#index], and of webcpp, which hold a table of one row,
+# the way to the library's namespace; and a link to either, which every title of the reference
+# holds.
+DROPPED = ('index', 'webcpp')
+DROPPED_LINK = re.compile(r'link:#(?:index|webcpp)\[([^\]]*)\]')
+
+# The table of the macros, in the section of the global namespace: from its title to the next.
+MACROS = re.compile(r'^=== Macros\n(.*?)(?=^=== |\Z)', re.MULTILINE | re.DOTALL)
+
+
+def finished(text: str, library: str) -> str:
+    """MrDocs's reference as the page shows it: from the library's namespace, the sections of the
+    global namespace and of webcpp left out, but for the table of the library's macros, which
+    becomes a section of its own; each link to them their text; and the first row of each table,
+    which names its columns, the table's header."""
+    starts = [match.start() for match in SECTION.finditer(text)]
+    kept = [text[:starts[0]] if starts else text]
+    for start, end in zip(starts, [*starts[1:], len(text)]):
+        section = text[start:end]
+        anchor = SECTION.match(section)
+        if anchor is None or anchor.group(1) not in DROPPED:
+            kept.append(section)
+            continue
+        macros = MACROS.search(section) if anchor.group(1) == 'index' else None
+        if macros is not None:
+            kept.append(f'[#webcpp-{library}-macros]\n== Macros\n\n{macros.group(1).strip()}\n\n')
+    shown = DROPPED_LINK.sub(lambda link: link.group(1), ''.join(kept))
+    return NAMED_COLUMNS.sub(lambda table: f'[%header,cols="{table.group(1)}"]\n|===\n| Name',
+                             shown)
 
 
 class Failure(Exception):
@@ -122,7 +165,7 @@ def blocks(text: str, origin: Path) -> list[Block]:
 
 def settings(library: str, values: dict[str, str], override: Path | None) -> str:
     """The text of mrdocs.yml: the shared settings filled in with values, @NAME@ by values[NAME],
-    with the keys of override in place of their own."""
+    with the keys of override, each a key of PRESENTATION, in place of the same keys, or added."""
     shared = SHARED.read_text()
     for name, value in values.items():
         shared = shared.replace(f'@{name}@', value)
@@ -135,13 +178,14 @@ def settings(library: str, values: dict[str, str], override: Path | None) -> str
             key, number, _ = block
             if key is None:
                 continue
-            if key in LOCKED or key.startswith('warn'):
-                raise Failure(f'{override}:{number}: {key} is set for every library by '
-                              f'tools/doc/mrdocs.yml.in, and a library\'s settings cannot '
-                              'change it')
+            if key not in PRESENTATION:
+                raise Failure(f'{override}:{number}: {key} is not a setting a library may give '
+                              'its reference: a library chooses how its reference is presented, '
+                              f'with {", ".join(sorted(PRESENTATION))}; what it documents and '
+                              'how strictly are tools/doc/mrdocs.yml.in\'s, every library\'s')
             replaced[key] = block
     lines = [f'# Written by tools/doc/reference.py for {library}: tools/doc/mrdocs.yml.in, with '
-             f'the keys of {override} in place of its own.' if override else
+             f'the keys of {override}.' if override else
              f'# Written by tools/doc/reference.py for {library}: tools/doc/mrdocs.yml.in.']
     for key, _, text in blocks(shared, SHARED):
         lines += replaced.pop(key)[2] if key in replaced else text
@@ -273,10 +317,9 @@ def reference(options: argparse.Namespace) -> int:
     if faults:
         print('\n'.join(faults))
         return 1
-    finished = work / 'reference.finished.adoc'
-    finished.write_text(NAMED_COLUMNS.sub(lambda table: f'[%header,cols="{table.group(1)}"]\n'
-                                          '|===\n| Name', written.read_text()))
-    os.replace(finished, output)
+    shown = work / 'reference.finished.adoc'
+    shown.write_text(finished(written.read_text(), library))
+    os.replace(shown, output)
     return 0
 
 

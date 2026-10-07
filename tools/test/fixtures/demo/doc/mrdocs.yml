@@ -5,5 +5,5 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 #
 # What demo's reference adds to tools/doc/mrdocs.yml.in, the settings every
-# library's reference shares: nothing yet, which the tests of the build
-# change to see a library's settings replace the shared ones.
+# library's reference shares: keys of how the reference is presented, and
+# none yet. The tests of the build add one, and see every other refused.

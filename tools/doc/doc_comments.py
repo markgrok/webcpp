@@ -5,8 +5,9 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks the two rules of webcpp's Doc Comments that MrDocs does not: every template parameter
-of a public template has a @tparam, and every symbol of a detail namespace has a brief.
+"""Checks the rules of webcpp's Doc Comments that MrDocs does not: every template parameter of a
+public template has a @tparam, every symbol of a detail namespace has a brief, a public symbol's
+brief is one sentence, and every symbol has a Doc Comment of its own.
 
 Usage: doc_comments.py --library <name> --include <dir> [--clang <clang++>] -- <arguments>
 
@@ -20,10 +21,18 @@ namespace named detail. Each of its templates (of a function, a class, a partial
 an alias, a variable or a concept, hidden friends and member templates included) documents each
 of its named template parameters with @tparam, and names no other; the invented parameter of an
 `auto` function parameter, and an unnamed one, cannot be named. A declaration under a namespace
-named detail, at any depth, has a brief: its Doc Comment opens with a sentence. A Doc Comment is
-the one clang attaches, which MrDocs reads too; a declaration and its redeclarations, such as an
-out-of-line definition, are one symbol, documented when any of them is, with the template
-parameters of the one that holds the Doc Comment.
+named detail, at any depth, has a brief: its Doc Comment opens with a sentence. A public
+symbol's brief, the first paragraph of its Doc Comment, which MrDocs shows whole as the brief, is
+one sentence: it holds one `.`, `!` or `?` followed by a space or by its end, an abbreviation
+such as e.g., i.e. or etc. and a code span (`x.y`, \\c x.y) not counting.
+
+A Doc Comment is the one clang attaches, which MrDocs reads too; a declaration and its
+redeclarations, such as an out-of-line definition, are one symbol, documented when any of them
+is, with the template parameters of the one that holds the Doc Comment. clang attaches a comment
+to every declaration that follows it until a `;`, `{`, `}`, `#` or `@`, so that in
+`/** The x. */ int x, y;` and in an enumerator list `/** A. */ a, b,` the second declarator has
+the first one's: the first symbol that takes a comment owns it, and another that gets the same
+one has no Doc Comment of its own, a finding public or detail.
 
 MrDocs reports the rest: a public symbol without a Doc Comment, a parameter without @param, and a
 function without @return.
@@ -37,6 +46,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -82,6 +92,8 @@ class Symbol:
     # first; None when the symbol is no template.
     parameters: list[str] | None = None
     commented_parameters: bool = False
+    # The symbol whose Doc Comment clang gave this one, which has none of its own.
+    borrowed: str | None = None
 
 
 class Locations:
@@ -94,7 +106,8 @@ class Locations:
     def __init__(self, objects: list[Node]) -> None:
         self.file: str | None = None
         self.line: int | None = None
-        self.where: dict[int, tuple[str | None, int | None]] = {}
+        self.offset: int | None = None
+        self.where: dict[int, tuple[str | None, int | None, int | None]] = {}
         for value in objects:
             self.read(value)
 
@@ -109,6 +122,7 @@ class Locations:
             # A location: its includedFrom is the include stack, not a location.
             self.file = value.get('file', self.file)
             self.line = value.get('line', self.line)
+            self.offset = value.get('offset')
             return
         for key, item in value.items():
             if key == 'includedFrom':
@@ -117,10 +131,17 @@ class Locations:
             if key == 'loc' and 'kind' in value:
                 # A macro's expansion is written after its spelling: the declaration is where the
                 # macro is used.
-                self.where[id(value)] = (self.file, self.line)
+                self.where[id(value)] = (self.file, self.line, self.offset)
 
     def of(self, node: Node) -> tuple[str | None, int | None]:
-        return self.where.get(id(node), (None, None))
+        """The file and the line of node."""
+        file, line, _ = self.where.get(id(node), (None, None, None))
+        return file, line
+
+    def at(self, node: Node) -> tuple[str | None, int | None]:
+        """The file and the offset in it of node, which tell a comment from any other."""
+        file, _, offset = self.where.get(id(node), (None, None, None))
+        return file, offset
 
 
 def comment_of(node: Node | None) -> Node | None:
@@ -150,6 +171,33 @@ def has_brief(comment: Node) -> bool:
     return False
 
 
+def brief_of(comment: Node) -> str:
+    """The text of a Doc Comment's brief: its first paragraph that holds prose, before any
+    command, or its @brief; an inline command's argument (\\c x) is left out."""
+    for child in comment.get('inner', []):
+        kind = child.get('kind')
+        if kind == 'ParagraphComment' and text_of(child).strip():
+            return ' '.join(text_of(part) for part in child.get('inner', []))
+        if kind == 'BlockCommandComment' and child.get('name') in BRIEF_COMMANDS:
+            return text_of(child)
+        if kind != 'ParagraphComment':
+            return ''
+    return ''
+
+
+# What ends no sentence: a span of code, and an abbreviation.
+CODE_SPAN = re.compile(r'`[^`]*`')
+ABBREVIATION = re.compile(r'\b(?:e\.g|i\.e|etc|vs|cf)\.', re.IGNORECASE)
+# A sentence's end: a ., ! or ? followed by a space or by the end of the text.
+SENTENCE_END = re.compile(r'[.!?]+(?=\s|$)')
+
+
+def sentences(text: str) -> int:
+    """How many sentences text holds, as its sentence ends count them."""
+    text = ABBREVIATION.sub('abbreviation', CODE_SPAN.sub('code', text))
+    return len(SENTENCE_END.findall(text.strip()))
+
+
 def documented_parameters(comment: Node) -> Iterator[str]:
     """The template parameters a Doc Comment names with @tparam."""
     stack = [comment]
@@ -172,6 +220,8 @@ class Checker:
         self.records: dict[str, str] = {}
         # The symbol of each declaration, by its id, for the redeclarations after it.
         self.keys: dict[str, tuple[str, ...]] = {}
+        # The symbol that took each Doc Comment first, by the comment's file and offset.
+        self.owners: dict[tuple[str | None, int | None], Symbol] = {}
 
     def ours(self, file: str | None) -> bool:
         """Whether the file is a header of the library's include directory."""
@@ -218,7 +268,12 @@ class Checker:
         symbol = self.symbol(node, templated, name, file, line, detail)
         comment = comment_of(node) or comment_of(templated)
         if comment is not None:
-            symbol.comments.append(comment)
+            owner = self.owners.setdefault(self.locations.at(comment), symbol)
+            if owner is symbol:
+                symbol.comments.append(comment)
+            else:
+                symbol.borrowed = owner.name
+                comment = None
         parameters = self.parameters(node) if kind in TEMPLATES else None
         if parameters is not None and (symbol.parameters is None or
                                        (comment is not None and not symbol.commented_parameters)):
@@ -287,12 +342,24 @@ class Checker:
         """Each finding, in the order of the files and lines."""
         found: list[Finding] = []
         for symbol in self.symbols.values():
+            if symbol.borrowed is not None and not symbol.comments:
+                found.append((symbol.file, symbol.line,
+                              f'{symbol.name}: has no Doc Comment of its own; clang gives it the '
+                              f'one of {symbol.borrowed}'))
+                continue
             if symbol.detail:
                 if not any(has_brief(comment) for comment in symbol.comments):
                     found.append((symbol.file, symbol.line,
                                   f'{symbol.name}: a detail symbol needs a brief, a Doc Comment '
                                   'that opens with a sentence saying what it is'))
                 continue
+            briefs = [sentences(brief_of(comment)) for comment in symbol.comments]
+            if briefs and briefs[0] > 1:
+                found.append((symbol.file, symbol.line,
+                              f'{symbol.name}: the brief, the first paragraph of its Doc Comment, '
+                              f'holds {briefs[0]} sentences; MrDocs shows that paragraph whole as '
+                              'the brief, so keep one sentence there and start a paragraph for '
+                              'the rest'))
             if symbol.parameters is None:
                 continue
             documented = {name for comment in symbol.comments

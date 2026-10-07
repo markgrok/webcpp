@@ -88,6 +88,12 @@ def test_page_builds_with_its_reference(root):
     text = page_text(root)
     assert 'Returns a value added to itself.' in text, text
     assert 'An arithmetic type.' in text and 'Twice the value.' in text, text
+    # The reference starts at the library's namespace: the sections of the global namespace
+    # and of webcpp, which hold one row each, are gone, and nothing links to them.
+    assert 'Global namespace' not in html and 'id="index"' not in html, html
+    assert 'id="webcpp"' not in html and 'href="#webcpp"' not in html, html
+    assert re.search(r'<h3 id="webcpp-demo">(<a class="anchor"[^>]*></a>)?webcpp::demo</h3>',
+                     html), html
     # Its source links to the library's repository, and detail is MrDocs's to hide.
     assert 'https://github.com/webcpporg/demo/blob/main/include/webcpp/demo/answer.hpp#L' in html
     assert 'id="webcpp-demo-detail-sum"' not in html, html
@@ -144,6 +150,54 @@ def test_what_mrdocs_defaults_would_hide_fails(root):
                    f'{at(root, HEADER, "int unbox(box held);")}:',
                    "unbox: Missing documentation for parameter 'held'",
                    f'{at(root, HEADER, "struct widget {};")}:', 'widget: record is undocumented')
+
+
+def test_declarator_sharing_a_comment_fails(root):
+    # clang gives green the comment of red, and MrDocs counts it as documented.
+    prepare(root)
+    edit(root, HEADER, '}  // namespace webcpp::demo',
+         '/** The colours. */\n'
+         'enum class colour {\n'
+         '    /** Red. */\n'
+         '    red, green,\n'
+         '};\n\n'
+         '}  // namespace webcpp::demo')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
+                   f'{at(root, HEADER, "red, green,")}: webcpp::demo::colour::green: has no Doc '
+                   'Comment of its own; clang gives it the one of webcpp::demo::colour::red')
+
+
+def test_undocumented_enumerator_fails(root):
+    prepare(root)
+    edit(root, HEADER, '}  // namespace webcpp::demo',
+         '/** The colours. */\n'
+         'enum class colour {\n'
+         '    red,\n'
+         '};\n\n'
+         '}  // namespace webcpp::demo')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
+                   f'{at(root, HEADER, "    red,")}:',
+                   'webcpp::demo::colour::red: Missing documentation for enum value')
+
+
+def test_macros_are_documented_and_listed(root):
+    prepare(root)
+    edit(root, HEADER, 'namespace webcpp::demo {\n',
+         '#define WEBCPP_DEMO_UNDOCUMENTED 1\n\n'
+         'namespace webcpp::demo {\n')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
+                   f'{at(root, HEADER, "#define WEBCPP_DEMO_UNDOCUMENTED")}:',
+                   'WEBCPP_DEMO_UNDOCUMENTED: macro is undocumented')
+    # Documented, it has a section of its own, and the reference lists the library's macros.
+    edit(root, HEADER, '#define WEBCPP_DEMO_UNDOCUMENTED 1\n',
+         '/** The answer, as a macro. */\n#define WEBCPP_DEMO_UNDOCUMENTED 1\n')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
+    html = (root / PAGE).read_text()
+    assert 'id="WEBCPP_DEMO_UNDOCUMENTED"' in html, html
+    assert re.search(r'<h3 id="webcpp-demo-macros">(<a class="anchor"[^>]*></a>)?Macros</h3>',
+                     html), html
+    assert '<a href="#WEBCPP_DEMO_UNDOCUMENTED"><code>WEBCPP_DEMO_UNDOCUMENTED</code></a>' in html
+    assert 'Global namespace' not in html, html
 
 
 def test_missing_tparam_fails_naming_the_template(root):
@@ -209,21 +263,28 @@ def test_clang_is_given(root):
                    '-sCLANG=/nowhere/clang++ is not a file')
 
 
-def test_library_settings_replace_the_shared_ones(root):
+def test_library_settings_only_present_the_reference(root):
     prepare(root)
-    edit(root, HEADER, '}  // namespace webcpp::demo',
-         'int undocumented(int value);\n\n}  // namespace webcpp::demo')
     settings = (root / 'libs/demo/doc/mrdocs.yml').resolve()
-    with settings.open('a') as file:
-        file.write('exclude-symbols:\n  - \'webcpp::demo::undocumented\'\n')
+    text = settings.read_text()
+    # A key of how the reference is presented is the library's to set.
+    settings.write_text(text + 'sort-members: false\n')
     harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
-    assert 'webcpp-demo-undocumented' not in (root / PAGE).read_text()
-    # What makes the reference strict is the shared settings' alone.
-    with settings.open('a') as file:
-        file.write('warn-as-error: false\n')
-    harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
-                   f'{settings}:', 'warn-as-error is set for every library by '
-                   'tools/doc/mrdocs.yml.in')
+    generated = (root / 'bin/libs/demo/doc/mrdocs.yml').read_text()
+    assert 'sort-members: false\n' in generated, generated
+    # Any other is refused, naming the file, the line and the key: one that narrows what is
+    # documented, one that loosens the strictness, and one MrDocs does not know.
+    for key, value in (('exclude-symbols', "\n  - 'webcpp::demo::answer'"),
+                       ('warn-as-error', ' false'),
+                       ('include-symbols', "\n  - 'webcpp::demo::twice'"),
+                       ('implementation-defined', "\n  - 'webcpp::demo'"),
+                       ('see-below', "\n  - 'webcpp::demo::answer'"),
+                       ('no-such-key', ' true')):
+        settings.write_text(text + f'{key}:{value}\n')
+        line = text.count('\n') + 1
+        harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
+                       f'{settings}:{line}: {key} is not a setting a library may give its '
+                       'reference')
 
 
 def test_doc_check_and_rendered_check_run(root):
@@ -302,12 +363,15 @@ CASES = [
     test_page_builds_with_its_reference,
     test_undocumented_function_fails_naming_it,
     test_what_mrdocs_defaults_would_hide_fails,
+    test_declarator_sharing_a_comment_fails,
+    test_undocumented_enumerator_fails,
+    test_macros_are_documented_and_listed,
     test_missing_tparam_fails_naming_the_template,
     test_detail_without_brief_fails_naming_it,
     test_page_needs_its_reference,
     test_mrdocs_is_found_or_named,
     test_clang_is_given,
-    test_library_settings_replace_the_shared_ones,
+    test_library_settings_only_present_the_reference,
     test_doc_check_and_rendered_check_run,
     test_index_lists_every_library,
 ]

@@ -8,8 +8,22 @@ https://www.boost.org/LICENSE_1_0.txt)
 The style every page adds to Asciidoctor's, in its head (docinfo=shared).
 -->
 <style>
-/* Room for a line of the examples, which clang-format keeps within 100 columns, without scrolling. */
+/* Room for a line of the examples, which clang-format keeps within 100 columns, without
+   scrolling. */
 #header, #content, #footnotes, #footer { max-width: 66em; }
+/* The system's fonts, as the test report's pages use: Asciidoctor's style asks for Noto Serif,
+   Open Sans and Droid Sans Mono, which webfonts! keeps from being downloaded, so a page would
+   otherwise show whatever serif the system falls back to. */
+body, h1, h2, h3, h4, h5, h6, #toctitle, #toc ul, #content .title, .conum[data-value],
+.verseblock pre {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+code, kbd, pre, samp {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+/* The links of a reference's title, to the scopes its name is in, read as the title does. */
+#content :is(h2, h3, h4, h5, h6) a:not(.anchor) { color: inherit; text-decoration: none; }
+#content :is(h2, h3, h4, h5, h6) a:not(.anchor):hover { text-decoration: underline; }
 /* The block's own background shows behind the highlighted code. */
 .listingblock > .content > pre.highlight { background: #f7f7f8; }
 pre.highlight > code.hljs { background: none; padding: 0; }
@@ -42,6 +56,10 @@ pre.highlight > code.hljs { background: none; padding: 0; }
 /* On a phone, a table wider than the page scrolls in its own box, as a listing does; the box fits
    the table's rows, so a narrower table keeps its frame around them. */
 @media screen and (max-width: 56.25em) {
-  table.tableblock { display: block; overflow-x: auto; width: fit-content; max-width: 100%; }
+  table.tableblock {
+    display: block; overflow-x: auto; width: fit-content; max-width: 100%;
+    /* The cells draw the frame: the box's own border would double it. */
+    border-width: 0;
+  }
 }
 </style>

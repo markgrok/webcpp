@@ -53,7 +53,8 @@ export function decodeEntities(text, { markup = false } = {}) {
       if (name !== undefined) {
         character = MRDOCS.get(name);
       } else {
-        const code = decimal !== undefined ? Number.parseInt(decimal, 10) : Number.parseInt(hex, 16);
+        const code =
+          decimal !== undefined ? Number.parseInt(decimal, 10) : Number.parseInt(hex, 16);
         character = code >= 0x20 && code <= 0x7e ? String.fromCharCode(code) : undefined;
       }
       if (character === undefined) {

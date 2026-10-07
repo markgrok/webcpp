@@ -396,8 +396,9 @@ def check_rendered(root: Path) -> None:
     code is read too: a passthrough can open in one span and close in another, which then run
     together around a backtick with whatever lay between them, a cross-reference included; and a
     span that does not close leaves its backtick in the text. MrDocs's escapes, &hyphen; and its
-    kin, and the U+2010 the first stands for, are what postprocess.mjs decodes; and a link of a
-    synopsis left as text is a listing the highlighter broke. The samples are what Asciidoctor.js
+    kin, and the U+2010 the first stands for, are what postprocess.mjs decodes; a link of a
+    synopsis left as text is a listing the highlighter broke; and a link to #index or #webcpp is
+    one to a section reference.py drops. The samples are what Asciidoctor.js
     and tools/doc's extensions write."""
     rendered = root / 'html/index.html'
     page = ('<html><head><title>T</title><style>a::before { content: "++"; }</style></head>'
@@ -429,7 +430,12 @@ def check_rendered(root: Path) -> None:
             (f'<p>Returns x{HYPHEN}y.</p>', 'a U+2010 hyphen where MrDocs read -'),
             ('<pre class="highlight"><code class="hljs">link:<span class="hljs-meta">#box[box'
              '&lt;int&gt;]</span>\nmake_box(int value);</code></pre>',
-             'a link of a listing left as text: link:#box[')):
+             'a link of a listing left as text: link:#box['),
+            # The sections of the global namespace and of webcpp, which reference.py drops.
+            ('<h3><a href="#webcpp">webcpp</a>::demo</h3>',
+             'a link to a section the reference does not keep: #webcpp'),
+            ('<p><a href="#index">Global namespace</a></p>',
+             'a link to a section the reference does not keep: #index')):
         write(rendered, page % sample)
         result = run('--rendered', str(rendered))
         if fault is None:

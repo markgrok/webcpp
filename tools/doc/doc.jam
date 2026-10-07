@@ -28,9 +28,10 @@
 # style of docinfo.html, and these attributes, which a page need not set:
 # {examples}, the library's example directory, source-highlighter,
 # source-language cpp, docinfo, webfonts! (no font from the network),
-# reproducible (no date) and nofooter (a footer would hold nothing else). A page, its reference and the index's table are
-# made again on every build: what they read, the sections, the headers and
-# every library's description, is more than b2 tracks.
+# reproducible (no date) and nofooter (a footer would hold nothing else). A
+# page, its reference and the index's table are made again on every build:
+# what they read, the sections, the headers and every library's
+# description, is more than b2 tracks.
 #
 # MrDocs is -sMRDOCS=<path>, else .local/mrdocs/bin/mrdocs, else mrdocs on
 # PATH; clang++, which reads the headers for doc_comments.py, is

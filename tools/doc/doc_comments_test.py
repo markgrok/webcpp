@@ -330,6 +330,86 @@ def test_detail_symbol_without_brief(library: Library) -> None:
     assert len(findings(result)) == 5, result.stdout
 
 
+# Declarators that clang gives one Doc Comment: it attaches a comment to each declaration that
+# follows it up to a ;, a {, a }, a # or an @, so a comma does not stop it.
+SHARED = """\
+namespace webcpp::demo {
+
+/** The colours. */
+enum class colour {
+    /** Red. */
+    red, green,
+};
+
+/** A point. */
+struct point {
+    /** The x. */
+    int x, y;
+};
+
+/** The lowest. */
+inline constexpr int low = 0, high = 9;
+
+namespace detail {
+
+/** The detail colours. */
+enum class shade {
+    /** Dark. */
+    dark, light,
+};
+
+/** A detail point. */
+struct spot {
+    /** The a. */
+    int a, b;
+};
+
+/** The first. */
+inline constexpr int first = 0, second = 1;
+
+}  // namespace detail
+
+}  // namespace webcpp::demo
+"""
+
+
+def test_declarators_have_comments_of_their_own(library: Library) -> None:
+    path = library.header('shared.hpp', SHARED)
+    result = library.check()
+    expect(result, 1, *(
+        f'{line_of(path, line)} webcpp::demo::{name}: has no Doc Comment of its own; clang gives '
+        f'it the one of webcpp::demo::{first}'
+        for line, name, first in (('    red, green,', 'colour::green', 'colour::red'),
+                                  ('    int x, y;', 'point::y', 'point::x'),
+                                  ('int low = 0, high = 9;', 'high', 'low'),
+                                  ('    dark, light,', 'detail::shade::light',
+                                   'detail::shade::dark'),
+                                  ('    int a, b;', 'detail::spot::b', 'detail::spot::a'),
+                                  ('int first = 0, second = 1;', 'detail::second',
+                                   'detail::first'))))
+    # Each once, and only those: the first of each takes the comment as its own.
+    assert len(findings(result)) == 6, result.stdout
+
+
+def test_brief_is_one_sentence(library: Library) -> None:
+    path = library.header('box.hpp', DOCUMENTED.replace(
+        '/** Returns a value added to itself.\n',
+        '/** Returns a value added to itself. It is twice the value!\n'))
+    result = library.check()
+    expect(result, 1,
+           f'{line_of(path, "constexpr T twice(T value)")} webcpp::demo::twice: the brief, the '
+           'first paragraph of its Doc Comment, holds 2 sentences')
+    assert len(findings(result)) == 1, result.stdout
+    # Abbreviations, numbers and code spans end no sentence, and neither does a detail symbol's
+    # brief, which only needs to be there.
+    library.header('box.hpp', DOCUMENTED.replace(
+        '/** Returns a value added to itself.\n',
+        '/** Returns a value added to itself, e.g. 2 for 1, i.e. the sum, as in version 1.5,\n'
+        '    with `x. y` and \\c a.b too, etc. and so on.\n').replace(
+        '/** Adds two values. */', '/** Adds two values. Both are added. */'))
+    expect(library.check(), 0)
+
+
 def test_lines_across_headers(library: Library) -> None:
     # clang's dump writes a location's file and line only when they change: a finding in a second
     # header, after declarations of a first, still names its own file and line.
@@ -361,6 +441,8 @@ CASES: list[Callable[[Library], None]] = [
     test_missing_tparam_in_every_kind_of_template,
     test_tparam_naming_no_parameter,
     test_detail_symbol_without_brief,
+    test_declarators_have_comments_of_their_own,
+    test_brief_is_one_sentence,
     test_lines_across_headers,
     test_clang_failure_is_reported,
     test_library_namespace_missing,
