@@ -1,0 +1,18 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: wit-bindgen
+description: >-
+  Installs wit-bindgen 0.62.0 in .local/wit-bindgen, checked against its SHA-256, where the build
+  looks for it: it generates the C bindings of a component's world, for the wasip2 and wasip3
+  lanes, the API reference and the lint.
+
+runs:
+  using: composite
+  steps:
+    - name: Install wit-bindgen 0.62.0
+      shell: bash
+      run: bash tools/ci/actions/wit-bindgen/install.sh

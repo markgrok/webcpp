@@ -1,0 +1,19 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: WASI WIT
+description: >-
+  Installs the WIT of WASI 0.2.12 and 0.3.0, the wit/deps directories of the crates wasip2 1.0.4
+  and wasip3 0.9.0, each checked against its SHA-256, in .local/wasi-wit/p2 and
+  .local/wasi-wit/p3, where the build looks for them: a component's world resolves its wasi:http
+  packages against them.
+
+runs:
+  using: composite
+  steps:
+    - name: Install the WIT of WASI 0.2.12 and 0.3.0
+      shell: bash
+      run: bash tools/ci/actions/wasi-wit/install.sh
