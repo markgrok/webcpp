@@ -340,6 +340,41 @@ def test_reference_needs_its_page(root):
     assert not (root / PAGE).exists()
 
 
+def test_doc_builds_at_once_share_the_packages(root):
+    # Two b2 runs at once, one that converts a page with Asciidoctor.js while the other installs
+    # the packages again, as -a does, and two that install them at the same time: none fails,
+    # and the install is made once for a lockfile, then only pointed at.
+    prepare(root)
+    environment = {name: value for name, value in os.environ.items()
+                   if name not in harness.COMPILER_PATHS}
+
+    def start(*arguments):
+        return subprocess.Popen(['b2', f'--user-config={harness.user_config(root)}', *arguments],
+                                cwd=root, env=environment, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, errors='replace',
+                                start_new_session=True)
+
+    (root / 'bin').mkdir()
+    for round in range(3):
+        install = '/webcpp/doc-tools//node-modules'
+        runs = [start('-a', f'--build-dir=bin/page-{round}', 'libs/demo/doc'),
+                start('-a', f'--build-dir=bin/install-{round}-a', install),
+                start('-a', f'--build-dir=bin/install-{round}-b', install)]
+        try:
+            outputs = [run.communicate(timeout=harness.TIMEOUT)[0] for run in runs]
+        finally:
+            for run in runs:
+                if run.poll() is None:
+                    harness.stop_session(run)
+        for run, output in zip(runs, outputs):
+            assert run.returncode == 0, (round, run.args, output[-4000:])
+    assert (root / PAGE).is_file()
+    installs = sorted((root / 'tools/doc/.node-modules').iterdir())
+    assert len(installs) == 1, installs
+    link = root / 'tools/doc/node_modules'
+    assert link.is_symlink() and link.resolve() == (installs[0] / 'node_modules').resolve(), link
+
+
 def test_mrdocs_is_found_or_named(root):
     prepare(root)
     installed = mrdocs_root()
@@ -753,6 +788,7 @@ CASES = [
     test_detail_without_brief_fails_naming_it,
     test_page_needs_its_reference,
     test_reference_needs_its_page,
+    test_doc_builds_at_once_share_the_packages,
     test_mrdocs_is_found_or_named,
     test_clang_is_given,
     test_library_settings_only_present_the_reference,

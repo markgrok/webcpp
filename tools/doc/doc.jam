@@ -13,9 +13,10 @@
 #     webcpp.reference <library> : <requirements> * : <also-checked> * ;
 #
 # webcpp.reference declares the target reference of the library's doc
-# project, which a page declared with webcpp.doc must go with: tools/doc/reference.py writes the library's API reference with
-# MrDocs, strict, from one translation unit of every public header, and
-# checks with doc_comments.py what MrDocs does not. That translation unit is
+# project, which a page declared with webcpp.doc must go with:
+# tools/doc/reference.py writes the library's API reference with MrDocs,
+# strict, from one translation unit of every public header, and checks with
+# doc_comments.py what MrDocs does not. That translation unit is
 # read natively, with the include directories and the defines of the
 # library's target and of the requirements given: a library whose headers
 # build only for WASI gives those a native parse needs, such as the explicit
@@ -70,8 +71,9 @@
 # PATH; clang++, which reads the headers for doc_comments.py, is
 # -sCLANG=<path>, else clang++ on PATH; a path given may hold a space. When
 # one is not there, the build stops, naming it and where it was looked for.
-# Node runs Asciidoctor.js, which npm ci installs into tools/doc/node_modules
-# from package-lock.json.
+# Node runs Asciidoctor.js, which tools/doc/install.py installs with npm ci
+# from package-lock.json, once per lockfile under tools/doc/.node-modules/, and
+# links at tools/doc/node_modules, so that doc builds at once share it.
 #
 # This file is loaded as the module webcpp-doc: b2 has a module named doc of
 # its own, the one of --help.
@@ -554,14 +556,19 @@ actions rendered-check
     "$(PYTHON)" "$(SCRIPT)" --rendered "$(>[1])" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --webcpp-libs$(_)"$(WEBCPP_LIBS)" --webcpp-page$(_)"$(WEBCPP_PAGE)" --linked-page$(_)"$(>[2-])"
 }
 
-rule npm-ci ( targets * : sources * : properties * )
+rule install-packages ( targets * : sources * : properties * )
 {
+    PYTHON on $(targets) = $(.python) ;
+    SCRIPT on $(targets) = [ path.native $(.here)/install.py ] ;
     HERE on $(targets) = [ path.native $(.here) ] ;
 }
 
-# Installs the packages package-lock.json pins into node_modules, from npm's
-# cache when it holds them.
-actions npm-ci
+# Installs the packages package-lock.json pins, from npm's cache when it holds
+# them, once per lockfile and never over an install in use, and links
+# node_modules to them (install.py); the stamp says it ran.
+actions install-packages
 {
-    cd "$(HERE)" && npm ci --no-audit --no-fund --prefer-offline --loglevel=error
+    set -e
+    "$(PYTHON)" "$(SCRIPT)" "$(HERE)"
+    echo installed > "$(<)"
 }

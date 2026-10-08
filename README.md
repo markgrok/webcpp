@@ -123,8 +123,9 @@ builds the index page and each library's page, with its API reference from
 MrDocs. MrDocs is found at `.local/mrdocs/bin/mrdocs`, on `PATH`, or where
 `-sMRDOCS=<path>` says, and the build stops, naming where it looked, when it
 is in none of them; clang++ is found on `PATH`, or where `-sCLANG=<path>`
-says. The Node packages are installed into `tools/doc/node_modules` by
-`npm ci` on first use.
+says. The Node packages are installed by `npm ci` on first use, once per
+`package-lock.json`, under `tools/doc/.node-modules/`, and linked at
+`tools/doc/node_modules`, so that doc builds at once share them.
 
 The build is strict: a public symbol without a Doc Comment, a template
 parameter without `@tparam`, a `detail` symbol without a brief, and a Doc

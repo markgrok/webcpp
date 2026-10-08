@@ -36,7 +36,7 @@ COMPILER_PATHS = ('CPATH', 'CPLUS_INCLUDE_PATH', 'C_INCLUDE_PATH')
 TOP_IGNORED = {'.git', '.local', 'libs'}
 
 # Left out of a copy at any depth: what a build or a run writes.
-IGNORED = {'bin', 'node_modules', '__pycache__', '.DS_Store'}
+IGNORED = {'bin', 'node_modules', '.node-modules', '__pycache__', '.DS_Store'}
 
 TIMEOUT = 900
 

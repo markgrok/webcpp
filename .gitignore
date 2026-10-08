@@ -1,6 +1,7 @@
 .local/
 bin/
-node_modules/
+node_modules
+.node-modules/
 doc/html/
 __pycache__/
 .DS_Store

@@ -5,11 +5,15 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 #
 # The documentation toolchain's own target, /webcpp/doc-tools//node-modules,
-# which every page needs: Asciidoctor.js and highlight.js, installed by npm
-# ci into node_modules from package-lock.json, again when it changes. It needs
-# no Boost, whose check the Jamroot's requirements would run.
+# which every page needs: Asciidoctor.js and highlight.js, which install.py
+# installs once per package-lock.json, beside node_modules, and links there.
+# It runs at every build, and does nothing when the install is there: two doc
+# builds at once, in one b2 run or in two, never install over packages the
+# other reads (install.py). It needs no Boost, whose check the Jamroot's
+# requirements would run.
 
-make .package-lock.json : package-lock.json : @webcpp-doc%npm-ci
-  : <location>node_modules <webcpp-boost-check>off ;
-alias node-modules : .package-lock.json : <webcpp-boost-check>off ;
-explicit .package-lock.json node-modules ;
+make node-modules.stamp : package.json package-lock.json : @webcpp-doc%install-packages
+  : <webcpp-boost-check>off ;
+alias node-modules : node-modules.stamp : <webcpp-boost-check>off ;
+explicit node-modules.stamp node-modules ;
+always node-modules.stamp ;
