@@ -17,9 +17,9 @@ of the packages loses them while the other installs: this is why it never runs i
 itself. It runs in a temporary directory under <directory>/.node-modules/, which is renamed,
 whole and at once, to .node-modules/<digest>, the digest of package.json and package-lock.json.
 <directory>/node_modules is then a link to .node-modules/<digest>/node_modules, which Node finds
-as it finds any node_modules beside a script, made under another name and renamed over the old
-link, so that a reader sees the old install or the new one, never none. A run whose install is
-there already only checks the link, so `b2 -a` reinstalls nothing.
+as it finds any node_modules beside a script, made under another name in .node-modules/ and
+renamed over the old link, so that a reader sees the old install or the new one, never none. A
+run whose install is there already only checks the link, so `b2 -a` reinstalls nothing.
 
 The whole run holds an exclusive lock on .node-modules/.lock, which the system releases when the
 process ends, however it ends: runs at once wait for one another, and the second finds the
@@ -31,7 +31,7 @@ that install stays for one generation more and goes when the link changes again.
 the install of an older lockfile, the temporary directory of an npm ci that was killed, and a
 node_modules that npm ci made in <directory> itself before, each renamed aside first, so that a
 prune killed half-way leaves a name the next run prunes again, and then removed, read-only
-entries and all; and beside node_modules, the link of a run killed before it renamed it.
+entries and all; and the link of a run killed before it renamed it.
 
 On Windows, the lock is msvcrt's rather than fcntl's, retried for as long as another run holds
 it, since msvcrt gives up after about ten seconds. The link is a directory symbolic link, or a
@@ -68,8 +68,10 @@ LOCK = '.lock'
 PREVIOUS = '.previous'
 # What a prune renames a directory to before it removes it.
 REMOVED = '.removed.'
-# What the link is made as, with its run's pid, before it is renamed to node_modules.
-LINKING = 'node_modules.'
+# What the link is made as under .node-modules/, with its run's pid, before it is renamed to
+# node_modules: a run killed in between leaves it where git ignores it wherever packages are
+# installed, never beside node_modules, where git would list it, and the prune removes it.
+LINKING = '.linking.'
 # What msvcrt.locking(LK_LOCK) raises when another still holds the lock after its ten tries:
 # EDEADLOCK, which is EDEADLK where both exist.
 WAITED = {errno.EDEADLK, getattr(errno, 'EDEADLOCK', errno.EDEADLK)}
@@ -165,9 +167,10 @@ def unlinked(path: Path) -> None:
         path.unlink()
 
 
-def made_link(link: Path, target: Path) -> None:
-    """Makes link a link to the directory target, relative to link's directory: a symbolic link
-    or, on Windows, where one may need Developer Mode or an administrator, a junction."""
+def made_link(link: Path, target: Path, home: Path) -> None:
+    """Makes link a link to the directory target, relative to home, the directory the link is
+    then renamed into: a symbolic link or, on Windows, where one may need Developer Mode or an
+    administrator, a junction."""
     try:
         link.symlink_to(target, target_is_directory=True)
         return
@@ -177,7 +180,7 @@ def made_link(link: Path, target: Path) -> None:
         import _winapi
         try:
             # A junction's target is absolute.
-            _winapi.CreateJunction(str(link.parent / target), str(link))
+            _winapi.CreateJunction(str(home / target), str(link))
         except OSError as failed:
             raise RuntimeError(f'cannot link {link} to {target}: Windows refused a symbolic link '
                                f'({refused}) and a junction ({failed})') from failed
@@ -287,10 +290,10 @@ def linked(directory: Path, done: Path) -> None:
         # A node_modules that npm ci made in the directory itself: moved under .node-modules/,
         # which the prune empties.
         link.rename(directory / INSTALLS / f'{REMOVED}{os.getpid()}.node_modules')
-    temporary = directory / f'{LINKING}{os.getpid()}'
+    temporary = directory / INSTALLS / f'{LINKING}{os.getpid()}'
     if is_link(temporary):
         unlinked(temporary)
-    made_link(temporary, Path(INSTALLS) / done.name / 'node_modules')
+    made_link(temporary, Path(INSTALLS) / done.name / 'node_modules', directory)
     if sys.platform == 'win32':
         # Windows renames no link to a directory over another.
         if is_link(link):
@@ -317,14 +320,11 @@ def remembered(directory: Path, name: str) -> None:
 
 def pruned(directory: Path, done: Path) -> None:
     """Removes everything under .node-modules but the lock, the current install and the previous
-    one, and the links that killed runs left beside node_modules."""
+    one: the links that killed runs left there among the rest."""
     kept = {LOCK, PREVIOUS, done.name, previous(directory)}
     for entry in sorted((directory / INSTALLS).iterdir()):
         if entry.name not in kept:
             removed(entry)
-    for entry in sorted(directory.glob(f'{LINKING}*')):
-        if entry.name[len(LINKING):].isdigit() and is_link(entry):
-            unlinked(entry)
 
 
 def updated(directory: Path) -> None:

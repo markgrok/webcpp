@@ -27,6 +27,7 @@ import tempfile
 import types
 from collections.abc import Callable
 from pathlib import Path
+from unittest import mock
 
 import install as installer
 
@@ -171,11 +172,39 @@ def test_what_a_killed_install_left_is_pruned(scratch: Path) -> None:
     aside = directory / '.node-modules' / '.removed.0123'
     aside.mkdir()
     # A killed link, the link made under another name before it is renamed over node_modules.
-    (directory / 'node_modules.99999').symlink_to('.node-modules', target_is_directory=True)
+    killed = directory / '.node-modules' / '.linking.99999'
+    killed.symlink_to('.node-modules', target_is_directory=True)
     assert install(directory, env).returncode == 0
     assert installs(directory) == current, installs(directory)
-    assert not os.path.lexists(directory / 'node_modules.99999'), os.listdir(directory)
+    assert not os.path.lexists(killed), os.listdir(directory / '.node-modules')
     assert runs(scratch) == 1, runs(scratch)
+
+
+class Killed(BaseException):
+    """What stands for a kill in the middle of a run."""
+
+
+def test_a_killed_link_is_left_where_git_ignores_it(scratch: Path) -> None:
+    # The link is made under another name before it is renamed over node_modules. A run killed in
+    # between leaves it under .node-modules/, which git ignores wherever packages are installed,
+    # never beside node_modules, where git would list it; and the next run prunes it there.
+    directory = project(scratch)
+    done = directory / '.node-modules' / 'installed'
+    (done / 'node_modules').mkdir(parents=True)
+
+    with mock.patch.object(installer.os, 'replace', side_effect=Killed), \
+            mock.patch.object(installer.os, 'rename', side_effect=Killed):
+        try:
+            installer.linked(directory, done)
+        except Killed:
+            pass
+    assert sorted(os.listdir(directory)) == ['.node-modules', 'package-lock.json',
+                                             'package.json'], os.listdir(directory)
+    left = [name for name in os.listdir(directory / '.node-modules') if name != 'installed']
+    assert len(left) == 1 and os.path.islink(directory / '.node-modules' / left[0]), left
+    assert install(directory, environment(scratch)).returncode == 0
+    assert installs(directory) == [installer.digest(directory)], installs(directory)
+    assert linked(directory) == '{"lock": "one"}\n'
 
 
 def test_a_node_modules_of_npm_gives_way_to_the_link(scratch: Path) -> None:
@@ -307,6 +336,7 @@ CASES: list[Case] = [
     test_installs_at_once_run_npm_once,
     test_a_changed_lockfile_keeps_the_previous_generation,
     test_what_a_killed_install_left_is_pruned,
+    test_a_killed_link_is_left_where_git_ignores_it,
     test_a_node_modules_of_npm_gives_way_to_the_link,
     test_a_failed_install_keeps_the_link,
     test_an_npm_not_on_path_is_named,
