@@ -323,18 +323,18 @@ def test_reference_apostrophes_read_as_the_guide_s(_: None) -> None:
 def test_prose_apostrophes_that_asciidoctor_leaves_straight_are_curly(_: None) -> None:
     # Asciidoctor curls an apostrophe between two letters only: the one after the s of a plural,
     # and the one after a name of code, `x`'s, stay straight on the page, among curly ones. The
-    # page curls them, in prose and in a table, and leaves alone a quote, code, a listing and an
-    # attribute.
+    # page curls them, in prose and in a table, and leaves alone a quote, a word ending in s
+    # included, code, a listing and an attribute.
     # (In the guide, a backtick before an apostrophe is markup of its own, so a name of code
     # that owns what follows is written in a link there, or in a Doc Comment, as above.)
     html = body(convert("The operands' nodes, link:#x[`x`]'s brief, the examples' output; a "
-                        "'quoted' word, and `operands'`.\n\n"
+                        "'quoted' word, the 'actors' and 'well-kept-items', and `operands'`.\n\n"
                         "|===\n| The bindings' directory\n|===\n\n"
                         "[listing]\n----\nthe operands' nodes\n----\n\n"
                         "link:#o[the plans' list]\n"))
     assert ('<p>The operands&#8217; nodes, <a href="#x"><code class="whole">x</code></a>&#8217;s '
-            "brief, the examples&#8217; output; a 'quoted' word, and <code class=\"whole\">"
-            "operands'</code>.</p>") in html, html
+            "brief, the examples&#8217; output; a 'quoted' word, the 'actors' and "
+            "'well-kept-items', and <code class=\"whole\">operands'</code>.</p>") in html, html
     assert 'The bindings&#8217; directory' in html, html
     assert "<pre>the operands' nodes</pre>" in html, html
     assert 'the plans&#8217; list</a>' in html, html

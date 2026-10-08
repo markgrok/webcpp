@@ -278,8 +278,9 @@ function partsOfHeadings(html) {
 
 // The elements whose text is code, or no text at all, where an apostrophe stays as written.
 const VERBATIM = /^<(\/?)(pre|code|kbd|samp|script|style|textarea)\b/;
-// A plural's apostrophe, `the operands' nodes`, after an s that ends a word.
-const PLURAL = /(?<=[A-Za-z]s)'(?=[\s.,;:!?)\]]|$)/g;
+// A plural's apostrophe, `the operands' nodes`, after an s that ends a word; not the one that
+// closes a word a straight quote opened, `the 'actors'`, which stays a quote.
+const PLURAL = /(?<!'[\w-]*)(?<=[A-Za-z]s)'(?=[\s.,;:!?)\]]|$)/g;
 // An apostrophe right after a name of code, or a link around one, `x`'s, before an s that ends
 // the word, or before the end of the word itself.
 const AFTER_CODE = /^'(?=s(?![A-Za-z])|[\s.,;:!?)\]]|$)/;
