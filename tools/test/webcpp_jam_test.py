@@ -366,24 +366,28 @@ def test_boost_test_failure_is_red_and_named(root):
     # A failed check, after which its case goes on, and a failed requirement, which ends its
     # case: each ends the run red, never a hang and never a pass, and its output names the case,
     # every failed check and the module, whose name has - as _. Boost.Test writes a terminal's
-    # colours even to a file, unless told not to.
+    # colours even to a file, unless told not to. The same holds whatever the suite's sources are
+    # built with: with exceptions, the default, or with a user's own exception-handling=off; the
+    # framework that reports the failure is unaffected either way (test_boost_test_passes_natively).
     harness.add_library(root, 'red', RED, RED_SOURCES)
-    result = harness.run_b2(root, 'libs/red/test')
-    harness.expect(result, False)
-    assert not passed(result), result.stdout[-4000:]
-    for suite, (case, checks, unreached) in RED_EXPECTED.items():
-        module = suite.replace('-', '_')
-        assert re.search(rf'^\.\.\.failed .*/{suite}\.test/.*/{suite}\.run\.\.\.$',
-                         result.stdout, re.MULTILINE), (suite, result.stdout[-6000:])
-        output = output_of(root, f'{suite}.output')
-        lines = output.splitlines()
-        for check in checks:
-            assert any(f'in "{case}": ' in line and f'check {check} has failed' in line
-                       for line in lines), (suite, check, output)
-        assert f'detected in the test module "{module}"' in output, (suite, output)
-        assert unreached is None or unreached not in output, (suite, output)
-        assert re.search(r'^EXIT STATUS: [1-9]', output, re.MULTILINE), (suite, output)
-        assert '\x1b' not in output, (suite, output)
+    for request in ((), ('exception-handling=off',)):
+        result = harness.run_b2(root, *request, 'libs/red/test')
+        harness.expect(result, False)
+        assert not passed(result), (request, result.stdout[-4000:])
+        for suite, (case, checks, unreached) in RED_EXPECTED.items():
+            module = suite.replace('-', '_')
+            assert re.search(rf'^\.\.\.failed .*/{suite}\.test/.*/{suite}\.run\.\.\.$',
+                             result.stdout, re.MULTILINE), (request, suite, result.stdout[-6000:])
+            output = output_of(root, f'{suite}.output')
+            lines = output.splitlines()
+            for check in checks:
+                assert any(f'in "{case}": ' in line and f'check {check} has failed' in line
+                           for line in lines), (request, suite, check, output)
+            assert f'detected in the test module "{module}"' in output, (request, suite, output)
+            assert unreached is None or unreached not in output, (request, suite, output)
+            assert re.search(r'^EXIT STATUS: [1-9]', output, re.MULTILINE), (request, suite, output)
+            assert '\x1b' not in output, (request, suite, output)
+        shutil.rmtree(root / 'bin')
 
 
 SUITES = ('import webcpp ;\n'

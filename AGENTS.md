@@ -411,10 +411,11 @@ The oracle is shared by every port:
   ("legacy_exceptions feature required").
 - So a library's headers never `throw`, `try` or `catch` where wasip2
   reaches them: there they return errors, and a failure that cannot be
-  returned goes through `boost::throw_exception`. They may elsewhere, behind
-  a condition wasip2 does not meet (`#ifndef BOOST_NO_EXCEPTIONS`). A program
-  that throws on purpose declares only the targets where exceptions are on:
-  `webcpp.example catches.cpp : : native wasip3 ;`.
+  returned goes through `boost::throw_exception`. Code that throws, tries or
+  catches sits behind `#ifndef BOOST_NO_EXCEPTIONS`, which is the condition,
+  so both wasip2 and a user's own build without exceptions compile. A
+  program that throws on purpose declares only the targets where exceptions
+  are on: `webcpp.example catches.cpp : : native wasip3 ;`.
 - **RTTI** is never restricted by webcpp, on any target, and no variant is
   built without it; a user imposes their own.
 
