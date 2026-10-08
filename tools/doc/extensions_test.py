@@ -38,6 +38,9 @@ HYPHEN = '\u2010'
 # The page MrDocs's text is included in, as a library's page includes its reference.
 HEADER = '= Sample\n:source-language: cpp\n\n'
 
+# The break between two parts of a name that only a phone's style keeps (postprocess.mjs).
+PART = '<wbr class="part">'
+
 
 def installed() -> None:
     """Installs tools/doc's packages with npm ci when they are missing."""
@@ -179,14 +182,20 @@ def test_wide_table_labels_its_cells(_: None) -> None:
     assert 'data-label' not in tables[1], tables[1]
 
 
+def parts(html: str) -> str:
+    """The html with each | written as the break between two parts of a name that only a phone's
+    style keeps; a break after a :: is written as it is, <wbr>, which every style keeps."""
+    return html.replace('|', PART)
+
+
 def test_reference_headings_break_after_scopes(_: None) -> None:
-    # A name of the reference breaks after a :: and a _, never between two letters; the anchor
-    # and the links of the heading are left as they are.
+    # A name of the reference breaks after a ::, at every width, and after a _, on a phone; never
+    # between two letters. The anchor and the links of the heading are left as they are.
     html = body(convert('[#webcpp-box-make]\n== webcpp::link:#webcpp-box[box]::make&lowbar;box\n'))
     heading = re.search(r'<h2 id="webcpp-box-make">(.*?)</h2>', html, flags=re.S)
     assert heading is not None, html
     assert heading.group(1).endswith(
-        'webcpp::<wbr><a href="#webcpp-box">box</a>::<wbr>make_<wbr>box'), heading.group(1)
+        parts('webcpp::<wbr><a href="#webcpp-box">box</a>::<wbr>make_|box')), heading.group(1)
 
 
 def test_long_names_break_between_their_parts(_: None) -> None:
@@ -195,7 +204,7 @@ def test_long_names_break_between_their_parts(_: None) -> None:
     # case, never between two letters of a word; prose, a listing, an attribute and a word short
     # enough to stay whole are left as they are.
     name = 'a_very_long_snake_case_name'
-    broken = 'a_<wbr>very_<wbr>long_<wbr>snake_<wbr>case_<wbr>name'
+    broken = parts('a_|very_|long_|snake_|case_|name')
     header = 'webcpp/demo/long&lowbar;header&lowbar;name.hpp'
     page = convert(f'[#webcpp-demo-{name}]\n== webcpp::link:#x[demo]::{name}\n\n'
                    f'Call `{name}(value)`, `webcpp::demo::{name}`,\n'
@@ -213,25 +222,66 @@ def test_long_names_break_between_their_parts(_: None) -> None:
     assert heading is not None, html
     assert heading.group(1).endswith(f'webcpp::<wbr><a href="#x">demo</a>::<wbr>{broken}'), \
         heading.group(1)
-    for code in (f'<code>{broken}<wbr>(value)</code>',
+    for code in (f'<code>{broken}{PART}(value)</code>',
                  f'<code>webcpp::<wbr>demo::<wbr>{broken}</code>',
-                 '<code>std::<wbr>optional<wbr>&lt;boost::<wbr>json::<wbr>value&gt;</code>',
-                 '<code>libs/<wbr>xstate/<wbr>test/<wbr>oracle//<wbr>update-expected</code>',
-                 '<code>xstate.<wbr>done.<wbr>state.<wbr>coffee.<wbr>preparation</code>',
+                 parts('<code>std::<wbr>optional|&lt;boost::<wbr>json::<wbr>value&gt;</code>'),
+                 parts('<code>libs/|xstate/|test/|oracle//|update-expected</code>'),
+                 parts('<code>xstate.|done.|state.|coffee.|preparation</code>'),
                  '<code class="whole">short_name</code>',
-                 '<code class="words"><span>get_<wbr>initial_<wbr>microsteps<wbr>(machine,</span> '
-                 '<span class="whole">options)</span></code>',
-                 '<code>resolve<wbr>History<wbr>Default<wbr>Transition</code> (JavaScript)',
+                 parts('<code class="words"><span>get_|initial_|microsteps|(machine,</span> '
+                       '<span class="whole">options)</span></code>'),
+                 parts('<code>resolve|History|Default|Transition</code> (JavaScript)'),
                  f'<a href="#webcpp-demo-{name}"><code>{broken}</code></a>',
-                 '<code>&lt;<a href="https://example.org/include/webcpp/demo/long_header_name.hpp">'
-                 'webcpp/<wbr>demo/<wbr>long_<wbr>header_<wbr>name.<wbr>hpp</a>&gt;</code>',
-                 '<a href="https://webcpporg.github.io/webcpp/report/" class="bare">'
-                 'https://<wbr>webcpporg.<wbr>github.<wbr>io/<wbr>webcpp/<wbr>report/</a>'):
+                 parts('<code>&lt;<a href="https://example.org/include/webcpp/demo/'
+                       'long_header_name.hpp">webcpp/|demo/|long_|header_|name.|hpp</a>&gt;'
+                       '</code>'),
+                 parts('<a href="https://webcpporg.github.io/webcpp/report/" class="bare">'
+                       'https://|webcpporg.|github.|io/|webcpp/|report/</a>')):
         assert code in html, (code, html)
     blocks = re.findall(r'<pre\b[^>]*>.*?</pre>', html, flags=re.S)
-    assert blocks and all('<wbr>' not in block for block in blocks), blocks
+    assert blocks and all('<wbr' not in block for block in blocks), blocks
     assert code_text(html) == [f'int {name}(int value);'], code_text(html)
     assert rendered_check(page).returncode == 0, rendered_check(page).stdout
+
+
+def test_names_break_only_where_they_part(_: None) -> None:
+    # The dot of a number, a run of _, the second < of <<, and a character reference are no
+    # place to break: a run of _ breaks after its last, and a reference stays whole.
+    html = body(convert('`boost_version_number_is_1.90.0`,\n'
+                        '`some_long__double_underscore_name`,\n'
+                        '`webcpp::xactor::operator&lt;&lt;(std::ostream&amp;)`,\n'
+                        '`some_really_long_identifier_name&#xAB;tail`,\n'
+                        '`some_really_long_identifier_name&rArr;tail`.\n'))
+    for code in (parts('<code>boost_|version_|number_|is_|1.90.0</code>'),
+                 parts('<code>some_|long__|double_|underscore_|name</code>'),
+                 parts('<code>webcpp::<wbr>xactor::<wbr>operator|&lt;&lt;(std::<wbr>ostream&amp;)'
+                       '</code>'),
+                 parts('<code>some_|really_|long_|identifier_|name&#xAB;tail</code>'),
+                 parts('<code>some_|really_|long_|identifier_|name&rArr;tail</code>')):
+        assert code in html, (code, html)
+
+
+def test_code_in_a_heading_is_broken_once(_: None) -> None:
+    # Inline code of a heading has its breaks from the code's own rule, once: a word short
+    # enough to stay whole has none, and a :: of a long one is followed by one break.
+    html = body(convert('== The `webcpp::demo::some_really_long_name` call and `short_name`\n'))
+    heading = re.search(r'<h2 id="[^"]*">(.*?)</h2>', html, flags=re.S)
+    assert heading is not None, html
+    assert heading.group(1) == parts(
+        'The <code>webcpp::<wbr>demo::<wbr>some_|really_|long_|name</code> call and '
+        '<code class="whole">short_name</code>'), heading.group(1)
+
+
+def test_linked_code_is_whole_or_breaks_between_its_parts(_: None) -> None:
+    # Inline code that holds a link, as MrDocs writes the name of a header, is a word as a reader
+    # reads it: short enough, it stays whole; with a space, it breaks between its parts.
+    html = body(convert('Declared in `&lt;link:https://example.org/x.hpp[webcpp/demo/x.hpp]&gt;`,\n'
+                        'and `call link:#x[some_really_long_name_for_this] now`.\n'))
+    for code in ('<code class="whole">&lt;<a href="https://example.org/x.hpp">webcpp/demo/x.hpp'
+                 '</a>&gt;</code>',
+                 parts('<code>call <a href="#x">some_|really_|long_|name_|for_|this</a> now'
+                       '</code>')):
+        assert code in html, (code, html)
 
 
 def test_reference_apostrophes_read_as_the_guide_s(_: None) -> None:
@@ -241,40 +291,150 @@ def test_reference_apostrophes_read_as_the_guide_s(_: None) -> None:
     # one straight.
     prose = 'The fixture{0}s test, the actors{0} queue and the {0}90s'
     mrdocs = (prose.format('&apos;') + ', with `L&apos;x&apos;` and '
-              'link:#x[`x`]&apos;s brief&period;\n\n'
-              '[source,cpp,subs="verbatim,replacements,macros,-callouts"]\n----\n'
-              'auto it&apos;s = L&apos;x&apos;;\n----\n')
+              'link:#x[`x`]&apos;s brief&period;\n')
     reference_html = body(convert(reference.finished(mrdocs, 'sample')))
     guide_html = body(convert(prose.format("'") + '.\n'))
     shown = ('The fixture&#8217;s test, the actors\' queue and the \'90s')
     assert f'<p>{shown}.</p>' in guide_html, guide_html
     assert (f'<p>{shown}, with <code class="whole">L\'x\'</code> and <a href="#x"><code '
             'class="whole">x</code></a>\'s brief.</p>') in reference_html, reference_html
-    assert code_text(reference_html) == ["auto it's = L'x';"], code_text(reference_html)
+
+
+def test_reference_apostrophes_stay_straight_in_code_and_targets(_: None) -> None:
+    # An apostrophe of MrDocs's that Asciidoctor would read as code, as a passthrough, or as part
+    # of a link's target or of a URL stays as MrDocs wrote it; one in a paragraph after a backtick
+    # that does not close is prose; and one in the text of a synopsis's link stays straight.
+    mrdocs = ('A ``it&apos;s``s span, +it&apos;s+, pass:[it&apos;s], +&apos;x&apos;+,\n'
+              'pass:c[&apos;y&apos;], link:pages/it&apos;s.html[a page],\n'
+              'link:https://example.org/it&apos;s[the fixture&apos;s page] and\n'
+              'https://example.org/don&apos;t[the other&apos;s]&period;\n\n'
+              'An unclosed `tick&period;\n\n'
+              'The fixture&apos;s test `x`&period;\n\n'
+              '[source,cpp,subs="verbatim,replacements,macros,-callouts"]\n----\n'
+              'auto link:#x[it&apos;s] = 1;\n----\n')
+    html = body(convert(reference.finished(mrdocs, 'sample')))
+    for shown in ("A <code class=\"whole\">it's</code>s span, it's, it's, 'x',\n'y',",
+                  '<a href="pages/it\'s.html">a page</a>',
+                  '<a href="https://example.org/it\'s">the fixture&#8217;s page</a>',
+                  '<a href="https://example.org/don\'t">the other&#8217;s</a>.',
+                  '<p>The fixture&#8217;s test <code class="whole">x</code>.</p>',
+                  '<a href="#x">it\'s</a>'):
+        assert shown in html, (shown, html)
+    assert code_text(html) == ["auto it's = 1;"], code_text(html)
 
 
 def test_tables_scroll_in_their_own_box(_: None) -> None:
-    # Every table of the page, one inside a cell included, is in a box of its own, which scrolls
-    # when a word of the table is too long for the page; a note, which Asciidoctor lays out as a
-    # table, is not.
+    # Every table of the page, one inside a cell and one with an id included, is in a box of its
+    # own, which scrolls when a word of the table is too long for the page; a note, which
+    # Asciidoctor lays out as a table, is not. A table with an id is labelled as any other.
     long = 'xstate::failure<T>(xstate::errc::implementation&lowbar;failed);'
     html = body(convert('[cols="1,1,1",options="header"]\n|===\n| XState | Fixed | Computed\n\n'
                         f'| `a` | `{long}` | `c`\n|===\n\n'
                         '[cols="1,1"]\n|===\n| Outer\na|\n'
                         '[cols="1"]\n!===\n! Inner\n!===\n|===\n\n'
+                        '[#named,cols="1,1,1",options="header"]\n|===\n| A | B | C\n\n'
+                        '| x | y | z\n|===\n\n'
                         'NOTE: A note.\n'))
     opened = re.findall(r'<table\b[^>]*>', html)
-    assert len(opened) == 4, opened
-    wrapped = re.findall(r'<div class="table-scroll">\s*<table class="tableblock[^"]*">', html)
-    assert len(wrapped) == 3, html
+    assert len(opened) == 5, opened
+    wrapped = re.findall(r'<div class="table-scroll">\n<table\b[^>]*\bclass="tableblock\b', html)
+    assert len(wrapped) == 4 == html.count('<div class="table-scroll">'), html
     assert re.search(r'<div class="table-scroll">\s*<table class="tableblock[^"]*">'
-                     r'(?:(?!<table)[\s\S])*?implementation_<wbr>failed'
+                     rf'(?:(?!<table)[\s\S])*?implementation_{PART}failed'
                      r'(?:(?!<table)[\s\S])*?</table>\s*</div>', html), html
-    # Each box closes where its table does, the inner one inside the outer cell.
+    # Each box closes where its table does, the inner one inside the outer cell, and nothing
+    # else closes one: a note's table is followed by its own block's end alone.
     assert '<div class="content"><div class="table-scroll">' in html, html
     assert '</table>\n</div></div></td>' in html, html
-    assert html.count('<div class="table-scroll">') == 3, html
-    assert re.search(r'<div class="admonitionblock note">\s*<table>', html), html
+    assert html.count('<div') == html.count('</div>'), html
+    assert re.search(r'<div class="admonitionblock note">\s*<table>[\s\S]*?</table>\n</div>\n'
+                     r'</div>\n<div id="footer">', html), html
+    assert re.search(r'<div class="table-scroll">\n<table id="named" class="tableblock', html), \
+        html
+    assert re.findall(r'<td [^>]*data-label="([^"]*)"', html)[-3:] == ['A', 'B', 'C'], html
+
+
+def css_rules(text: str) -> list[tuple[str | None, list[str], dict[str, str]]]:
+    """The rules of a stylesheet, each as its media query (None outside one), its selectors and
+    its declarations."""
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+    rules: list[tuple[str | None, list[str], dict[str, str]]] = []
+
+    def read(block: str, media: str | None) -> None:
+        position = 0
+        while True:
+            opening = block.find('{', position)
+            if opening < 0:
+                return
+            prelude = block[position:opening].strip()
+            if prelude.startswith('@media'):
+                depth, end = 1, opening + 1
+                while depth:
+                    depth += {'{': 1, '}': -1}.get(block[end], 0)
+                    end += 1
+                read(block[opening + 1:end - 1], prelude[len('@media'):].strip())
+                position = end
+                continue
+            closing = block.index('}', opening)
+            declarations = {}
+            for declaration in block[opening + 1:closing].split(';'):
+                if ':' in declaration:
+                    key, value = declaration.split(':', 1)
+                    declarations[key.strip()] = ' '.join(value.split())
+            selectors = [re.sub(r'\s*([>+~])\s*', r'\1', ' '.join(selector.split()))
+                         for selector in prelude.split(',')]
+            rules.append((media, selectors, declarations))
+            position = closing + 1
+
+    read(text, None)
+    return rules
+
+
+def page_style() -> list[tuple[str | None, list[str], dict[str, str]]]:
+    """The rules of the style every page adds to Asciidoctor's, docinfo.html's."""
+    docinfo = (HERE / 'docinfo.html').read_text()
+    return css_rules(docinfo[docinfo.index('<style>') + 7:docinfo.index('</style>')])
+
+
+def test_style_breaks_a_word_only_when_it_must(_: None) -> None:
+    # Each rule of Asciidoctor's style that lets text break anywhere, the page's own included, is
+    # met by one of the page's that breaks a word only when it alone is wider than its line.
+    default = (HERE / 'node_modules/@asciidoctor/core/data/asciidoctor-default.css').read_text()
+    anywhere = [selector for media, selectors, declarations in css_rules(default)
+                if media is None and 'anywhere' in (declarations.get('word-wrap', '') +
+                                                    declarations.get('overflow-wrap', ''))
+                for selector in selectors]
+    assert anywhere, 'Asciidoctor\'s style no longer breaks anywhere: drop this test'
+    breaking = {selector for media, selectors, declarations in page_style()
+                if media is None and declarations.get('overflow-wrap') == 'break-word'
+                for selector in selectors}
+    assert set(anywhere) <= breaking, (anywhere, breaking)
+
+
+def test_style_keeps_part_breaks_to_a_phone(_: None) -> None:
+    # From 600px a break between two parts of a name is no box, in a heading, a URL and inline
+    # code alike, and below it every break is live; a break after a :: of a heading is live at
+    # every width.
+    hidden = [(media, selector) for media, selectors, declarations in page_style()
+              if declarations.get('display') == 'none'
+              for selector in selectors if 'wbr' in selector]
+    assert sorted(hidden) == sorted([
+        ('screen and (min-width: 37.5em)', 'wbr.part'),
+        ('screen and (min-width: 37.5em)', '#content :not(pre):not([class^=L])>code wbr'),
+    ]), hidden
+
+
+def test_style_scrolls_a_wide_table_in_its_box(_: None) -> None:
+    # The box of a table scrolls sideways, holds the table's margin, and shows a shadow at an
+    # edge with more of the table beyond it: a cover moves with the table and hides the shadow
+    # where there is nothing more, so a table that fits looks as it did.
+    rules = {selector: declarations for media, selectors, declarations in page_style()
+             if media is None for selector in selectors}
+    box = rules['.table-scroll']
+    assert box.get('overflow-x') == 'auto' and box.get('margin-bottom') == '1.25em', box
+    assert box.get('background-attachment') == 'local, local, scroll, scroll', box
+    table = rules['.table-scroll>table.tableblock']
+    assert table == {'margin-bottom': '0', 'background': 'none'}, table
 
 
 CASES: list[Callable[[None], None]] = [
@@ -286,8 +446,15 @@ CASES: list[Callable[[None], None]] = [
     test_wide_table_labels_its_cells,
     test_reference_headings_break_after_scopes,
     test_long_names_break_between_their_parts,
+    test_names_break_only_where_they_part,
+    test_code_in_a_heading_is_broken_once,
+    test_linked_code_is_whole_or_breaks_between_its_parts,
     test_reference_apostrophes_read_as_the_guide_s,
+    test_reference_apostrophes_stay_straight_in_code_and_targets,
     test_tables_scroll_in_their_own_box,
+    test_style_breaks_a_word_only_when_it_must,
+    test_style_keeps_part_breaks_to_a_phone,
+    test_style_scrolls_a_wide_table_in_its_box,
 ]
 
 

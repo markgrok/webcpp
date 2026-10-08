@@ -117,31 +117,61 @@ APOSTROPHE = re.compile(r'(?<=[^\W_])&apos;(?=[^\W\d_])')
 # passthrough or a comment.
 VERBATIM = re.compile(r'(-{4,}|\.{4,}|\+{4,}|/{4,})')
 
+# What of a paragraph holds no apostrophe of prose, Asciidoctor's replacements reading it or not:
+# code, between two backticks or two pairs of them; a passthrough, +...+, ++...++, +++...+++ or
+# pass:[...], the one group a match names; and a link's target or a URL. MrDocs writes a
+# literal backtick as &grave; and a + as &plus;, so each of its own is markup.
+UNREAD = re.compile(r'``.*?``|`[^`]*`'
+                    r'|(\+\+\+.*?\+\+\+|\+\+.*?\+\+|\+[^+]*\+|pass:[a-z,]*\[[^\]]*\])'
+                    r'|\b(?:link|xref|mailto):[^\s\[]*|\b(?:https?|ftp|irc|file)://[^\s\[\]]*',
+                    re.DOTALL)
+
+
+def prose_apostrophes(paragraph: str) -> str:
+    """The paragraph with each apostrophe MrDocs wrote in a word of its prose written as ', and
+    each of a passthrough too: Asciidoctor shows a passthrough as written, its replacements
+    never reading it, and +...+ would show the reference itself, its & escaped. Code, a link's
+    target and a URL keep their &apos;."""
+    pieces = []
+    position = 0
+    for match in UNREAD.finditer(paragraph):
+        pieces.append(APOSTROPHE.sub("'", paragraph[position:match.start()]))
+        kept = match.group(0)
+        pieces.append(kept.replace('&apos;', "'") if match.group(1) else kept)
+        position = match.end()
+    pieces.append(APOSTROPHE.sub("'", paragraph[position:]))
+    return ''.join(pieces)
+
 
 def apostrophes(text: str) -> str:
     """MrDocs's text with each apostrophe of prose in a word written as ', which Asciidoctor then
-    makes curly as it does the guide's; code, a span between backticks or a verbatim block, keeps
-    its &apos;, which shows straight. MrDocs writes a literal backtick as &grave;, so each one
-    of its text opens or closes a span, which ends with its paragraph at the latest."""
-    lines = []
+    makes curly as it does the guide's. An apostrophe Asciidoctor would read in code, in a
+    passthrough, in a link's target or a URL, or in a verbatim block keeps its &apos;, which
+    shows straight: a synopsis's link text, which Asciidoctor's replacements read, among them.
+    Each paragraph is read alone, so a backtick that does not close ends with its paragraph."""
+    lines: list[str] = []
+    paragraph: list[str] = []
     delimiter: Optional[str] = None
-    code = False
+
+    def flush() -> None:
+        if paragraph:
+            lines.append(prose_apostrophes('\n'.join(paragraph)))
+            paragraph.clear()
+
     for line in text.split('\n'):
         if delimiter is not None:
             delimiter = None if line == delimiter else delimiter
+            lines.append(line)
         elif VERBATIM.fullmatch(line):
-            delimiter, code = line, False
+            flush()
+            delimiter = line
+            lines.append(line)
         elif not line.strip():
-            code = False
+            flush()
+            lines.append(line)
         else:
-            parts = line.split('`')
-            for index, part in enumerate(parts):
-                if not code:
-                    parts[index] = APOSTROPHE.sub("'", part)
-                if index < len(parts) - 1:
-                    code = not code
-            line = '`'.join(parts)
-        lines.append(line)
+            paragraph.append(line)
+    flush()
     return '\n'.join(lines)
 
 

@@ -155,7 +155,7 @@ def test_page_builds_with_its_reference(root):
         'never of <code class="whole">L\'x\'</code>.' in html, html
     # A name too long for a phone's line breaks after each _, in its heading and in the table
     # that links it, and never inside a listing or an attribute.
-    broken = 'a_<wbr>very_<wbr>long_<wbr>snake_<wbr>case_<wbr>name'
+    broken = 'a_|very_|long_|snake_|case_|name'.replace('|', '<wbr class="part">')
     assert re.search(r'<h3 id="webcpp-demo-a_very_long_snake_case_name">(<a class="anchor"[^>]*>'
                      rf'</a>)?webcpp::<wbr><a href="#webcpp-demo">demo</a>::<wbr>{broken}</h3>',
                      html), html
@@ -163,7 +163,7 @@ def test_page_builds_with_its_reference(root):
             in html), html
     listings = re.findall(r'<pre\b[^>]*>.*?</pre>', html, flags=re.S)
     assert any('a_very_long_snake_case_name' in block for block in listings), listings
-    assert all('<wbr>' not in block for block in listings), listings
+    assert all('<wbr' not in block for block in listings), listings
     # The page lives in the library, and is built again from scratch the same.
     assert (root / 'libs/demo/doc/html/index.html').is_file()
     again = harness.run_b2(root, '-a', 'libs/demo/doc')

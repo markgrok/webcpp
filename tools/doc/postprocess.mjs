@@ -37,7 +37,9 @@
 // `.` between letters, before the `(` or the `<` that ends a name, and in code
 // between the words of a name in camel case. So a phone breaks it there and
 // never between two letters of a word, which the style allows only to a part
-// still wider than the line.
+// still wider than the line. From 600px, where such a name has room, only the
+// break after a `::` of a heading stays, as the reference's headings always
+// had it: the others are `<wbr class="part">`, which the style hides there.
 
 import { Extensions, Postprocessor } from '@asciidoctor/core';
 
@@ -95,25 +97,46 @@ const INLINE_CODE = /<code>((?:[^<]|<a\b[^>]*>|<\/a>)*)<\/code>/g;
 // a list item or a stacked table cell narrows to about 260px.
 const WHOLE = 24;
 
+// A break after a `::`, which a heading of the reference keeps at every width;
+// and one between the other parts of a name, which the style keeps only on a
+// phone: from 600px every such name has room on a line.
+const SCOPE = '<wbr>';
+const PART = '<wbr class="part">';
+
 // The points a name breaks at, in text that holds no markup and its
-// references: after each `::`; after a run of `_` and after a `/` or a run of
-// them, each inside a name; after a `.` between letters, not that of `3.5`;
-// and before a `(` or a `<` that follows a name, not the second `<` of `<<`.
+// references, each with what it becomes: after each `::`; after a run of `_`
+// and after a `/` or a run of them, each inside a name; after a `.` between
+// letters, not that of `3.5`; and before a `(` or a `<` that follows a name,
+// not the second `<` of `<<`.
 const BREAKS = [
-  [/::/g, '::<wbr>'],
-  [/(?<=[A-Za-z0-9])(_+)(?=[A-Za-z0-9])/g, '$1<wbr>'],
-  [/(?<=[^\s/])(\/+)(?=[^\s/])/g, '$1<wbr>'],
-  [/(?<=[A-Za-z])\.(?=[A-Za-z])/g, '.<wbr>'],
-  [/(?<=\w)(?=\(|&lt;)/g, '<wbr>']
+  [/::/g, (scope) => scope + SCOPE],
+  [/(?<=[A-Za-z0-9])_+(?=[A-Za-z0-9])/g, (run) => run + PART],
+  [/(?<=[^\s/])\/+(?=[^\s/])/g, (run) => run + PART],
+  [/(?<=[A-Za-z])\.(?=[A-Za-z])/g, (dot) => dot + PART],
+  [/(?<=\w)(?=\(|&lt;)/g, () => PART]
 ];
 
 // Code breaks at these too, and between the words of a name written in camel
 // case, `resolveHistory` and `DefaultTransition`: never prose, whose JavaScript
 // is one word.
-const CODE_BREAKS = [...BREAKS, [/(?<=[a-z])(?=[A-Z])/g, '<wbr>']];
+const CODE_BREAKS = [...BREAKS, [/(?<=[a-z])(?=[A-Z])/g, () => PART]];
+
+// A character reference, which no break goes inside: `&#xAB;` and `&rArr;`
+// hold a lower case letter before an upper case one.
+const ANY_REFERENCE = /&(?:[A-Za-z][A-Za-z0-9]*|#[0-9]+|#[xX][0-9A-Fa-f]+);/g;
 
 function breakable(text, points = BREAKS) {
-  return points.reduce((broken, [point, marked]) => broken.replace(point, marked), text);
+  return points.reduce((broken, [point, mark]) => {
+    const references = [...broken.matchAll(ANY_REFERENCE)].map((reference) => [
+      reference.index,
+      reference.index + reference[0].length
+    ]);
+    return broken.replace(point, (match, ...rest) => {
+      const offset = rest[rest.length - 2];
+      const inside = references.some(([start, end]) => offset > start && offset < end);
+      return inside ? match : mark(match);
+    });
+  }, text);
 }
 
 // The html of inline code with each run of its text between two tags made
@@ -122,10 +145,15 @@ function breakableCode(html) {
   return html.replace(/(^|>)([^<]+)/g, (_text, end, text) => end + breakable(text, CODE_BREAKS));
 }
 
+// The text of html, its markup removed.
+function textOf(html) {
+  return html.replace(/<[^>]+>/g, '');
+}
+
 // Whether a word of inline code, its markup aside, is short enough to stay on
 // one line, as a reader reads it.
 function isWhole(word) {
-  return decodeEntities(word.replace(/<[^>]+>/g, ''), { markup: true }).length <= WHOLE;
+  return decodeEntities(textOf(word), { markup: true }).length <= WHOLE;
 }
 
 // A word of inline code, as an element: `whole`, or breakable between its
@@ -138,12 +166,12 @@ function wordOf(element, word) {
 
 function wordsOfCode(html) {
   return html.replace(INLINE_CODE, (_code, text) => {
-    if (!/\s/.test(text)) {
+    if (!/\s/.test(textOf(text))) {
       return wordOf('code', text);
     }
     if (text.includes('<')) {
-      // A link in code that holds a space, which MrDocs does not write, cannot be cut into
-      // words: the code breaks between its parts.
+      // Code that holds a link and a space, which MrDocs does not write, cannot be cut into
+      // words without cutting the link: the code breaks between its parts.
       return `<code>${breakableCode(text)}</code>`;
     }
     const words = text.replace(/\S+/g, (word) => wordOf('span', word));
@@ -159,8 +187,12 @@ function partsOfURLs(html) {
   return html.replace(BARE_URL, (_link, open, text, close) => open + breakable(text) + close);
 }
 
+// The tag that opens a table of Asciidoctor's, `id` before `class` when it has
+// one.
+const TABLEBLOCK = /^<table\b[^>]*\sclass="tableblock\b/;
+
 // A table of Asciidoctor's, which holds no other table.
-const TABLE = /<table class="tableblock[^"]*">(?:(?!<table)[\s\S])*?<\/table>/g;
+const TABLE = /<table\b[^>]*\sclass="tableblock\b[^>]*>(?:(?!<table)[\s\S])*?<\/table>/g;
 const HEADER_CELL = /<th\b[^>]*>([\s\S]*?)<\/th>/g;
 const BODY = /<tbody>[\s\S]*?<\/tbody>/;
 const ROW = /<tr>[\s\S]*?<\/tr>/g;
@@ -203,7 +235,7 @@ function boxedTables(html) {
   const open = [];
   return html.replace(TABLE_TAG, (tag) => {
     if (tag !== '</table>') {
-      const boxed = /^<table class="tableblock\b/.test(tag);
+      const boxed = TABLEBLOCK.test(tag);
       open.push(boxed);
       return boxed ? `<div class="table-scroll">\n${tag}` : tag;
     }
