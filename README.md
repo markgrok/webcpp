@@ -15,6 +15,7 @@ model: this repository is the superproject, the equivalent of
 | --- | --- | --- |
 | [xactor](https://github.com/webcpporg/xactor) | A header-only, deterministic actor system: actors that handle one message at a time, with fuel per execution, timers and a lifecycle. | native, wasip2, wasip3 |
 | [xstate](https://github.com/webcpporg/xstate) | A header-only port of XState's state machines and actors: machines read from XState's JSON config, stepped by XState's pure functions or run as actors on xactor. Ports XState 5.33.2, and is proven against it. | native, wasip2, wasip3 |
+| [pratt](https://github.com/webcpporg/pratt) | A header-only Pratt parser engine, generic through concepts, with a calculator built on it, exact in decimal by default; a library of webcpp's own. | native, wasip2, wasip3 |
 
 trystero (a port of Trystero's serverless WebRTC rooms) and wasi (a helper
 for building C++ as WASI components) are being moved here. Each library's

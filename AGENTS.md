@@ -45,6 +45,7 @@ repository of its own, checked out here as a submodule under `libs/<name>`.
 | --- | --- | --- | --- |
 | xactor | a deterministic actor system, webcpp's own | native, wasip2, wasip3 (`xactor_asio` native only) | a submodule at `libs/xactor`; the model for every port |
 | xstate | a port of XState 5.33.2's state machines and actors; depends on xactor and Boost.JSON | native, wasip2, wasip3; its oracle lane | a submodule at `libs/xstate`; the first user of the shared oracle (chapter 5) |
+| pratt | a Pratt parser engine, generic through concepts, with a calculator built on it, webcpp's own | native, wasip2, wasip3 | a submodule at `libs/pratt`; born with the allocation rule (chapter 6) |
 | wasi | a helper for building C++ as WASI HTTP components | wasip2, wasip3 (`response.hpp` also natively) | to come (chapter 13) |
 | trystero | a port of Trystero, serverless WebRTC rooms | native, emscripten | to come (chapter 13) |
 
@@ -60,7 +61,8 @@ webcpp/
   .clang-format       clang-format's style, every repository's
   .clang-tidy         clang-tidy's checks, every repository's
   pyrightconfig.json  Pyright's settings for every Python file
-  libs/<name>/        a library: a repository of its own, a submodule here
+  libs/<name>/        a library: a repository of its own, a submodule here (xactor,
+                      xstate, pratt)
   doc/                the index page (index.adoc, Jamfile)
   tools/
     webcpp.jam        the Jamfile API (chapter 9): webcpp.targets, webcpp.run, ...
@@ -197,7 +199,7 @@ finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
   `LICENSE-TRYSTERO.txt`), and its README names the parts that derive from
   it. That adds no licence to webcpp's code: every file of webcpp is BSL-1.0
   only, and no repository has a `LICENSE-MIT.txt`. A library of webcpp's own,
-  like xactor, has no `LICENSE-<ORIGIN>.txt`.
+  like xactor and pratt, has no `LICENSE-<ORIGIN>.txt`.
 - **The name.** `[a-z][a-z0-9_]*`, the name of the original where it has one
   (xstate, trystero). `index` is reserved, in any case: the index page is the
   doc build's page `index`, and the report refuses a library of that name.
@@ -448,7 +450,8 @@ than leave it green on the rest.
 
 - **Allocation.** A library is to avoid dynamic allocation as far as its job
   allows, and to let its user customize the allocator of what it does
-  allocate. A library ported or written from now on is born with this rule.
+  allocate. A library ported or written from now on is born with this rule,
+  as pratt is: its calculator's environment takes the user's `Allocator`.
   Pending: the mechanism, which a milestone of its own on allocators settles
   and first applies to xactor and xstate (chapter 13).
 - **Text** is passed and held as `std::string_view` where nothing must own
