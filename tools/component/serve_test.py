@@ -359,7 +359,7 @@ def test_a_server_that_never_serves_exits_2(scratch: Path) -> None:
     assert time.monotonic() - began < 10
     # One that is not found is named, with where it was looked for.
     run = Run(scratch, 'missing')
-    arguments = run.arguments('--program', 'answers.cpp in test/Jamfile')
+    arguments = run.arguments('--program', 'webcpp.serve answers.cpp in test/Jamfile')
     nowhere = str(scratch / 'no wasmtime here')
     arguments[arguments.index('--wasmtime') + 1] = nowhere
     result = subprocess.run(arguments, capture_output=True, text=True, check=False, timeout=60)

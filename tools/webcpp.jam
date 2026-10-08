@@ -46,6 +46,7 @@
 #     webcpp.wit-bindings name : world-file : world : rename : version
 #       : wit-bindgen-argument * ;
 #     webcpp.serve source : requirements * : targets * ;
+#     webcpp.serve-script name : script : stem : targets * ;
 #
 # A target is what a program is built for: emscripten (b2's toolset
 # emscripten), wasip2 and wasip3 (the clang toolsets of user-config.jam
@@ -622,8 +623,22 @@ rule serve ( source : requirements * : targets * )
 {
     local found = [ where ] ;
     local jamfile = [ jamfile ] ;
-    local served = [ webcpp-component.served-targets $(found) : $(source) : $(targets)
-        : $(.targets.$(jamfile)) ] ;
+    local served = [ webcpp-component.served-targets $(found) : "webcpp.serve $(source)"
+        : $(targets) : $(.targets.$(jamfile)) ] ;
     webcpp-component.serve $(found) : $(source) : $(requirements) $(.handler)
         : [ program serve : $(source:B) : $(served) ] ;
+}
+
+# An HTTP component that a shell script builds, served by wasmtime and checked
+# as webcpp.serve's is: the test name, which passes when the transcript of the
+# answers to <stem>.requests equals <stem>.expected
+# (tools/component/component.jam).
+rule serve-script ( name : script : stem : targets * )
+{
+    local found = [ where ] ;
+    local jamfile = [ jamfile ] ;
+    local served = [ webcpp-component.served-targets $(found) : "webcpp.serve-script $(name)"
+        : $(targets) : $(.targets.$(jamfile)) ] ;
+    webcpp-component.serve-script $(found) : $(name) : $(script) : $(stem)
+        : [ program serve : $(name) : $(served) ] ;
 }

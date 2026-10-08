@@ -13,8 +13,8 @@ Usage: serve.py [--wasmtime PATH] [--program NAME] --flags WORDS --component WAS
 
 wasmtime is --wasmtime, which webcpp.serve gives as -sWASMTIME=<path> was given, else wasmtime on
 PATH: it is looked up here, when the test runs, so that a build or a dry run that runs no served
-test needs none. --program names the served program in a message, as webcpp.serve does ("<source>
-in <Jamfile>"), else the component does.
+test needs none. --program names the served test's declaration in a message, as webcpp.serve does
+("webcpp.serve <source> in <Jamfile>"), else the component does.
 
 wasmtime runs as `wasmtime serve WORDS --addr 127.0.0.1:0 WASM`, with its standard input
 /dev/null, in a process group of its own and in the session of this script, which b2 runs it in:
@@ -321,7 +321,7 @@ def parse(argv: list[str]) -> argparse.Namespace:
 def find_wasmtime(given: str | None, program: str) -> str:
     """The wasmtime that serves program: given, which must be an executable file, else wasmtime
     on PATH. Raises UsageError, naming both places, when there is none."""
-    what = f'wasmtime, which serves the test of webcpp.serve {program}, was not found:'
+    what = f'wasmtime, which serves the test of {program}, was not found:'
     if given is not None:
         if not (os.path.isfile(given) and os.access(given, os.X_OK)):
             raise UsageError(f'{what} -sWASMTIME={given} is not an executable file. It is looked '

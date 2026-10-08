@@ -11,6 +11,7 @@
 #     webcpp.wit-bindings <name> : <world-file> : <world> : <rename> : <version>
 #       : <wit-bindgen-argument> * ;
 #     webcpp.serve <source> : <requirements> * : <targets> * ;
+#     webcpp.serve-script <name> : <script> : <stem> : <targets> * ;
 #
 # webcpp.wit-bindings declares the target <name>, the C bindings that
 # wit-bindgen generates for the world <world> of <world-file> (relative to
@@ -70,6 +71,17 @@
 # test runs: a build or a dry run that runs no served test needs none, and
 # one that runs it without wasmtime fails it, naming wasmtime.
 #
+# webcpp.serve-script declares the test <name>, which serves and checks as
+# webcpp.serve does, with the requests and the transcript of <stem>, a
+# component that the shell script <script> builds, rather than b2: such as
+# the commands a page shows for a build by hand, which the test then runs as
+# written. The script is run with sh as `<script> <p2|p3> <component>`, and
+# writes the component there; its environment gives it the tools b2 found
+# for the lane, WASI_SDK (wasi-sdk's directory, the one of the lane's
+# compiler), WIT_BINDGEN and WASI_WIT (the WIT of the lane's version), each
+# looked up as webcpp.wit-bindings looks them up. The script runs at every
+# build, since what it reads is its own business.
+#
 # This file is loaded as the module webcpp-component, beside webcpp-doc and
 # webcpp-oracle. Each of its rules receives first where its Jamfile is, as
 # tools/webcpp.jam's `where` finds it (found): the project, its directory
@@ -85,6 +97,7 @@ import modules ;
 import os ;
 import path ;
 import project ;
+import property-set ;
 import regex ;
 import set ;
 import testing ;
@@ -157,6 +170,7 @@ rule wit-bindings ( found + : name : world-file : world : rename : version : arg
     .arguments.$(key) = $(arguments) ;
     .out.$(key) = [ path.native $(out) ] ;
     .shown.$(key) = "$(name) in $(found[4])" ;
+    .user.$(key) = "webcpp.wit-bindings $(name) in $(found[4])" ;
 
     # The bindings' C, compiled only for their own toolset.
     local pthread ;
@@ -228,8 +242,8 @@ local rule given ( variable )
 local rule wit-bindgen ( key )
 {
     local installed = [ path.native $(.root)/.local/wit-bindgen/wit-bindgen ] ;
-    local what = "wit-bindgen, which generates the bindings of webcpp.wit-bindings"
-        "$(.shown.$(key)), was not found:" ;
+    local what = "wit-bindgen, which generates the bindings of $(.user.$(key)), was not"
+        "found:" ;
     local given = [ given WIT_BINDGEN ] ;
     if $(given)
     {
@@ -260,8 +274,7 @@ local rule wit ( key : version )
 {
     local variable = $(.wit-variable.$(version)) ;
     local installed = [ path.native $(.root)/.local/wasi-wit/$(version) ] ;
-    local what = "The WIT of $(version), which webcpp.wit-bindings $(.shown.$(key)) reads,"
-        "was not found:" ;
+    local what = "The WIT of $(version), which $(.user.$(key)) reads, was not found:" ;
     local given = [ given $(variable) ] ;
     if $(given)
     {
@@ -401,13 +414,13 @@ if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 # Jamfile may declare native for its other programs. A given native or
 # emscripten is refused, and so is a Jamfile whose targets name neither
 # wasip2 nor wasip3: the test would be built nowhere, without a word.
-rule served-targets ( found + : source : given * : declared * )
+rule served-targets ( found + : shown : given * : declared * )
 {
     for local target in $(given)
     {
         if $(target) in native emscripten
         {
-            errors.user-error "webcpp.serve $(source) in $(found[4]): $(target) is not a"
+            errors.user-error "$(shown) in $(found[4]): $(target) is not a"
                 "target a component is served on; webcpp.serve builds for wasip2 and wasip3"
                 "only" ;
         }
@@ -420,7 +433,7 @@ rule served-targets ( found + : source : given * : declared * )
     local served = [ set.intersection $(declared) : wasip2 wasip3 ] ;
     if ! $(served)
     {
-        errors.user-error "webcpp.serve $(source) in $(found[4]): its Jamfile's targets,"
+        errors.user-error "$(shown) in $(found[4]): its Jamfile's targets,"
             "$(declared:J= ), name neither wasip2 nor wasip3, the targets a component is"
             "served on; give webcpp.serve its targets, or webcpp.targets one of them" ;
     }
@@ -444,7 +457,7 @@ rule serve ( found + : source : requirements * : only * )
 {
     local stem = $(source:B) ;
     local key = $(found[3])/$(stem) ;
-    .served.$(key) = "$(source) in $(found[4])" ;
+    .served.$(key) = "webcpp.serve $(source) in $(found[4])" ;
     for local suffix in .requests .expected
     {
         if ! [ path.glob $(found[2]) : $(source:S=$(suffix)) ]
@@ -461,6 +474,69 @@ rule serve ( found + : source : requirements * : only * )
     exe $(stem)-component : $(source) : $(component) ;
     $(found[1]).mark-target-as-explicit $(stem)-component ;
     $(found[1]).mark-target-as-always $(stem) ;
+}
+
+# webcpp.serve-script <name> : <script> : <stem> ; the test <name>, which
+# serves the component the shell script builds, sends it the requests of
+# <stem>.requests and passes when the transcript of its answers equals
+# <stem>.expected, all three beside the Jamfile. only is what builds it for
+# its targets alone. The script is a source of the test, which b2 builds
+# into the component by build-by-script, a generator of its own from a
+# script to an EXE, so that the component reaches serve-and-compare as
+# webcpp.serve's does.
+rule serve-script ( found + : name : script : stem : only * )
+{
+    local key = $(found[3])/$(name) ;
+    local shown = "webcpp.serve-script $(name) in $(found[4])" ;
+    .served.$(key) = $(shown) ;
+    .user.$(key) = $(shown) ;
+    for local file in $(script) $(stem).requests $(stem).expected
+    {
+        if ! [ path.glob $(found[2]) : $(file) ]
+        {
+            errors.user-error "$(shown): there is no $(file) beside it, which"
+                "webcpp.serve-script reads" ;
+        }
+    }
+    testing.make-test serve : $(script)
+      : $(only) <webcpp-requests>$(stem).requests <webcpp-expected>$(stem).expected
+        <webcpp-served>$(key)
+      : $(name) ;
+    $(found[1]).mark-target-as-always $(name) ;
+}
+
+# A component built by a shell script, which webcpp.serve-script serves.
+type.register WEBCPP_BUILD_SCRIPT : sh ;
+generators.register-standard webcpp-component.build-by-script : WEBCPP_BUILD_SCRIPT : EXE ;
+
+# The tools of the lane, from properties: wasi-sdk, the directory two levels
+# above the compiler that b2's clang toolset was registered with for the
+# lane (the toolset of the platform b2 runs on, clang-linux or clang-darwin,
+# keeps it in CONFIG_COMMAND), wit-bindgen and the WIT of the lane's version.
+rule build-by-script ( targets * : sources * : properties * )
+{
+    local key = [ feature.get-values <webcpp-served> : $(properties) ] ;
+    local version = [ version-of $(properties) ] ;
+    local platform = [ feature.get-values <toolset-clang:platform> : $(properties) ] ;
+    toolset.set-target-variables clang-$(platform) $(targets)
+      : [ property-set.create $(properties) ] ;
+    local compiler = [ on $(targets[1]) return $(CONFIG_COMMAND) ] ;
+    if ! $(version) || ! $(compiler)
+    {
+        errors.user-error "$(.user.$(key)): its component is built only by the clang toolsets"
+            "of wasip2 and wasip3, registered with the path of wasi-sdk's clang++" ;
+    }
+    local bin = $(compiler[1]:D) ;
+    WASI_SDK on $(targets) = $(bin:D) ;
+    WIT_BINDGEN on $(targets) = [ wit-bindgen $(key) ] ;
+    WASI_WIT on $(targets) = [ wit $(key) : $(version) ] ;
+    VERSION on $(targets) = $(version) ;
+    ALWAYS $(targets) ;
+}
+
+actions build-by-script
+{
+    WASI_SDK="$(WASI_SDK)" WIT_BINDGEN="$(WIT_BINDGEN)" WASI_WIT="$(WASI_WIT)" sh "$(>[1])" $(VERSION) "$(<[1])"
 }
 
 # wasmtime is looked up by serve.py when the test runs, never here: a dry

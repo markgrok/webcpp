@@ -29,6 +29,7 @@ import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import harness
 from oracle_jam_test import without
@@ -531,6 +532,106 @@ def test_wasm_dry_run_needs_no_wasmtime(root):
     harness.expect(result, True)
 
 
+# A script that builds the fixture's served program by hand, as a library's page shows one: with
+# the wasi-sdk, the wit-bindgen and the WIT that webcpp.serve-script gives it, it generates the
+# world's bindings, compiles them and the program, and links a reactor into its second argument,
+# beside which it writes what it was given.
+BY_HAND = r"""#!/bin/sh
+set -e
+version=$1
+component=$2
+here=$(cd "$(dirname "$0")" && pwd)
+printf '%s\n' "$WASI_SDK" "$WIT_BINDGEN" "$WASI_WIT" > "$component.given"
+work="$component.work"
+rm -rf "$work"
+mkdir -p "$work/wit"
+cp "$here/../wit/world-$version.wit" "$work/wit/"
+ln -s "$WASI_WIT" "$work/wit/deps"
+if [ "$version" = p3 ]; then
+    "$WIT_BINDGEN" c --world demo --rename-world demo_world \
+        --async 'wasi:http/handler@0.3.0#handle' --out-dir "$work/gen" "$work/wit" > /dev/null
+    threads=-pthread
+else
+    "$WIT_BINDGEN" c --world demo --rename-world demo_world --out-dir "$work/gen" "$work/wit" \
+        > /dev/null
+    threads=
+fi
+"$WASI_SDK/bin/clang" --target=wasm32-wasi$version $threads -c "$work/gen/demo_world.c" \
+    -o "$work/demo_world.o" -I"$work/gen"
+"$WASI_SDK/bin/clang++" --target=wasm32-wasi$version -std=c++20 -fno-exceptions \
+    -DBOOST_NO_EXCEPTIONS -mexec-model=reactor -I"$here/../include" -I"$work/gen" \
+    -isystem "@BOOST@" "$here/answers.cpp" "@ROOT@/tools/throw_exception.cpp" \
+    "$work/demo_world.o" "$work/gen/demo_world_component_type.o" -o "$component"
+"""
+
+
+def by_hand(root):
+    """Writes BY_HAND into the fixture's test directory, as by_hand.sh, and declares it the
+    served test by_hand, answering the requests of answers."""
+    using = harness.USING_BOOST.search(harness.user_config(harness.ROOT).read_text())
+    assert using, 'this checkout\'s user-config.jam has no `using boost` line'
+    include = re.search(r'<include>(\S+)', using.group(0))
+    assert include, f'the `using boost` line names no <include>: {using.group(0)}'
+    boost = include.group(1)
+    script = BY_HAND.replace('@BOOST@', boost).replace('@ROOT@', str(root.resolve()))
+    (root / TEST / 'by_hand.sh').write_text(script)
+    with (root / TEST / 'Jamfile').open('a') as jamfile:
+        jamfile.write('webcpp.serve-script by_hand : by_hand.sh : answers ;\n')
+
+
+def test_a_script_builds_a_served_component(root):
+    # webcpp.serve-script serves what a script builds, with the tools b2 found: wasi-sdk's
+    # directory, from the lane's compiler, wit-bindgen and the WIT of the lane's version, and
+    # checks its answers as webcpp.serve does.
+    harness.link_wasi_tools(root)
+    by_hand(root)
+    wasmtime = linked_wasmtime(root)
+    lanes = {version: start_b2(root, '-a', f'--build-dir=bin/lane-wasip{version}',
+                               f'toolset=clang-wasip{version}', wasmtime, TEST)
+             for version in (2, 3)}
+    for version, process in lanes.items():
+        output, _ = process.communicate(timeout=harness.TIMEOUT)
+        assert process.returncode == 0, (version, output[-4000:])
+        assert passed(subprocess.CompletedProcess([], 0, output)) == {
+            'bindings', 'answers', 'by_hand', *ALONE_WASI}, output[-4000:]
+        served = built_in(root, 'by_hand.served', version)
+        assert len(served) == 1, served
+        assert served[0].read_bytes() == SERVED_EXPECTED.read_bytes()
+        components = built_in(root, 'by_hand.wasm', version)
+        assert len(components) == 1 and components[0].read_bytes()[:8] == COMPONENT, components
+        given = built_in(root, 'by_hand.wasm.given', version)[0].read_text().splitlines()
+        assert (Path(given[0]) / 'bin/clang++').is_file(), given
+        assert Path(given[1]).resolve() == (root / '.local/wit-bindgen/wit-bindgen').resolve()
+        assert Path(given[2]).resolve() == (root / f'.local/wasi-wit/p{version}').resolve()
+    assert not left(root), left(root)
+    # What the script builds is what is served: one that compiles the program for another
+    # target fails the test.
+    harness.replace(root / TEST / 'by_hand.sh',
+                    '"$WASI_SDK/bin/clang++" --target=wasm32-wasi$version',
+                    '"$WASI_SDK/bin/clang++" --target=wasm32-wasip1')
+    result = harness.run_b2(root, '-a', WASIP2, wasmtime, f'{TEST}//by_hand')
+    harness.expect(result, False)
+    assert 'by_hand' not in passed(result), result.stdout[-4000:]
+    # Natively, it is built nowhere, and asks for no tool.
+    nowhere = ('-sWIT_BINDGEN=/nonexistent', '-sWASI_WIT_P2=/nonexistent',
+               '-sWASI_WIT_P3=/nonexistent', '-sWASMTIME=/nonexistent')
+    result = harness.run_b2(root, '-a', *nowhere, TEST)
+    harness.expect(result, True)
+    assert 'by_hand' not in passed(result), result.stdout[-4000:]
+
+
+def test_serve_script_refuses_what_is_not_there(root):
+    where = 'webcpp.serve-script b in libs/component_demo/refused/Jamfile'
+    files = ('b.sh', 'p.requests', 'p.expected')
+    harness.expect(refused(root, 'webcpp.serve-script b : b.sh : p : wasip2 ;\n', files), True)
+    for missing in files:
+        present = [name for name in files if name != missing]
+        harness.expect(refused(root, 'webcpp.serve-script b : b.sh : p : wasip2 ;\n', present),
+                       False, f'{where}: there is no {missing} beside it')
+    harness.expect(refused(root, 'webcpp.serve-script b : b.sh : p : native ;\n', files), False,
+                   f'{where}: native is not a target a component is served on')
+
+
 # A stand-in for wasmtime that starts the real one in its own process group, writes the pids of
 # both into its first argument's file once the real one serves, and says so itself only seconds
 # later: a window in which the test interrupts b2.
@@ -605,6 +706,8 @@ CASES = [
     test_missing_wasmtime_names_it,
     test_wasm_dry_run_needs_no_wasmtime,
     test_an_interrupted_b2_leaves_no_wasmtime,
+    test_a_script_builds_a_served_component,
+    test_serve_script_refuses_what_is_not_there,
 ]
 
 
