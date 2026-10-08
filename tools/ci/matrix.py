@@ -217,6 +217,7 @@ LANES = (
     wasm_lane('wasip3'),
 )
 
+
 def environment() -> dict[str, str]:
     """This process's environment without the variables the Jamroot refuses."""
     return {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}

@@ -70,6 +70,7 @@ CDATA = re.compile(r'(<([A-Za-z][\w.-]*)[^<>]*>)<!\[CDATA\[(.*?)\]\]>(</\2>)', r
 # The characters XML 1.0 does not allow, which a program can print.
 NOT_XML = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f' + chr(0xFFFE) + chr(0xFFFF) + ']')
 
+
 def own_lane_name(targets: tuple[str, ...]) -> re.Pattern[str]:
     """The name of an own lane on one of targets: <target>.<library>.<lane> (tools/ci/matrix.py).
     No toolset directory begins with a target and a dot, so the name is never a lane's."""
