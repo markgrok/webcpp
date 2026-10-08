@@ -66,8 +66,9 @@
 # equals <stem>.expected (tools/component/serve.py). It is built only for
 # wasip2 and wasip3, and is a test of b2's, which --dump-tests lists and
 # --out-xml records, so that the report sees it fail. wasmtime is
-# -sWASMTIME=<path>, else wasmtime on PATH, looked up only when a served test
-# is built.
+# -sWASMTIME=<path>, else wasmtime on PATH, which serve.py looks up when the
+# test runs: a build or a dry run that runs no served test needs none, and
+# one that runs it without wasmtime fails it, naming wasmtime.
 #
 # This file is loaded as the module webcpp-component, beside webcpp-doc and
 # webcpp-oracle. Each of its rules receives first where its Jamfile is, as
@@ -462,53 +463,35 @@ rule serve ( found + : source : requirements * : only * )
     $(found[1]).mark-target-as-always $(stem) ;
 }
 
-# wasmtime: -sWASMTIME=<path>, else on PATH. Looked up when a served test is
-# built, and only then; key names the test that asked.
-local rule wasmtime ( key )
-{
-    if $(.wasmtime)
-    {
-        return $(.wasmtime) ;
-    }
-    local what = "wasmtime, which serves the test of webcpp.serve $(.served.$(key)), was not"
-        "found:" ;
-    local given = [ given WASMTIME ] ;
-    if $(given)
-    {
-        if ! [ CHECK_IF_FILE $(given[1]) ]
-        {
-            errors.user-error $(what) "-sWASMTIME=$(given[2]) is not a file. It is looked for at"
-                "-sWASMTIME=<path>, else on PATH." ;
-        }
-        .wasmtime = $(given[1]) ;
-    }
-    else
-    {
-        .wasmtime = [ common.find-tool wasmtime ] ;
-        if ! $(.wasmtime)
-        {
-            errors.user-error $(what) "no -sWASMTIME=<path> was given, and there is none on"
-                "PATH. Install wasmtime 47.0.3 on PATH, or give its path with"
-                "-sWASMTIME=<path>." ;
-        }
-    }
-    return $(.wasmtime) ;
-}
-
+# wasmtime is looked up by serve.py when the test runs, never here: a dry
+# run, such as the one the lint's compile database makes, needs none. The
+# action gives it -sWASMTIME's value as it was given, when it was, and the
+# program it serves, which its message names.
 rule serve-and-compare ( target : source : properties * )
 {
     # As testing.capture-output does: the files a dependency feature names are
     # bound before the target is built.
     DEPENDS $(target) : [ on $(target) return $(REQUESTS) $(EXPECTED) ] ;
     local key = [ feature.get-values <webcpp-served> : $(properties) ] ;
+    local version = [ version-of $(properties) ] ;
     PYTHON on $(target) = $(.python) ;
     SERVER on $(target) = $(.server) ;
-    local version = [ version-of $(properties) ] ;
-    WASMTIME on $(target) = [ wasmtime $(key) ] ;
     FLAGS on $(target) = $(.wasmtime-flags.$(version)) ;
+    PROGRAM on $(target) = [ quoted $(.served.$(key)) ] ;
+    # Empty, or the two words --wasmtime '<value>': a word made only of an
+    # empty variable disappears, as run-and-compare's LAUNCHER_ARGS does.
+    local given = [ modules.peek : WASMTIME ] ;
+    if $(given)
+    {
+        WASMTIME_ARGS on $(target) = --wasmtime [ quoted $(given:J=" ") ] ;
+    }
+    else
+    {
+        WASMTIME_ARGS on $(target) = ;
+    }
 }
 
 actions serve-and-compare bind REQUESTS EXPECTED
 {
-    "$(PYTHON)" "$(SERVER)" --wasmtime "$(WASMTIME)" --flags="$(FLAGS)" --component "$(>[1])" --requests "$(REQUESTS)" --expected "$(EXPECTED)" --output "$(<)"
+    "$(PYTHON)" "$(SERVER)" $(WASMTIME_ARGS) --program $(PROGRAM) --flags="$(FLAGS)" --component "$(>[1])" --requests "$(REQUESTS)" --expected "$(EXPECTED)" --output "$(<)"
 }

@@ -7,16 +7,17 @@
 
 """Checks tools/component/serve.py with a stand-in for wasmtime: a small Python program, given as
 --wasmtime, that serves fixed answers on the address it is given and says so as wasmtime 47.0.3
-does, so that the runner is checked without a component. The stand-in reads what to do from the
-file given as the component: when to say it serves, whether to answer, to ignore SIGTERM or to
-start a child in its process group, and where to record its process, its port and the requests
-it got, with when. The cases: the transcript's format; a difference exits 1 with a unified diff
-and no output; two runs at once take two ports; nothing is sent before the server says it
-serves; a server that never says so exits 2 within the timeout, and one that exits first exits 2
-with its standard error; a server that ignores SIGTERM is killed with its whole group, after a
-pass and after a failure; an interrupted run stops the server; a run whose answer never comes
-ends by itself within its bound and stops it; and usage errors exit 2. Each case runs in a scratch
-directory of its own. Run with the names of some cases to run only those."""
+does, so that the runner is checked without a component. The stand-in reads what to do from the file
+given as the component: when to say it serves, whether to answer, to ignore SIGTERM or to start a
+child in its process group, and where to record its process, its port and the requests it got, with
+when. The cases: the transcript's format; a difference exits 1 with a unified diff and no output;
+two runs at once take two ports; nothing is sent before the server says it serves; a server that
+never says so exits 2 within the timeout, and one that exits first exits 2 with its standard error;
+a wasmtime not found, given or on PATH, exits 2 naming where it was looked for; a signal held while
+wasmtime is started still stops the run; a server that ignores SIGTERM is killed with its whole
+group, after a pass and after a failure; an interrupted run stops the server; a run whose answer
+never comes ends by itself within its bound and stops it; and usage errors exit 2. Each case runs in
+a scratch directory of its own. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -320,13 +321,63 @@ def test_a_server_that_never_serves_exits_2(scratch: Path) -> None:
     assert 'wasmtime exited with status 1 before it served' in result.stderr, outcome(result)
     assert 'Address already in use' in result.stderr, outcome(result)
     assert time.monotonic() - began < 10
-    # And one that cannot be started.
+    # One that is not found is named, with where it was looked for.
     run = Run(scratch, 'missing')
-    arguments = run.arguments()
-    arguments[arguments.index('--wasmtime') + 1] = str(scratch / 'no wasmtime here')
+    arguments = run.arguments('--program', 'answers.cpp in test/Jamfile')
+    nowhere = str(scratch / 'no wasmtime here')
+    arguments[arguments.index('--wasmtime') + 1] = nowhere
     result = subprocess.run(arguments, capture_output=True, text=True, check=False, timeout=60)
     assert result.returncode == 2, outcome(result)
-    assert f'cannot start {scratch / "no wasmtime here"}' in result.stderr, outcome(result)
+    assert (f'wasmtime, which serves the test of webcpp.serve answers.cpp in test/Jamfile, was not '
+            f'found: -sWASMTIME={nowhere} is not an executable file. It is looked for at '
+            '-sWASMTIME=<path>, else on PATH.') in result.stderr, outcome(result)
+    assert not run.record.exists()
+    # Without --wasmtime, it is wasmtime on PATH; none there is named too.
+    arguments = run.arguments()
+    del arguments[arguments.index('--wasmtime'):arguments.index('--wasmtime') + 2]
+    empty = scratch / 'empty'
+    empty.mkdir()
+    result = subprocess.run(arguments, capture_output=True, text=True, check=False, timeout=60,
+                            env={**os.environ, 'PATH': str(empty)})
+    assert result.returncode == 2, outcome(result)
+    assert ('no -sWASMTIME=<path> was given, and there is none on PATH. Install wasmtime 47.0.3 '
+            'on PATH, or give its path with -sWASMTIME=<path>.') in result.stderr, outcome(result)
+    (empty / 'wasmtime').symlink_to(run.stand_in)
+    result = subprocess.run(arguments, capture_output=True, text=True, check=False, timeout=60,
+                            env={**os.environ, 'PATH': str(empty)})
+    assert result.returncode == 0, outcome(result)
+    assert run.recorded()['flags'] == ['-S', 'cli'], run.recorded()
+
+
+# A run of serve.py whose start of wasmtime receives a signal, which is held while wasmtime is
+# being started, and then fails.
+HELD = """
+import os
+import signal
+import sys
+
+sys.path.insert(0, {here!r})
+import serve
+
+
+def start(*_):
+    os.kill(os.getpid(), signal.SIGTERM)
+    raise serve.Failed(2, 'cannot start wasmtime')
+
+
+serve.start = start
+sys.exit(serve.main(sys.argv[1:]))
+"""
+
+
+def test_a_signal_held_while_starting_still_stops_the_run(scratch: Path) -> None:
+    run = Run(scratch, 'held')
+    arguments = run.arguments()
+    result = subprocess.run([sys.executable, '-c', HELD.format(here=str(HERE)), *arguments[2:]],
+                            capture_output=True, text=True, check=False, timeout=60)
+    assert result.returncode == 128 + signal.SIGTERM, outcome(result)
+    assert 'cannot start wasmtime' in result.stderr, outcome(result)
+    assert 'stopped by SIGTERM' in result.stderr, outcome(result)
 
 
 def test_a_server_that_ignores_sigterm_is_killed(scratch: Path) -> None:
@@ -402,6 +453,7 @@ CASES = [
     test_two_runs_at_once_take_two_ports,
     test_nothing_is_sent_before_the_server_says_it_serves,
     test_a_server_that_never_serves_exits_2,
+    test_a_signal_held_while_starting_still_stops_the_run,
     test_a_server_that_ignores_sigterm_is_killed,
     test_an_interrupted_run_stops_the_server,
     test_a_run_bounds_itself,

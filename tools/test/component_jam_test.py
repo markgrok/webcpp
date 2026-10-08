@@ -7,19 +7,18 @@
 
 """Checks tools/component/component.jam: webcpp.wit-bindings generates a world's C bindings with
 wit-bindgen for wasip2 and wasip3, where a translation unit that includes them compiles and a
-component that uses them links; natively it adds nothing and asks for no tool, unless its
--headers target is named; a missing wit-bindgen, WIT or world file stops the build naming it and
-where it was looked for; a dry run generates the header; the bindings are written again only
-when what they are made from changes, or one of them is missing; a name declared twice in a
-library is refused; and an argument holding a $ or a ' reaches wit-bindgen as it is written.
-webcpp.serve builds an HTTP component, serves it with wasmtime and checks its answers, as a test
-of b2's that --dump-tests lists and the report reads, in two lanes at once; a wrong transcript is
-a run failure in the report; native and emscripten are refused, and a native lane builds no
-served test and asks for no tool; a missing wasmtime stops the build naming it, only when a
-served test is built; no wasmtime is left by a test that passes, one that fails, or a b2 that
-is interrupted. Each case builds a scratch superproject with the fixture library
-component_demo, given this checkout's wit-bindgen and WIT. Run with the names of some cases to
-run only those."""
+component that uses them links; natively it adds nothing and asks for no tool, unless its -headers
+target is named; a missing wit-bindgen, WIT or world file stops the build naming it and where it was
+looked for; a dry run generates the header; the bindings are written again only when what they are
+made from changes, or one of them is missing; a name declared twice in a library is refused; and an
+argument holding a $ or a ' reaches wit-bindgen as it is written. webcpp.serve builds an HTTP
+component, serves it with wasmtime and checks its answers, as a test of b2's that --dump-tests lists
+and the report reads, in two lanes at once; a wrong transcript is a run failure in the report;
+native and emscripten are refused, and a native lane builds no served test and asks for no tool; a
+missing wasmtime fails the served test naming it, only when it runs, and a dry run needs none; no
+wasmtime is left by a test that passes, one that fails, or a b2 that is interrupted. Each case
+builds a scratch superproject with the fixture library component_demo, given this checkout's
+wit-bindgen and WIT. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -484,18 +483,47 @@ def test_native_lane_skips_served_tests(root):
 
 
 def test_missing_wasmtime_names_it(root):
+    # wasmtime is looked up when the served test runs: the test fails, naming it, and b2 shows
+    # why.
     harness.link_wasi_tools(root)
     named = 'wasmtime, which serves the test of webcpp.serve answers.cpp in ' \
             'libs/component_demo/test/Jamfile, was not found:'
     result = harness.run_b2(root, '-a', '-sWASMTIME=/nonexistent', WASIP2, TEST)
-    harness.expect(result, False, named, '-sWASMTIME=/nonexistent is not a file',
-                   'It is looked for at -sWASMTIME=<path>, else on PATH.')
+    harness.expect(result, False, named, '-sWASMTIME=/nonexistent is not an executable file',
+                   'It is looked for at -sWASMTIME=<path>, else on PATH.',
+                   '...failed webcpp-component.serve-and-compare')
+    assert passed(result) == {'bindings'}, result.stdout[-4000:]
     result = harness.run_b2(root, '-a', WASIP3, TEST, env_extra=without(root, 'wasmtime'))
     harness.expect(result, False, named, 'no -sWASMTIME=<path> was given, and there is none on '
                    'PATH')
-    # Only a served test asks for it.
+    # In a lane, the report fails the served test by name, with the message in its output.
+    result = harness.run_b2(root, '-a', '--dump-tests', '--out-xml=wasip2.xml',
+                            '-sWASMTIME=/nonexistent', WASIP2, TEST)
+    harness.expect(result, True)
+    report = subprocess.run([sys.executable, str(harness.ROOT / 'tools/report/report.py'),
+                             '--lane', f'wasip2={root / "wasip2.xml"}', '--out',
+                             str(root / 'report')], capture_output=True, text=True, check=False)
+    assert report.returncode == 1, (report.stdout, report.stderr)
+    assert report.stderr.splitlines() == ['report: wasip2: component_demo/answers: run'], (
+        report.stderr)
+    page = (root / 'report/component_demo.html').read_text()
+    linked = re.search(r'href="(output/[^"]*answers[^"]*)"', page)
+    assert linked, page
+    assert named in (root / 'report' / linked.group(1)).read_text()
+    # Only a served test that runs asks for it.
     harness.expect(harness.run_b2(root, '-a', '-sWASMTIME=/nonexistent', WASIP2,
                                   f'{TEST}//bindings'), True)
+
+
+def test_wasm_dry_run_needs_no_wasmtime(root):
+    # A dry run, such as the one the lint's compile database makes, runs no served test, so it
+    # asks for no wasmtime; it still generates the bindings, which need wit-bindgen.
+    harness.link_wasi_tools(root)
+    for toolset in (WASIP2, WASIP3):
+        result = harness.run_b2(root, '-n', '-a', '-sWASMTIME=/nonexistent', toolset, TEST)
+        harness.expect(result, True, 'serve.py')
+    result = harness.run_b2(root, '-n', '-a', WASIP2, TEST, env_extra=without(root, 'wasmtime'))
+    harness.expect(result, True)
 
 
 # A stand-in for wasmtime that starts the real one in its own process group, writes the pids of
@@ -570,6 +598,7 @@ CASES = [
     test_serve_refuses_native,
     test_native_lane_skips_served_tests,
     test_missing_wasmtime_names_it,
+    test_wasm_dry_run_needs_no_wasmtime,
     test_an_interrupted_b2_leaves_no_wasmtime,
 ]
 

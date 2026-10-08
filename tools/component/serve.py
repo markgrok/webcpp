@@ -8,14 +8,19 @@
 """Serves one HTTP component with wasmtime, sends it requests and compares the transcript of its
 answers with the committed one.
 
-Usage: serve.py --wasmtime PATH --flags WORDS --component WASM --requests FILE --expected FILE
-                --output FILE [--timeout SECONDS]
+Usage: serve.py [--wasmtime PATH] [--program NAME] --flags WORDS --component WASM
+                --requests FILE --expected FILE --output FILE [--timeout SECONDS]
+
+wasmtime is --wasmtime, which webcpp.serve gives as -sWASMTIME=<path> was given, else wasmtime on
+PATH: it is looked up here, when the test runs, so that a build or a dry run that runs no served
+test needs none. --program names the served program in a message, as webcpp.serve does ("<source>
+in <Jamfile>"), else the component does.
 
 wasmtime runs as `wasmtime serve WORDS --addr 127.0.0.1:0 WASM`, with its standard input
 /dev/null, in a process group of its own and in the session of this script, which b2 runs it in:
-what stops b2's session stops it too.
-Port 0 makes the system choose a free port, which wasmtime names on its standard error when it
-listens; nothing is sent before that line, and two runs at once never share a port.
+what stops b2's session stops it too. Port 0 makes the system choose a free port, which wasmtime
+names on its standard error when it listens; nothing is sent before that line, and two runs at
+once never share a port.
 
 Each line of the requests file is `<METHOD> <target>`; an empty line is skipped. Each request is
 sent with http.client, without a body, on a connection of its own. The transcript holds, per
@@ -29,13 +34,15 @@ wasmtime is stopped in every outcome: an answer missing, an exception, SIGINT, S
 Its group is sent SIGTERM, and SIGKILL after GRACE seconds, so that nothing it started is left
 either. The whole run is bounded, by --timeout (30 s by default) for the line that says it
 serves and for each answer, so that a run nobody waits for any longer, its b2 gone, still ends
-and stops wasmtime.
+and stops wasmtime. A SIGKILL of this script itself is the one end it cannot answer, and it leaves
+wasmtime running: b2 never sends one to an action, and a harness that stops a run by killing its
+session, the way tools/test does, kills wasmtime with it.
 
 Exit 0 when the transcript equals the expected file byte for byte, which the output file then
 holds; 1 when it does not, with a unified diff, or when an answer does not come, either with
-wasmtime's standard error; 2 on a usage error, or when wasmtime does not start or does not say it
-serves, with its standard error; 128 plus the signal's number when one stops the run. On any
-failure the output file is not left behind.
+wasmtime's standard error; 2 on a usage error, when wasmtime is not found, or when it does not
+start or does not say it serves, with its standard error; 128 plus the signal's number when one
+stops the run, whatever else happened. On any failure the output file is not left behind.
 """
 
 from __future__ import annotations
@@ -46,6 +53,7 @@ import difflib
 import http.client
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -178,7 +186,10 @@ def wait_until_serving(server: Server, timeout: float) -> tuple[str, int]:
     server.said.wait(timeout)
     if server.address is not None:
         return server.address
-    status = server.process.poll()
+    # Its standard error ended: it is ending, if it has not ended yet.
+    status = None
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        status = server.process.wait(1)
     if status is not None:
         raise Failed(2, f'wasmtime exited with status {status} before it served:\n'
                         f'{server.standard_error()}')
@@ -245,9 +256,10 @@ def diff(expected: bytes, actual: bytes, expected_name: str) -> str:
 
 
 class Signals:
-    """What a signal does: it stops the run with Stopped, but while wasmtime is being started,
-    when it would leave wasmtime running and not yet known, it is held until the run is armed
-    again, which then stops with it."""
+    """What a signal does: it stops the run with Stopped, but while the run is disarmed, when
+    wasmtime is being started (it would be left running and not yet known) or stopped (the stop
+    must not be cut short), it is held: arming the run again stops it then, and a run that ends
+    with a signal held ends as that signal stops it."""
 
     def __init__(self) -> None:
         self.armed = True
@@ -255,7 +267,8 @@ class Signals:
 
     def handle(self, number: int, _frame: object) -> None:
         if not self.armed:
-            self.held = number
+            if self.held is None:
+                self.held = number
             return
         raise Stopped(number)
 
@@ -277,7 +290,8 @@ STOPPING = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGALRM)
 def parse(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description='Serves an HTTP component and checks its answers.')
-    parser.add_argument('--wasmtime', required=True)
+    parser.add_argument('--wasmtime', help='wasmtime, else wasmtime on PATH')
+    parser.add_argument('--program', help='the served program, as a message names it')
     parser.add_argument('--flags', required=True,
                         help='wasmtime serve\'s flags for the target, one argument')
     parser.add_argument('--component', required=True, type=Path)
@@ -289,6 +303,35 @@ def parse(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def find_wasmtime(given: str | None, program: str) -> str:
+    """The wasmtime that serves program: given, which must be an executable file, else wasmtime
+    on PATH. Raises UsageError, naming both places, when there is none."""
+    what = f'wasmtime, which serves the test of webcpp.serve {program}, was not found:'
+    if given is not None:
+        if not (os.path.isfile(given) and os.access(given, os.X_OK)):
+            raise UsageError(f'{what} -sWASMTIME={given} is not an executable file. It is looked '
+                             'for at -sWASMTIME=<path>, else on PATH.')
+        return given
+    found = shutil.which('wasmtime')
+    if found is None:
+        raise UsageError(f'{what} no -sWASMTIME=<path> was given, and there is none on PATH. '
+                         'Install wasmtime 47.0.3 on PATH, or give its path with '
+                         '-sWASMTIME=<path>.')
+    return found
+
+
+def stopped_by(number: int, arguments: argparse.Namespace) -> int:
+    """Says that the signal number stopped the run, and returns the run's exit status."""
+    if number == signal.SIGALRM:
+        print(f'serve: {arguments.component}: the run took longer than its bound, '
+              f'{arguments.timeout:g} s for the server to say it serves and for each answer',
+              file=sys.stderr)
+        return 1
+    print(f'serve: {arguments.component}: stopped by {signal.Signals(number).name}',
+          file=sys.stderr)
+    return 128 + number
+
+
 def run(arguments: argparse.Namespace) -> tuple[bytes, Server]:
     """The transcript of the component's answers, and the server, stopped."""
     if not arguments.component.is_file():
@@ -298,8 +341,9 @@ def run(arguments: argparse.Namespace) -> tuple[bytes, Server]:
         raise UsageError(f'no expected transcript at {arguments.expected}')
     # The whole run's bound: the wait for the line, each answer, and the stop.
     signal.alarm(int(arguments.timeout * (len(requests) + 1) + GRACE + 1))
+    wasmtime = find_wasmtime(arguments.wasmtime, arguments.program or str(arguments.component))
     SIGNALS.disarm()
-    server = start(arguments.wasmtime, arguments.flags.split(), arguments.component)
+    server = start(wasmtime, arguments.flags.split(), arguments.component)
     try:
         try:
             SIGNALS.arm()
@@ -307,9 +351,8 @@ def run(arguments: argparse.Namespace) -> tuple[bytes, Server]:
             blocks = [ask(address, method, target, arguments.timeout)
                       for method, target in requests]
         finally:
-            # A second signal must not cut the stop short.
-            for number in STOPPING:
-                signal.signal(number, signal.SIG_IGN)
+            # A signal from here on is only held, and cannot cut the stop short.
+            SIGNALS.disarm()
             signal.alarm(0)
             stop(server)
     except Failed as failure:
@@ -329,18 +372,14 @@ def main(argv: list[str]) -> int:
         actual, server = run(arguments)
     except UsageError as error:
         print(f'serve: {error}', file=sys.stderr)
-        return 2
+        return 2 if SIGNALS.held is None else stopped_by(SIGNALS.held, arguments)
     except Failed as failure:
         print(f'serve: {arguments.component}: {failure}', file=sys.stderr)
-        return failure.status
+        return failure.status if SIGNALS.held is None else stopped_by(SIGNALS.held, arguments)
     except Stopped as stopped:
-        if stopped.number == signal.SIGALRM:
-            print(f'serve: {arguments.component}: the run took longer than its bound, '
-                  f'{arguments.timeout:g} s for the server to say it serves and for each answer',
-                  file=sys.stderr)
-            return 1
-        print(f'serve: {arguments.component}: stopped by {stopped}', file=sys.stderr)
-        return 128 + stopped.number
+        return stopped_by(stopped.number, arguments)
+    if SIGNALS.held is not None:
+        return stopped_by(SIGNALS.held, arguments)
     expected = arguments.expected.read_bytes()
     if actual != expected:
         print(f'serve: {arguments.component}: the transcript differs from {arguments.expected}:')
