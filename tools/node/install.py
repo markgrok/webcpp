@@ -42,7 +42,8 @@ process has a file open in it, is named on stderr and left for a later run. Thes
 are checked with stand-ins for msvcrt only, never on Windows itself.
 
 Exit 0 when the link names the install; 1, naming the cause, when npm ci fails, with its output,
-the link left as it was, or when npm, a lock or a link cannot be had; 2 on a usage error.
+the link left as it was, when npm, a lock or a link cannot be had, or when the system refuses to
+make, move or remove a file or a directory (permissions, a full disk); 2 on a usage error.
 """
 
 from __future__ import annotations
@@ -343,12 +344,19 @@ def main(argv: list[str]) -> int:
               file=sys.stderr)
         return 2
     directory = Path(argv[0]).resolve()
-    (directory / INSTALLS).mkdir(exist_ok=True)
     try:
+        (directory / INSTALLS).mkdir(exist_ok=True)
         with held(directory / INSTALLS / LOCK, primitive()):
             updated(directory)
     except RuntimeError as failure:
         print(f'install.py: {failure}', file=sys.stderr)
+        return 1
+    except OSError as refused:
+        # Permissions, a full disk: the system's own words, and the paths it names.
+        paths = ' and '.join(str(path) for path in (refused.filename, refused.filename2)
+                             if path is not None)
+        print(f'install.py: {refused.strerror or refused}{f": {paths}" if paths else ""}',
+              file=sys.stderr)
         return 1
     return 0
 

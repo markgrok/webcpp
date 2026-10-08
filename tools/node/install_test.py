@@ -11,8 +11,9 @@ linked at node_modules, and a second run installs nothing; installs at once run 
 succeed; the install of a lockfile that changed is kept for one generation more, for a build that
 still uses it, and then pruned, as is at once the directory a killed npm ci left, even one it made
 read-only; a node_modules that npm ci made in the directory itself gives way to the link; a failed
-npm ci fails the run, naming it, and leaves the link as it was, and so does an npm not on PATH.
-The lock, which Windows takes with msvcrt rather than fcntl, is checked with stand-ins for both, and
+npm ci fails the run, naming it, and leaves the link as it was, and so does an npm not on PATH; a
+directory the system will not let it write ends the run with a message, not a traceback. The
+lock, which Windows takes with msvcrt rather than fcntl, is checked with stand-ins for both, and
 the installer is imported where there is no fcntl. Run with the names of some cases to run only
 those."""
 
@@ -205,6 +206,25 @@ def test_an_npm_not_on_path_is_named(scratch: Path) -> None:
     assert not (directory / 'node_modules').exists(), directory
 
 
+def test_a_directory_it_cannot_write_is_named(scratch: Path) -> None:
+    # The system refusing a directory, read-only here, ends the run with a message naming the
+    # cause, as every other failure does, and never with a traceback: first the directory itself,
+    # where .node-modules cannot be made, then .node-modules, where npm ci's cannot.
+    directory = project(scratch)
+    for refused in (directory, directory / '.node-modules'):
+        refused.mkdir(exist_ok=True)
+        refused.chmod(0o555)
+        try:
+            result = install(directory, environment(scratch))
+        finally:
+            refused.chmod(0o755)
+        assert result.returncode == 1, (refused, result)
+        assert result.stderr.startswith('install.py: '), (refused, result.stderr)
+        assert 'Permission denied' in result.stderr, (refused, result.stderr)
+        assert 'Traceback' not in result.stderr, (refused, result.stderr)
+    assert runs(scratch) == 0, runs(scratch)
+
+
 def fake_msvcrt(refusals: int, error: int = errno.EDEADLK) -> tuple[types.SimpleNamespace,
                                                                     list[tuple[int, int, int]]]:
     """A stand-in for msvcrt whose locking(LK_LOCK) fails, as it does after about ten seconds
@@ -290,6 +310,7 @@ CASES: list[Case] = [
     test_a_node_modules_of_npm_gives_way_to_the_link,
     test_a_failed_install_keeps_the_link,
     test_an_npm_not_on_path_is_named,
+    test_a_directory_it_cannot_write_is_named,
     test_msvcrt_is_retried_until_the_lock_is_had,
     test_fcntl_locks_the_whole_file,
     test_imported_without_fcntl,
