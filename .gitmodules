@@ -1,3 +1,6 @@
 [submodule "libs/xactor"]
 	path = libs/xactor
 	url = ../xactor.git
+[submodule "libs/xstate"]
+	path = libs/xstate
+	url = ../xstate.git
