@@ -7,7 +7,9 @@
 
 # The step of tools/ci/actions/wasmtime: wasmtime 47.0.3 in RUNNER_TEMP/wasmtime, put on PATH
 # (GITHUB_PATH), for the runner's system and processor (RUNNER_OS, RUNNER_ARCH). It runs the
-# programs of the wasip2 and wasip3 lanes, as testing.launcher=wasmtime.
+# programs of the wasip2 and wasip3 lanes, as testing.launcher=wasmtime, and serves the HTTP
+# components of the own lanes on those targets and of the tests of the tools, as
+# tools/component/serve.py's `wasmtime serve`.
 #
 # Usage: install.sh
 set -euo pipefail

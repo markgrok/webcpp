@@ -58,7 +58,8 @@ webcpp/
   AGENTS.md           this rulebook
   README.md           what webcpp is, the prerequisites, getting started
   LICENSE_1_0.txt
-  .clang-format       clang-format's style, every repository's
+  .clang-format       clang-format's style, every repository's, which a library's own may
+                      extend (below)
   .clang-tidy         clang-tidy's checks, every repository's
   pyrightconfig.json  Pyright's settings for every Python file
   libs/<name>/        a library: a repository of its own, a submodule here (xactor,
@@ -120,6 +121,10 @@ libs/<name>/
   LICENSE-<ORIGIN>.txt       the original's notice, for a port that derives from its code
   .gitignore                 doc/html/ at least, and node_modules and .node-modules/ with an oracle
   .gitattributes
+  .clang-format              when the library needs one: it inherits the root's
+                             (InheritParentConfig) and adds only what its code needs, with the
+                             reason in a comment, as wasi's names the macros its main is
+                             written between (MacroBlockBegin, MacroBlockEnd)
   .github/workflows/ci.yml   calls the superproject's library.yml (chapter 9)
 ```
 
@@ -197,9 +202,12 @@ cannot read stops the build too, naming the directory.
 **Machine-local setup.** `.local/` is git-ignored and holds what one machine
 needs: `.local/user-config.jam`, `.local/wasi-sdk/`, `.local/mrdocs/`,
 `.local/wit-bindgen/` and `.local/wasi-wit/p2` and `p3`, where the CI's
-actions install them too (chapter 9). The tools look there first. `tools/lint/compile_commands.py` runs b2 with
-`.local/user-config.jam`, else with the file `$WEBCPP_USER_CONFIG` names,
-else with b2's own search. The tests of the build and of the tools read
+actions install them too (chapter 9). A tool the build looks up itself is
+taken from the path its `-s` option gives, else from `.local/`, else from
+`PATH`: MrDocs (`-sMRDOCS`), wit-bindgen and the WIT (above); wasi-sdk is
+where the `using clang` lines of `user-config.jam` name it.
+`tools/lint/compile_commands.py` runs b2 with `.local/user-config.jam`, else
+with the file `$WEBCPP_USER_CONFIG` names, else with b2's own search. The tests of the build and of the tools read
 `.local/user-config.jam`, else the file `$WEBCPP_USER_CONFIG` names, and stop
 with an error when neither exists (`tools/test/harness.py`); a test that
 needs wit-bindgen and the WIT links `.local/wit-bindgen` and
@@ -568,7 +576,7 @@ rule that failed.
 | Rule | What fails |
 | --- | --- |
 | clang-format | a C++ file not formatted as `.clang-format` says (Google-based, 4 spaces, 100 columns); `clang-format -i` fixes it |
-| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, and each source that no native program compiles, analysed as the first of the WASI targets that compiles it builds it (wasip2, else wasip3), with wasi-sdk's `clang++` and its own `--target`, to which the lint adds no host target or SDK, after the dry run of that target has generated the bindings its commands include (so the lint needs wit-bindgen and the WIT, chapter 1); plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, and again, with the handler `tools/throw_exception.cpp`, as b2 compiles it with `exception-handling=off`, so that what only a build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too; or, for a library whose headers build only for WASI, on wasip2 (without exceptions) and on wasip3 (with them), each reading its version's branch. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is not wasi-sdk's `clang++` (emscripten's `em++`, which the lint would analyse as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
+| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, and each source that no native program compiles with the command of the first WASI target that compiles it (wasip2, else wasip3): wasi-sdk's `clang++` with that target's `--target`, the one compiler of a WebAssembly command the database accepts, to which the lint adds no host target or SDK, once the dry run of that target has generated the bindings its commands include (so the lint needs wit-bindgen and the WIT, chapter 1); plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, and again, with the handler `tools/throw_exception.cpp`, as b2 compiles it with `exception-handling=off`, so that what only a build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too; or, for a library whose headers build only for WASI, on wasip2 (without exceptions) and on wasip3 (with them), each reading its version's branch. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is not wasi-sdk's `clang++` (emscripten's `em++`, which the lint would analyse as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
 | io_context::run | a call of Boost.Asio's `run`, `run_one` or `run_for`, which block; a driver drains with `poll` and `poll_one` |
 | fluent chains | three calls chained in one expression |
 | returns `*this` | a function other than an assignment operator returning `*this` |

@@ -7,7 +7,8 @@
 name: wasmtime
 description: >-
   Installs wasmtime 47.0.3, checked against its SHA-256, and puts it on PATH: it runs the
-  programs of the wasip2 and wasip3 lanes.
+  programs of the wasip2 and wasip3 lanes, and serves the HTTP components of the own lanes on
+  those targets and of the tests of the tools.
 
 runs:
   using: composite
