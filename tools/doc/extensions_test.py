@@ -341,6 +341,17 @@ def test_prose_apostrophes_that_asciidoctor_leaves_straight_are_curly(_: None) -
     assert 'the plans&#8217; list</a>' in html, html
 
 
+def test_a_quote_of_several_words_keeps_its_closing_quote(_: None) -> None:
+    # A straight quote that opens before a word stays open to the next one that closes, which
+    # stays straight too, though the word before it ends in s: a plural's apostrophe after it
+    # is curly again, and so is one in text that opens no quote.
+    html = body(convert("Run 'b2 docs' now, then the 'examples' and 'the tests' lanes; the "
+                        "operands' nodes.\n\nThe lanes' names.\n"))
+    assert ("<p>Run 'b2 docs' now, then the 'examples' and 'the tests' lanes; the "
+            'operands&#8217; nodes.</p>') in html, html
+    assert '<p>The lanes&#8217; names.</p>' in html, html
+
+
 def test_reference_apostrophes_stay_straight_in_code_and_targets(_: None) -> None:
     # An apostrophe of MrDocs's that Asciidoctor would read as code, as a passthrough, or as part
     # of a link's target or of a URL stays as MrDocs wrote it; one in a paragraph after a backtick
@@ -526,6 +537,7 @@ CASES: list[Callable[[None], None]] = [
     test_linked_code_is_whole_or_breaks_between_its_parts,
     test_reference_apostrophes_read_as_the_guide_s,
     test_prose_apostrophes_that_asciidoctor_leaves_straight_are_curly,
+    test_a_quote_of_several_words_keeps_its_closing_quote,
     test_reference_apostrophes_stay_straight_in_code_and_targets,
     test_tables_scroll_in_their_own_box,
     test_style_breaks_a_word_only_when_it_must,

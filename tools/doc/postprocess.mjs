@@ -278,18 +278,43 @@ function partsOfHeadings(html) {
 
 // The elements whose text is code, or no text at all, where an apostrophe stays as written.
 const VERBATIM = /^<(\/?)(pre|code|kbd|samp|script|style|textarea)\b/;
-// A plural's apostrophe, `the operands' nodes`, after an s that ends a word; not the one that
-// closes a word a straight quote opened, `the 'actors'`, which stays a quote.
-const PLURAL = /(?<!'[\w-]*)(?<=[A-Za-z]s)'(?=[\s.,;:!?)\]]|$)/g;
+// A straight quote, which the text before it and after it tell apart: one that ends a word, before
+// a space, a punctuation mark or the end, may close a quote or be a plural's apostrophe, `the
+// operands' nodes`, when it follows an s; one that starts a word, after no letter and before no
+// space, opens a quote, `'b2 docs'`.
+const QUOTE = /'/g;
+const ENDS_WORD = /^(?:[\s.,;:!?)\]]|$)/;
+const OPENS = /(?:^|[^\w'])$/;
 // An apostrophe right after a name of code, or a link around one, `x`'s, before an s that ends
 // the word, or before the end of the word itself.
 const AFTER_CODE = /^'(?=s(?![A-Za-z])|[\s.,;:!?)\]]|$)/;
 
+// The text with each plural's apostrophe curly, written as Asciidoctor writes its own,
+// &#8217;. A straight quote that ends a word closes the quote an earlier one in the same text
+// opened, and stays straight, though the word ends in s: `run 'b2 docs' now`.
+function curledPlurals(text) {
+  let open = false;
+  return text.replace(QUOTE, (quote, offset) => {
+    const before = text.slice(0, offset);
+    if (/\S$/.test(before) && ENDS_WORD.test(text.slice(offset + 1))) {
+      if (open) {
+        open = false;
+        return quote;
+      }
+      return /[A-Za-z]s$/.test(before) ? '&#8217;' : quote;
+    }
+    if (OPENS.test(before) && /^\S/.test(text.slice(offset + 1))) {
+      open = true;
+    }
+    return quote;
+  });
+}
+
 // Asciidoctor makes an apostrophe curly only between two letters, so the page's prose shows a
 // straight one after the s of a plural and after a name of code, among curly ones, and so does
 // MrDocs's reference. These become curly too, written as Asciidoctor writes its own, &#8217;,
-// outside code, a listing, a script and a style; a quote, 'word', and a year, '90s, stay
-// straight.
+// outside code, a listing, a script and a style; a quote, 'word' or 'two words', and a year,
+// '90s, stay straight.
 function curledApostrophes(html) {
   const parts = html.split(TAG);
   let verbatim = 0;
@@ -308,10 +333,10 @@ function curledApostrophes(html) {
       if (verbatim > 0) {
         return part;
       }
-      let text = part.replace(PLURAL, '&#8217;');
-      if (afterCode) {
-        text = text.replace(AFTER_CODE, '&#8217;');
-      }
+      // The apostrophe after a name of code first, which would otherwise read as opening a
+      // quote.
+      let text = afterCode ? part.replace(AFTER_CODE, '&#8217;') : part;
+      text = curledPlurals(text);
       afterCode = afterCode && part === '';
       return text;
     })
