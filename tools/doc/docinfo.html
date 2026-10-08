@@ -76,6 +76,11 @@ body, td.tableblock > .content, td.hdlist2, .admonitionblock > table td.content 
   table.tableblock code.words > span { white-space: normal; overflow-wrap: break-word; }
 }
 #content code.whole, #content code.words > span.whole { white-space: nowrap; }
+/* A table too wide for the page, for a word of code it does not break, scrolls in its own box
+   (postprocess.mjs), as a block of code does, and the page never gets wider than the screen. The
+   box takes the table's margin, so a table that fits shows as it did. */
+.table-scroll { overflow-x: auto; margin-bottom: 1.25em; }
+.table-scroll > table.tableblock { margin-bottom: 0; }
 /* On a phone, a table's rows stack: each row is a box with a frame, each cell a block under the
    one before it, and the row of headers is hidden. A table of three columns or more shows each
    column's header above its cell, from the data-label postprocess.mjs gives the cell; a table of

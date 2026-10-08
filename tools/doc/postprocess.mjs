@@ -21,6 +21,11 @@
 // several, is marked `whole`, which the style keeps on one line at any width;
 // a longer one breaks where it must.
 //
+// Each table of the guide and the reference is in a box of its own, which
+// scrolls when a word of the table is too long for the page, as a block of
+// code does: the page never gets wider than the screen, and a table that fits
+// is laid out as it was.
+//
 // A table of three columns or more gives each cell the text of its column's
 // header, `data-label`, which a phone's style shows above the cell once it
 // stacks the table's rows; a table of two columns, a name and what it is,
@@ -189,6 +194,23 @@ function labelledTables(html) {
   });
 }
 
+// The tag that opens or closes a table.
+const TABLE_TAG = /<table\b[^>]*>|<\/table>/g;
+
+function boxedTables(html) {
+  // Whether each table open at this point is boxed: a note's, which Asciidoctor lays out as a
+  // table too, is not.
+  const open = [];
+  return html.replace(TABLE_TAG, (tag) => {
+    if (tag !== '</table>') {
+      const boxed = /^<table class="tableblock\b/.test(tag);
+      open.push(boxed);
+      return boxed ? `<div class="table-scroll">\n${tag}` : tag;
+    }
+    return open.pop() ? `${tag}\n</div>` : tag;
+  });
+}
+
 // A heading, with what it holds.
 const HEADING = /(<h([1-6])\b[^>]*>)([\s\S]*?)(<\/h\2>)/g;
 
@@ -217,7 +239,7 @@ function partsOfHeadings(html) {
 class Page extends Postprocessor {
   process(_document, output) {
     const page = labelledTables(wordsOfCode(decodeEntities(output)));
-    return partsOfURLs(partsOfHeadings(page));
+    return boxedTables(partsOfURLs(partsOfHeadings(page)));
   }
 }
 

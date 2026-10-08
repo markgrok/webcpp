@@ -145,6 +145,9 @@ def test_page_builds_with_its_reference(root):
     assert re.search(r'<thead>\s*<tr>\s*<th\b[^>]*>Name</th>\s*<th\b[^>]*>Description</th>',
                      html), html
     assert 'id="footer"' not in html, html
+    # Each table is in a box of its own, which scrolls when the table is too wide for the page.
+    assert html.count('<div class="table-scroll">\n<table class="tableblock') == \
+        html.count('<table class="tableblock') > 0, html
     # MrDocs's escapes are decoded: what MrDocs read as _ and - shows as _ and -.
     assert 'fixture&apos;s' not in html and '&hyphen;' not in html and HYPHEN not in html, html
     # An apostrophe of a brief reads as the guide's, curly, and one in code stays straight.

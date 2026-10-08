@@ -253,6 +253,30 @@ def test_reference_apostrophes_read_as_the_guide_s(_: None) -> None:
     assert code_text(reference_html) == ["auto it's = L'x';"], code_text(reference_html)
 
 
+def test_tables_scroll_in_their_own_box(_: None) -> None:
+    # Every table of the page, one inside a cell included, is in a box of its own, which scrolls
+    # when a word of the table is too long for the page; a note, which Asciidoctor lays out as a
+    # table, is not.
+    long = 'xstate::failure<T>(xstate::errc::implementation&lowbar;failed);'
+    html = body(convert('[cols="1,1,1",options="header"]\n|===\n| XState | Fixed | Computed\n\n'
+                        f'| `a` | `{long}` | `c`\n|===\n\n'
+                        '[cols="1,1"]\n|===\n| Outer\na|\n'
+                        '[cols="1"]\n!===\n! Inner\n!===\n|===\n\n'
+                        'NOTE: A note.\n'))
+    opened = re.findall(r'<table\b[^>]*>', html)
+    assert len(opened) == 4, opened
+    wrapped = re.findall(r'<div class="table-scroll">\s*<table class="tableblock[^"]*">', html)
+    assert len(wrapped) == 3, html
+    assert re.search(r'<div class="table-scroll">\s*<table class="tableblock[^"]*">'
+                     r'(?:(?!<table)[\s\S])*?implementation_<wbr>failed'
+                     r'(?:(?!<table)[\s\S])*?</table>\s*</div>', html), html
+    # Each box closes where its table does, the inner one inside the outer cell.
+    assert '<div class="content"><div class="table-scroll">' in html, html
+    assert '</table>\n</div></div></td>' in html, html
+    assert html.count('<div class="table-scroll">') == 3, html
+    assert re.search(r'<div class="admonitionblock note">\s*<table>', html), html
+
+
 CASES: list[Callable[[None], None]] = [
     test_prose_shows_what_mrdocs_read,
     test_synopsis_keeps_its_links,
@@ -263,6 +287,7 @@ CASES: list[Callable[[None], None]] = [
     test_reference_headings_break_after_scopes,
     test_long_names_break_between_their_parts,
     test_reference_apostrophes_read_as_the_guide_s,
+    test_tables_scroll_in_their_own_box,
 ]
 
 
