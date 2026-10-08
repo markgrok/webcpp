@@ -46,7 +46,7 @@ repository of its own, checked out here as a submodule under `libs/<name>`.
 | xactor | a deterministic actor system, webcpp's own | native, wasip2, wasip3 (`xactor_asio` native only) | a submodule at `libs/xactor`; the model for every port |
 | xstate | a port of XState 5.33.2's state machines and actors; depends on xactor and Boost.JSON | native, wasip2, wasip3; its oracle lane | a submodule at `libs/xstate`; the first user of the shared oracle (chapter 5) |
 | pratt | a Pratt parser engine, generic through concepts, with a calculator built on it, webcpp's own | native, wasip2, wasip3 | a submodule at `libs/pratt`; born with the allocation rule (chapter 6) |
-| wasi | a helper for building C++ as WASI HTTP components | wasip2, wasip3 (`response.hpp` also natively) | to come (chapter 13) |
+| wasi | header-only helpers for C++ built as WebAssembly components: the HTTP handler a component exports, webcpp's own | wasip2, wasip3 (`response.hpp` also natively); its own lanes `http`, the components wasmtime serves | a submodule at `libs/wasi`; the first library built as components (chapter 9) |
 | trystero | a port of Trystero, serverless WebRTC rooms | native, emscripten | to come (chapter 13) |
 
 ### The layout
@@ -62,7 +62,7 @@ webcpp/
   .clang-tidy         clang-tidy's checks, every repository's
   pyrightconfig.json  Pyright's settings for every Python file
   libs/<name>/        a library: a repository of its own, a submodule here (xactor,
-                      xstate, pratt)
+                      xstate, pratt, wasi)
   doc/                the index page (index.adoc, Jamfile)
   tools/
     webcpp.jam        the Jamfile API (chapter 9): webcpp.targets, webcpp.run, ...
@@ -76,13 +76,19 @@ webcpp/
                       doc-check.py, libraries.py, counts.py, the Asciidoctor.js extensions, the
                       style
     example/          run_example.py, which runs an example and compares its output
+    component/        component.jam, the rules of a WebAssembly component (webcpp.wit-bindings,
+                      webcpp.serve, webcpp.serve-script), and serve.py, which serves one with
+                      wasmtime and compares its answers, and its test
     node/             install.py, which installs the Node packages of the documentation, an
                       oracle and the lint once per lockfile, and its test
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
-    test/             the tests of the Jamroot, webcpp.jam, the oracle's rules and the doc build,
-                      their harness, and the fixture libraries demo and oracle_demo
-    ci/               matrix.py (the lanes), assemble.py (the site), download.sh, and
-                      actions/{boost,wasi-sdk,wasmtime,mrdocs,node}/ (chapter 9)
+    test/             the tests of the Jamroot, webcpp.jam, the oracle's rules, the component
+                      rules and the doc build, their harness, and the fixture libraries demo,
+                      oracle_demo and component_demo
+    ci/               matrix.py (the lanes), assemble.py (the site), download.sh, wasi-sdk.jam
+                      (the lines that register the WASI toolsets), and
+                      actions/{boost,wasi-sdk,wasmtime,wit-bindgen,wasi-wit,mrdocs,node}/
+                      (chapter 9)
   .github/            workflows/library.yml, workflows/ci.yml, actionlint.yaml (chapter 9)
   .local/             machine-local, git-ignored (below)
   bin/                b2's build directory, git-ignored
@@ -96,10 +102,13 @@ libs/<name>/
   include/webcpp/<name>.hpp  the convenience header, which includes every public header but
                              one that brings an optional heavy dependency (chapter 3)
   include/webcpp/<name>/...  one header per responsibility
+  wit/                       the worlds of a library that builds WebAssembly components, whose
+                             bindings its build.jam declares (wasi's http-p2.wit and http-p3.wit)
   test/                      Jamfile, the tests, and .clang-tidy when the tests need one
   test/oracle/               a port's oracle (chapter 5): its Jamfile, the pinned original,
                              the scripts that drive it, and the twins
-  example/                   Jamfile, the programs and their .expected outputs
+  example/                   Jamfile, the programs and their .expected outputs, and a served
+                             program's .requests (chapter 9)
   doc/                       Jamfile, the page (<name>.adoc and its sections), mrdocs.yml,
                              and counts.py when the page counts what only it holds (chapter 8)
   meta/libraries.json        Boost's fields, plus "port-of"
@@ -125,11 +134,18 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
 - a C++20 compiler;
 - Python 3.9 or newer;
 - for WebAssembly: wasi-sdk 34 and wasmtime 47 (47.0.3 measured);
-- for the documentation: Node, MrDocs 2026.9.29 and clang++;
+- for WebAssembly components, such as wasi's: wit-bindgen 0.62.0, which
+  generates a world's C bindings, and the `wasi:http` WIT of WASI 0.2.12 and
+  0.3.0, the `wit/deps` directories of the Rust crates `wasip2` 1.0.4 and
+  `wasip3` 0.9.0, which a world resolves its packages against; wasmtime
+  serves the components;
+- for the documentation: Node, MrDocs 2026.9.29 and clang++, and wit-bindgen
+  and the WIT for a reference that parses a component's bindings (wasi's);
 - for a library's oracle lane: Node and npm, with Boost and a C++ toolset;
-- for the lint: wasi-sdk 34's clang-format and clang-tidy, and Node;
-- later: Emscripten, wit-bindgen and the `wasi:http` WIT for wasi and
-  trystero; OpenSSL for trystero natively.
+- for the lint: wasi-sdk 34's clang-format and clang-tidy, Node, the wasip2
+  and wasip3 toolsets, and wit-bindgen and the WIT, since it reads what those
+  toolsets compile;
+- later: Emscripten for trystero, and OpenSSL for trystero natively.
 
 Each toolchain is installed by hand and configured in `user-config.jam`,
 until webcpp bundles the toolchains (chapter 13). b2 reads
@@ -140,12 +156,36 @@ using clang ;      # or gcc, or msvc: the native toolset
 using boost : 1.92 : <include>/opt/homebrew/opt/boost/include <library>/opt/homebrew/opt/boost/lib ;
 local wasi-sdk = /path/to/wasi-sdk ;
 using clang : wasip2 : $(wasi-sdk)/bin/clang++
-  : <cflags>--target=wasm32-wasip2 <cxxflags>--target=wasm32-wasip2 <linkflags>--target=wasm32-wasip2
+  : <cflags>--target=wasm32-wasip2 <cxxflags>--target=wasm32-wasip2
+    <linkflags>--target=wasm32-wasip2
     <archiver>$(wasi-sdk)/bin/llvm-ar <ranlib>$(wasi-sdk)/bin/llvm-ranlib ;
 using clang : wasip3 : $(wasi-sdk)/bin/clang++
-  : <cflags>--target=wasm32-wasip3 <cxxflags>--target=wasm32-wasip3 <linkflags>--target=wasm32-wasip3
+  : <cflags>--target=wasm32-wasip3 <cxxflags>--target=wasm32-wasip3
+    <linkflags>--target=wasm32-wasip3
     <archiver>$(wasi-sdk)/bin/llvm-ar <ranlib>$(wasi-sdk)/bin/llvm-ranlib ;
 ```
+
+The last three are the regions `wasi-sdk`, `wasip2` and `wasip3` of
+`tools/ci/wasi-sdk.jam`, which the CI writes a lane's toolset from and wasi's
+page includes, so that neither drifts from the other.
+
+**The tools of a component** are looked up only when b2 generates a world's
+bindings (on `clang-wasip2` or `clang-wasip3`, or for the explicit
+`<bindings>-headers` of a reference) and when a served test runs, so a
+native `b2 test` needs none of them. When one is needed and not found, the
+build stops, naming it and every place it looked:
+
+- wit-bindgen: `-sWIT_BINDGEN=<path>`, else `.local/wit-bindgen/wit-bindgen`,
+  else `wit-bindgen` on `PATH`;
+- the WIT of each version: `-sWASI_WIT_P2=<dir>` and `-sWASI_WIT_P3=<dir>`,
+  each the `wit/deps` directory of its crate, else `.local/wasi-wit/p2` and
+  `.local/wasi-wit/p3`;
+- wasmtime: `testing.launcher=wasmtime` runs the one on `PATH`; a served
+  test's is `-sWASMTIME=<path>`, else `wasmtime` on `PATH`, looked up when
+  the test runs, which fails naming it.
+
+A `user-config.jam` may set any of the three as `-s` does, with
+`modules.poke : WIT_BINDGEN : <path> ;`.
 
 When Boost cannot be used, the build stops before it compiles anything and
 prints the exact `using boost` line to add. The Jamroot reads the version of
@@ -155,12 +195,17 @@ cached check on it; a Boost whose `#define BOOST_VERSION <number>` line it
 cannot read stops the build too, naming the directory.
 
 **Machine-local setup.** `.local/` is git-ignored and holds what one machine
-needs: `.local/user-config.jam`, `.local/wasi-sdk/` and `.local/mrdocs/`. The
-tools look there first. `tools/lint/compile_commands.py` runs b2 with
+needs: `.local/user-config.jam`, `.local/wasi-sdk/`, `.local/mrdocs/`,
+`.local/wit-bindgen/` and `.local/wasi-wit/p2` and `p3`, where the CI's
+actions install them too (chapter 9). The tools look there first. `tools/lint/compile_commands.py` runs b2 with
 `.local/user-config.jam`, else with the file `$WEBCPP_USER_CONFIG` names,
 else with b2's own search. The tests of the build and of the tools read
 `.local/user-config.jam`, else the file `$WEBCPP_USER_CONFIG` names, and stop
-with an error when neither exists (`tools/test/harness.py`). The doc build
+with an error when neither exists (`tools/test/harness.py`); a test that
+needs wit-bindgen and the WIT links `.local/wit-bindgen` and
+`.local/wasi-wit`, or the directories `$WIT_BINDGEN_ROOT` and
+`$WASI_WIT_ROOT` name, into its scratch copy, and one that needs MrDocs
+`.local/mrdocs`, or `$MRDOCS_ROOT`. The doc build
 finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
 `b2 --user-config=.local/user-config.jam ...`.
 
@@ -180,6 +225,7 @@ finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
 | `b2 declared-targets -d0` | prints each `<library> <target>` pair the libraries declare: the CI's lanes |
 | `b2 declared-lanes -d0` | prints each `<library> <lane> <directory>` line of a library's own lanes, such as its oracle's, and `<library> <lane> <directory> <target>` once per target for a lane that names the targets it runs on (chapters 5 and 9) |
 | `b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test//<lane>` | an own lane on wasip2, such as wasi's served tests, `libs/wasi/test//http` and `libs/wasi/example//http` (chapter 9) |
+| `b2 -sWIT_BINDGEN=<path> -sWASI_WIT_P2=<dir> -sWASI_WIT_P3=<dir> -sWASMTIME=<path> ...` | any of these with the tools of a component where the defaults do not find them (above) |
 | `b2 libs/<name>/test/oracle//oracle` | a port's oracle lane: the original runs the cases and the twins, and the results are compared (chapter 5) |
 | `b2 libs/<name>/test/oracle//update-expected` | writes the original's results again, the only writer of an expected result (chapter 5) |
 | `b2 -a ...` | any of these from scratch; the only build that counts as evidence |
@@ -276,7 +322,10 @@ owner's:
    compiles Boost.JSON's definitions (`<boost/json/src.hpp>`, as Boost.JSON
    documents for a header-only build) into a static library, once per variant,
    so a program built without exceptions gets them built without exceptions
-   too. Compiled Boost libraries are on the roadmap (chapter 13). Nothing else
+   too. Compiled Boost libraries are on the roadmap (chapter 13). A library
+   that builds WebAssembly components declares the C bindings of its worlds
+   there too, with `webcpp.wit-bindings` (chapter 9), as wasi's `build.jam`
+   does for the world of each WASI version under its `wit/`. Nothing else
    registers a library: the
    test, example and doc directories join the aggregates `test`, `example` and
    `doc` by themselves, and `include/webcpp/**` joins `install`.
@@ -465,7 +514,8 @@ than leave it green on the rest.
   allocate. A library ported or written from now on is born with this rule,
   as pratt is: its calculator's environment takes the user's `Allocator`.
   Pending: the mechanism, which a milestone of its own on allocators settles
-  and first applies to xactor and xstate (chapter 13).
+  and first applies to xactor, xstate and wasi, whose response holds its body
+  as a `std::string` (chapter 13).
 - **Text** is passed and held as `std::string_view` where nothing must own
   it; `std::string` only where something does.
 - **A function starts with its guards:** every condition it needs is checked
@@ -518,7 +568,7 @@ rule that failed.
 | Rule | What fails |
 | --- | --- |
 | clang-format | a C++ file not formatted as `.clang-format` says (Google-based, 4 spaces, 100 columns); `clang-format -i` fixes it |
-| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, and each source that no native program compiles, analysed as the first of the WASI targets that compiles it builds it (wasip2, else wasip3), with wasi-sdk's `clang++` and its own `--target`, to which the lint adds no host target or SDK; plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, and again, with the handler `tools/throw_exception.cpp`, as b2 compiles it with `exception-handling=off`, so that what only a build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too; or, for a library whose headers build only for WASI, on wasip2 (without exceptions) and on wasip3 (with them), each reading its version's branch. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is not wasi-sdk's `clang++` (emscripten's `em++`, which the lint would analyse as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
+| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, and each source that no native program compiles, analysed as the first of the WASI targets that compiles it builds it (wasip2, else wasip3), with wasi-sdk's `clang++` and its own `--target`, to which the lint adds no host target or SDK, after the dry run of that target has generated the bindings its commands include (so the lint needs wit-bindgen and the WIT, chapter 1); plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, and again, with the handler `tools/throw_exception.cpp`, as b2 compiles it with `exception-handling=off`, so that what only a build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too; or, for a library whose headers build only for WASI, on wasip2 (without exceptions) and on wasip3 (with them), each reading its version's branch. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is not wasi-sdk's `clang++` (emscripten's `em++`, which the lint would analyse as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
 | io_context::run | a call of Boost.Asio's `run`, `run_one` or `run_for`, which block; a driver drains with `poll` and `poll_one` |
 | fluent chains | three calls chained in one expression |
 | returns `*this` | a function other than an assignment operator returning `*this` |
@@ -748,7 +798,8 @@ webcpp.reference <name> ;
 ```
 
 Either rule declared in another directory stops the build, naming the rule
-and the directory, and so does a page whose Jamfile declares no reference.
+and the directory, and so does a page whose Jamfile declares no reference,
+or a reference whose Jamfile declares no page.
 `b2 libs/<name>/doc` converts the page with Asciidoctor.js into
 `libs/<name>/doc/html/index.html`, with the reference included. The page
 sets its own title and attributes, as xactor's does:
@@ -765,7 +816,9 @@ sets its own title and attributes, as xactor's does:
 
 The doc build provides `{examples}` (the library's `example/` directory),
 `{reference}`, `{twins}` (the twin directory, for a library whose oracle
-declares twins, chapter 5), the counts and the links to other pages (below),
+declares twins, chapter 5), `{webcpp-root}` (the superproject, whose tracked
+files a page includes by tag, below), the counts and the links to other
+pages (below),
 and sets the highlighter, the shared style (`tools/doc/docinfo.html`, the
 system's fonts, no web fonts), no date and no footer: a page sets none of
 these. In that style a table too wide for the page scrolls in its own box,
@@ -809,7 +862,22 @@ include::{examples}/xactor_quick_start.expected[]
 ```
 
 A listing of shell commands is `[source,bash]`; the only languages a page may
-use are C++ (the default), JavaScript (a twin's code), JSON and bash.
+use are C++ (the default), JavaScript (a twin's code), JSON and bash. A
+listing of anything else, a WIT world, a Jamfile's lines or a served test's
+requests, is a `[listing]` block, which stays plain: a `----` block with no
+style is C++, which must be an include of an example.
+
+A page shows the build's own configuration as it is, never a copy: it
+includes a region of a file the superproject's git tracks,
+`include::{webcpp-root}/tools/ci/wasi-sdk.jam[tag=wasip2]`, as wasi's page
+does the lines that register the WASI toolsets.
+
+The Node packages of the doc build, Asciidoctor.js and highlight.js, are
+installed by `tools/node/install.py` with `npm ci`, once per lockfile under
+`tools/doc/.node-modules/`, linked at `tools/doc/node_modules`, under a lock,
+so that doc builds at once share one install; the install of an older
+lockfile is removed once a build no longer may read it. The lint's Pyright
+and an oracle's original are installed the same way.
 
 ### What doc-check enforces
 
@@ -823,6 +891,10 @@ build:
   reference;
 - every include names a file that exists, inside `doc/`, `{examples}` or
   `{twins}`; an output's include names a program that exists;
+- an include of `{webcpp-root}/<path>` names a region, `tag=` or `tags=`, of
+  a file the superproject's git tracks, which holds that region: an untracked
+  file, a missing one, a whole file and lines chosen by number, which drift,
+  each fail;
 - every `(doc: #anchor)` and `index.html#anchor` of the library's files
   names an anchor the page defines, and every `@see "<title>"` a section;
 - every `(doc: <library>#<anchor>)` of the library's files, and every link
@@ -846,8 +918,9 @@ every build, so that no count drifts from the tree:
 
 - from the programs b2 records as it loads the library's test and example
   Jamfiles: `{n-examples}` and `{n-examples-<target>}`, `{n-tests}` and
-  `{n-tests-<target>}` (each header compiled alone is one test),
-  `{n-boost-test-suites}` and `{n-headers}`;
+  `{n-tests-<target>}` (each header compiled alone is one test, and so is
+  each served component), `{n-served}` and `{n-served-<target>}`, the
+  served components alone, `{n-boost-test-suites}` and `{n-headers}`;
 - for a library whose oracle declares twins, from `twins.py --list`:
   `{n-twins-agreeing}`, `{n-twins-divergent}`, `{n-examples-without-twin}`
   and `{n-examples-with-original}`;
@@ -879,7 +952,10 @@ ends in `-0<digit>` and which MrDocs may renumber.
 introduces webcpp and includes, at `{libraries}`, the table that
 `tools/doc/libraries.py` writes from every library's `meta/libraries.json`:
 its name, linked to its page, its description, and what it ports, linked to
-the original. `b2 doc` builds it with every library's page.
+the original, or "original" for a library of webcpp's own (`"port-of":
+null`). A library whose `doc/Jamfile` declares no page with `webcpp.doc`,
+outside a comment, or whose page is not beside it, fails the table, named.
+`b2 doc` builds it with every library's page.
 
 The table links a page as `{library-pages}<name>/{library-page}`, two
 attributes `tools/doc/doc.jam` converts the index with. By default they point
@@ -902,8 +978,8 @@ A target is what a program is built for:
 | --- | --- | --- |
 | `native` | any toolset not below: gcc, clang, msvc, darwin | the host |
 | `emscripten` | b2's `emscripten` | no CI lane yet: one comes when emsdk is pinned (chapter 13) |
-| `wasip2` | `clang-wasip2`, a clang registered against wasi-sdk with version `wasip2` | `testing.launcher=wasmtime` |
-| `wasip3` | `clang-wasip3`, likewise | `testing.launcher=wasmtime` |
+| `wasip2` | `clang-wasip2`, a clang registered against wasi-sdk with version `wasip2` | `testing.launcher=wasmtime`; a component, `wasmtime serve` (below) |
+| `wasip3` | `clang-wasip3`, likewise | `testing.launcher=wasmtime`; a component, `wasmtime serve` (below) |
 
 A Jamfile declares its default with `webcpp.targets`, a program can override
 it with its own targets, and with no declaration a program is built for
@@ -942,11 +1018,48 @@ webcpp.headers-alone <library> : <include-root> : <only> * : <requirements> * : 
 | `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | its standard input is `<stem>.input` beside it, else empty, never the terminal, on every target (wasmtime passes it through); run through `testing.launcher` for wasm, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again, and `<stem>.input` is a source of the run |
 | `webcpp.headers-alone` | each public header compiles alone | one test per header, `alone-<path>` with `/` as `-` (`alone-xactor-scheduler`), against `/webcpp/<library>//<library>` and the requirements given, for the targets given or the Jamfile's; `only` restricts a call to the public headers its globs match, relative to `<include-root>/webcpp/` (`wasi/http/response.hpp`), a glob that matches none stopping the build; a library may call it several times, and a header two calls take stops the build, naming it |
 
+**WebAssembly components** (`tools/component/component.jam`). A library's
+`build.jam` declares the C bindings of a world, and its test and example
+Jamfiles the HTTP components that wasmtime serves:
+
+```
+webcpp.wit-bindings <name> : <world-file> : <world> : <rename> : <version> : <wit-bindgen-argument> * ;
+webcpp.serve        <source> : <requirements> * : <targets> * ;
+webcpp.serve-script <name> : <script> : <stem> : <targets> * ;
+```
+
+| Rule | Passes when | Notes |
+| --- | --- | --- |
+| `webcpp.wit-bindings` | | the target `<name>`, the C bindings wit-bindgen generates for the world `<world>` of `<world-file>`, renamed `<rename>` (`--rename-world`), for the WASI version `<version>`, `p2` or `p3`, with the arguments given: on that version's toolset alone (`clang-wasip2`, `clang-wasip3`) its usage requirements put their directory on the include path and link `<rename>.c` and `<rename>_component_type.o`, and elsewhere they add nothing, so a native build needs no wit-bindgen. The explicit target `<name>-headers` puts the directory on the include path on any toolset, for a native parse such as the reference (chapter 7). The bindings are generated while b2 computes a target's properties, in a dry run too, under `<build-dir>/generated/<library>/<name>/`, and again only when the world file, the WIT, wit-bindgen's version or an argument changed, compared by content. A name declared twice in a library stops the build, naming both |
+| `webcpp.serve` | the transcript of the answers to the requests of `<stem>.requests` equals `<stem>.expected` | builds `<source>` as a reactor component that exports an HTTP handler, for its own targets, which may be only wasip2 and wasip3, else for those of its Jamfile that are, linking `tools/throw_exception.cpp` where it is built without exceptions; `tools/component/serve.py` serves it with `wasmtime serve` (`-S cli` on wasip2, `-S cli,p3 -W component-model-async` on wasip3) on a port the system chooses, sends each request on a connection of its own, and stops wasmtime in every outcome. A test of b2's, which `--dump-tests` lists and `--out-xml` records, so the report sees it fail (as a run). It runs in an own lane, never in the ordinary ones (Lanes, below) |
+| `webcpp.serve-script` | as `webcpp.serve`, with the requests and the transcript of `<stem>` | the component is built by the shell script `<script>`, run as `sh <script> <p2\|p3> <component>` with `WASI_SDK`, `WIT_BINDGEN` and `WASI_WIT` (the WIT of the lane's version) in its environment, the tools b2 found: a build by hand that a page shows, run as written. It runs at every build |
+
+`<stem>.requests` holds one request per line, `<METHOD> <target>`.
+The transcript holds, per request, the curl command that sends it after
+`$ `, which a shell runs as written (`curl -I` for HEAD, `--request-target`
+for a target that is not a path, such as the `*` of OPTIONS); the status
+line, `HTTP/1.1 <status> <reason>`; the response's headers in lower case,
+sorted, without the two wasmtime adds to every response, `date` and
+`transfer-encoding`; an empty line; and the body. An empty line separates
+two requests. The origin is written `http://localhost:8080` whatever port
+was served, so one transcript holds on every machine and lane:
+
+```
+$ curl -i -X GET 'http://localhost:8080/a?b=c%20d'
+HTTP/1.1 200 OK
+content-type: text/plain; method=GET
+
+GET /a?b=c%20d
+```
+
 The rules of the doc Jamfiles are in chapter 8: `webcpp.doc <library> :
-<page>.adoc ;`, `webcpp.reference <library> : <requirements> * ;` and, for the superproject's
-index, `webcpp.index <page>.adoc ;`. Those of an oracle's Jamfile,
+<page>.adoc ;`, `webcpp.reference <library> : <requirements> * :
+<also-checked> * ;` (chapter 7) and, for the superproject's index,
+`webcpp.index <page>.adoc ;`. Those of an oracle's Jamfile,
 `libs/<name>/test/oracle/Jamfile`, are in chapter 5: `webcpp.original`,
-`webcpp.twins`, `webcpp.cases` and `webcpp.lane`.
+`webcpp.twins`, `webcpp.cases` and `webcpp.lane`, which any test or example
+Jamfile of a library may also declare, with the targets its lane runs on
+(Lanes, below).
 
 A library's Jamfiles, as xactor's, each whole after its licence notice.
 `libs/xactor/test/Jamfile`:
@@ -1170,7 +1283,7 @@ jobs:
   | `clang-darwin-<version>` | macos-15 | Apple Clang, its version read from `clang++ -dumpversion` |
   | `msvc-14.3` | windows-2022 | Visual Studio 2022 |
   | `msvc-14.5` | windows-2025 | Visual Studio 2026 |
-  | `wasip2`, `wasip3` | ubuntu-24.04 | `clang-wasip2`, `clang-wasip3`: wasi-sdk 34 and wasmtime 47.0.3 |
+  | `wasip2`, `wasip3` | ubuntu-24.04 | `clang-wasip2`, `clang-wasip3`: wasi-sdk 34, wasmtime 47.0.3, wit-bindgen 0.62.0 and the WASI WIT, for every library |
 
   The Clang lanes on libstdc++ stay: a regression of xactor's guarantee 28 is
   caught only there. The MSVC lanes add `address-model=64
@@ -1187,19 +1300,25 @@ jobs:
   - One that names a target, `Own lane (<library>, <lane>, <directory>,
     <target>)`, on its entry's image: the Boost action and what the target's
     lane installs, the same steps by their YAML anchors (`&wasi-sdk`,
-    `&wasmtime`), so that a step added to a WASI lane is added to it too; then
+    `&wasmtime`, `&wit-bindgen`, `&wasi-wit`), so that a step added to a WASI
+    lane is added to it too; then
     `b2 -a --dump-tests --out-xml=<id>.xml toolset=<toolset> [<options>]
     <directory>//<lane>`, and it uploads `<id>.xml` as a lane uploads its
     XML, the artifact `lane-<id>`.
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
-  Intel macOS) and `clang++-18`, `b2 -a libs/<library>/doc`, or for the
+  Intel macOS), `clang++-18`, Node, wit-bindgen and the WASI WIT (wasi's
+  reference parses its bindings), `b2 -a libs/<library>/doc`, or for the
   superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's.
 - **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
   with wasi-sdk's clang-format and clang-tidy, Node, Clang 18 as b2's default
-  toolset, and the full history (`fetch-depth: 0`) of the superproject and of
-  the library, since the banned-word rule reads every commit.
+  toolset and the wasip2 and wasip3 toolsets after it (`matrix.py register
+  clang-18 wasip2 wasip3`), wit-bindgen and the WASI WIT, which the WASI dry
+  runs of the compilation database need, and the full history
+  (`fetch-depth: 0`) of the superproject and of the library, since the
+  banned-word rule reads every commit.
 - **tools,** for the superproject only: every `tools/**/*_test.py`, with
-  Clang 18, wasi-sdk, wasmtime, Node and MrDocs, each failure named.
+  Clang 18 and the wasip2 and wasip3 toolsets, wasi-sdk, wasmtime,
+  wit-bindgen, the WASI WIT, Node and MrDocs, each failure named.
 - **actionlint:** actionlint 1.7.12, downloaded and checked against its
   SHA-256, on every workflow of the superproject and of `libs/*`, with
   `.github/actionlint.yaml`. It also runs clean locally before a workflow
@@ -1238,12 +1357,23 @@ others: `python3 tools/ci/matrix.py lane '<entry>' --
   `.local/mrdocs`, and `node` sets up Node 26.7.0, with npm's cache keyed on
   the lock files of `tools/doc`, `tools/lint` and every library's
   `test/oracle`.
+- `wit-bindgen` installs wit-bindgen 0.62.0, the release's archive for the
+  runner's system and processor (Linux and macOS, x86-64 and arm64), the
+  program alone, into `.local/wit-bindgen`; `wasi-wit` installs the
+  `wit/deps` directories of the crates `wasip2` 1.0.4 and `wasip3` 0.9.0,
+  from `https://static.crates.io/crates/`, into `.local/wasi-wit/p2` and
+  `.local/wasi-wit/p3`. Both install where the build looks when no `-s` is
+  given (chapter 1), so a job's b2 commands name neither, and each replaces
+  what an earlier install left.
 - `tools/ci/download.sh <url> <sha256> <file>` downloads each pinned file,
   and leaves no file and exits 1 when the download fails or the digest
   differs.
 
 `tools/ci/actions_test.py` pins `download.sh`, the Boost action's prefix
-checks and the layouts it installs the headers and b2 in.
+checks and the layouts it installs the headers and b2 in, and where the
+wit-bindgen and WASI WIT actions install what they download, what they
+leave out, and their refusals: a runner no build of wit-bindgen is pinned
+for, and a crate that holds no WIT.
 
 **The site.** On every run of the superproject's CI, `tools/ci/assemble.py`
 lays out the site from the pages and the report, and on `main` it is
@@ -1288,16 +1418,18 @@ only branch.
   - the lint: `lint: clean`;
   - the tests of the build and of the tools, when they or what they test
     changed: `tools/test/jamroot_test.py`, `tools/test/webcpp_jam_test.py`,
-    `tools/test/oracle_jam_test.py`, `tools/test/doc_test.py`,
-    `tools/test/harness_test.py`,
+    `tools/test/oracle_jam_test.py`, `tools/test/component_jam_test.py`,
+    `tools/test/doc_test.py`, `tools/test/harness_test.py`,
     `tools/lint/lint_test.py`, `tools/report/report_test.py`,
     `tools/doc/doc_check_test.py`, `tools/doc/doc_comments_test.py`,
     `tools/doc/extensions_test.py`, `tools/doc/counts_test.py`,
     `tools/oracle/twins_test.py`, `tools/oracle/compare_test.py`,
-    `tools/example/run_example_test.py`, `tools/ci/matrix_test.py`,
-    `tools/ci/assemble_test.py` and `tools/ci/actions_test.py`, each run as
-    `python3 <path>`. They build in scratch copies under `$TMPDIR`, whose
-    path holds a space, so they run beside a build of the tree;
+    `tools/example/run_example_test.py`, `tools/component/serve_test.py`,
+    `tools/node/install_test.py`, `tools/ci/matrix_test.py`,
+    `tools/ci/assemble_test.py` and `tools/ci/actions_test.py`: every
+    `tools/**/*_test.py`, as the CI runs them, each as `python3 <path>`. They
+    build in scratch copies under `$TMPDIR`, whose path holds a space, so they
+    run beside a build of the tree;
   - CI green, the library's and the superproject's.
 - **Fix the lint, the failures and the flakiness you meet,** even when they
   are not yours; report what you cannot fix.
@@ -1416,13 +1548,12 @@ Each of these was measured; each has cost time.
 
 What webcpp does not have yet, and the chapters that mention it:
 
-- **More libraries:** wasi, a helper for building C++ as WASI HTTP
-  components; trystero, a port of Trystero, serverless WebRTC rooms
-  (chapter 1). Each joins `libs/` as a submodule, with its page and its
-  lanes.
+- **More libraries:** trystero, a port of Trystero, serverless WebRTC rooms
+  (chapter 1). It joins `libs/` as a submodule, with its page and its lanes.
 - **Allocators.** The mechanism by which a library lets its user customize
   the allocator of what it allocates, settled in a milestone of its own,
-  which first applies it to xactor and xstate (chapter 6).
+  which first applies it to xactor, xstate and wasi, whose response holds its
+  body as a `std::string` (chapter 6).
 - **The emscripten lane.** b2's `emscripten` is a target already, and the CI
   gets a lane for it when emsdk is pinned, as wasi-sdk and wasmtime are;
   until then, a library that declares it fails the CI's plan (chapter 9).
