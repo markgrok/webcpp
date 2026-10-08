@@ -9,8 +9,9 @@
 also without exceptions and RTTI; wasip2 builds without exceptions and wasip3 with them; an example
 is compared with its expected output; every public header compiles alone; `b2 declared-targets`
 lists what each library declares; a Boost.Test suite is built and run natively only, its framework
-always with exceptions; and Boost.JSON's definitions link on every target. Each case builds a
-scratch superproject with the fixture library demo. Run with the names of some cases to run only
+always with exceptions; Boost.JSON's definitions link on every target; and every program sees
+C++20, a native one without exceptions also seeing no RTTI through Boost.Config. Each case builds
+a scratch superproject with the fixture library demo. Run with the names of some cases to run only
 those."""
 
 from __future__ import annotations
@@ -455,6 +456,61 @@ def test_boost_json_on_every_target(root):
         result.stdout[-4000:])
 
 
+TOOLCHAIN_JAMFILE = ('import webcpp ;\n'
+                     '\n'
+                     'webcpp.targets native wasip2 wasip3 ;\n'
+                     '\n'
+                     'webcpp.run toolchain : toolchain.cpp ;\n')
+
+TOOLCHAIN_SOURCE = (
+    '#include <boost/config.hpp>\n'
+    '\n'
+    '#include <cstdio>\n'
+    '\n'
+    '#if defined(_MSVC_LANG)\n'
+    'static_assert(_MSVC_LANG >= 202002L, "the build does not compile as C++20");\n'
+    '#else\n'
+    'static_assert(__cplusplus >= 202002L, "the build does not compile as C++20");\n'
+    '#endif\n'
+    '\n'
+    '// Native, without exceptions, is also without RTTI (tools/webcpp.jam\'s .noexcept pairs\n'
+    '// <exception-handling>off with <rtti>off). wasip2 turns exceptions off at the project\n'
+    '// level, through its own <exception-handling>off, without doing the same to RTTI, so the\n'
+    '// check below excludes it.\n'
+    '#if defined(BOOST_NO_EXCEPTIONS) && !defined(__wasi__) && !defined(BOOST_NO_RTTI)\n'
+    '#error "a build without exceptions does not also disable RTTI"\n'
+    '#endif\n'
+    '\n'
+    'int main() {\n'
+    '#ifdef BOOST_NO_EXCEPTIONS\n'
+    '    std::puts("no exceptions");\n'
+    '#else\n'
+    '    std::puts("exceptions");\n'
+    '#endif\n'
+    '    return 0;\n'
+    '}\n')
+
+
+def test_toolchain_sees_cxx20_and_ties_rtti_to_exceptions(root):
+    # Restores the promise of xstate-cpp's retired toolchain_test.cpp: every program sees C++20,
+    # and a build without exceptions also sees no RTTI, both through Boost.Config's own macros,
+    # not the raw compiler ones built_with reads. wasip2 is declared too: -noexcept is native
+    # only (tools/webcpp.jam), so the one program built there is the plain one, and it is the
+    # no-exceptions one, since wasip2 turns exceptions off at the project level.
+    harness.add_library(root, 'toolchain', TOOLCHAIN_JAMFILE, {'toolchain.cpp': TOOLCHAIN_SOURCE})
+    result = harness.run_b2(root, 'libs/toolchain/test')
+    harness.expect(result, True)
+    assert passed(result) == {'toolchain', 'toolchain-noexcept'}, (passed(result),
+                                                                    result.stdout[-4000:])
+    assert output_of(root, 'toolchain.output').startswith('exceptions\n')
+    assert output_of(root, 'toolchain-noexcept.output').startswith('no exceptions\n')
+    shutil.rmtree(root / 'bin')
+    result = harness.run_b2(root, *WASIP2, 'libs/toolchain/test')
+    harness.expect(result, True)
+    assert passed(result) == {'toolchain'}, (passed(result), result.stdout[-4000:])
+    assert output_of(root, 'toolchain.output').startswith('no exceptions\n')
+
+
 CASES = [
     test_native_builds_declared_and_noexcept_variant,
     test_wasip2_skips_native_only_and_has_no_exceptions,
@@ -471,6 +527,7 @@ CASES = [
     test_boost_test_failure_is_red_and_named,
     test_boost_test_never_built_for_wasm,
     test_boost_json_on_every_target,
+    test_toolchain_sees_cxx20_and_ties_rtti_to_exceptions,
 ]
 
 
