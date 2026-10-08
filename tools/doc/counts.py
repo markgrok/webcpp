@@ -13,13 +13,14 @@ none is typed and none drifts from the tree. It prints each on a line of its own
 
 * From the programs b2 recorded, each given as `--program "<kind> <name> <target>..."`, as
   tools/webcpp.jam records the programs of the library's test and example Jamfiles (a Jamfile is
-  never read here): `n-examples` and `n-examples-<target>`, the programs of kind example;
-  `n-tests` and `n-tests-<target>`, every other one, each header that webcpp.headers-alone
-  compiles alone one; `n-boost-test-suites`; and `n-headers`, the headers webcpp.headers-alone
-  compiles alone, one program each. A target is native, emscripten, wasip2 or wasip3, and every
-  one is counted, so a count of programs may be 0: a library declares the targets it builds for.
-  `n-headers` is never 0: every library compiles its public headers alone, and one that declares
-  no webcpp.headers-alone fails the count, naming it.
+  never read here): `n-examples` and `n-examples-<target>`, the programs of kind example; `n-tests`
+  and `n-tests-<target>`, every other one, each header that webcpp.headers-alone compiles alone one,
+  and each HTTP component that webcpp.serve serves one; `n-served` and `n-served-<target>`, those
+  served components alone; `n-boost-test-suites`; and `n-headers`, the headers webcpp.headers-alone
+  compiles alone, one program each. A target is native, emscripten, wasip2 or wasip3, and every one
+  is counted, so a count of programs may be 0: a library declares the targets it builds for.
+  `n-headers` is never 0: every library compiles its public headers alone, and one that declares no
+  webcpp.headers-alone fails the count, naming it.
 * With `--examples`, `--twins` and `--suffix`, which the library's oracle declares with
   webcpp.twins, from what tools/oracle/twins.py --list prints, which runs no twin:
   `n-twins-agreeing`, `n-twins-divergent`, `n-examples-without-twin` and
@@ -54,7 +55,8 @@ HERE = Path(__file__).resolve().parent
 TWINS = HERE.parent / 'oracle/twins.py'
 SELF = 'tools/doc/counts.py'
 
-KINDS = ('example', 'run', 'run-fail', 'compile', 'compile-fail', 'boost-test', 'headers-alone')
+KINDS = ('example', 'run', 'run-fail', 'compile', 'compile-fail', 'boost-test', 'headers-alone',
+         'serve')
 TARGETS = ('native', 'emscripten', 'wasip2', 'wasip3')
 
 # What each generic count is counted from, by its name, as a fault names it.
@@ -63,6 +65,8 @@ PROGRAM_COUNTS = {
     **{f'n-examples-{target}': 'the programs b2 recorded' for target in TARGETS},
     'n-tests': 'the programs b2 recorded',
     **{f'n-tests-{target}': 'the programs b2 recorded' for target in TARGETS},
+    'n-served': 'the programs b2 recorded',
+    **{f'n-served-{target}': 'the programs b2 recorded' for target in TARGETS},
     'n-boost-test-suites': 'the programs b2 recorded',
     'n-headers': 'the programs b2 recorded',
 }
@@ -110,6 +114,10 @@ def program_counts(library: str, programs: Sequence[Program]) -> dict[str, int]:
     counts['n-tests'] = len(tests)
     for target in TARGETS:
         counts[f'n-tests-{target}'] = sum(target in program.targets for program in tests)
+    served = [program for program in tests if program.kind == 'serve']
+    counts['n-served'] = len(served)
+    for target in TARGETS:
+        counts[f'n-served-{target}'] = sum(target in program.targets for program in served)
     counts['n-boost-test-suites'] = sum(program.kind == 'boost-test' for program in tests)
     counts['n-headers'] = sum(program.kind == 'headers-alone' for program in tests)
     if counts['n-headers'] == 0:

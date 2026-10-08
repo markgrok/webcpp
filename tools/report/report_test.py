@@ -5,15 +5,16 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks tools/report/report.py on the samples b2 wrote for lanes over the fixture library demo and
-the libraries record_samples.py plants beside it: a lane that passes, its failures named by kind
-with their output a click away, an expected failure told from a real one, an empty lane failed by
-name, and so a library a lane built nothing of, two lanes merged into one matrix, input it cannot
-read or report truthfully refused before anything is written (a lane whose name says another target
-than its toolset builds for, among them), a failure outside every test, and output that b2's XML
-cannot hold. One case uses lanes.py and pages.py alone; one checks that no sample names the
-machine's temporary directory; a last one records every sample afresh, untrimmed, and checks that
-the report reads it as it reads the committed one. Every page written is checked to be
+"""Checks tools/report/report.py on the samples b2 wrote for lanes over the fixture libraries demo
+and component_demo, and the libraries record_samples.py plants beside them: a lane that passes, its
+failures named by kind with their output a click away, an expected failure told from a real one, an
+empty lane failed by name, and so a library a lane built nothing of, two lanes merged into one
+matrix, input it cannot read or report truthfully refused before anything is written (a lane whose
+name says another target than its toolset builds for, among them), a failure outside every test,
+output that b2's XML cannot hold, and a served component's test that passes and one whose transcript
+differs, a run failure. One case uses lanes.py and pages.py alone; one checks that no sample names
+the machine's temporary directory; a last one records every sample afresh, untrimmed, and checks
+that the report reads it as it reads the committed one. Every page written is checked to be
 self-contained, to link only to the report's own pages, to the site it is served in (its index and
 each library's page) and to github.com/webcpporg, and to name its lane on every lane cell, which a
 phone shows as a chip. Run with the names of some cases to run only those."""
@@ -602,6 +603,38 @@ def test_output_cdata_cannot_hold_is_shown(root: Path) -> None:
     check_pages(out)
 
 
+def test_served_test_passes_and_fails_as_a_run(root: Path) -> None:
+    # A served component's test is a test like any other: listed, of type serve, and its
+    # failure, a transcript that differs, is a run failure whose output holds the diff.
+    out = root / 'passes'
+    result = report(out, ('wasip2', sample('wasip2-served')))
+    assert result.returncode == 0, outcome(result)
+    index = matrix(out / 'index.html')
+    assert index.verdict('component_demo', 'wasip2') == 'pass'
+    component = matrix(out / 'component_demo.html')
+    assert component.rows() == {'bindings', 'native_alone', 'answers'}, component.rows()
+    assert component.cells[('answers', 'Type')].text == 'serve'
+    assert component.verdict('answers', 'wasip2') == 'pass'
+    assert component.verdict('bindings', 'wasip2') == 'pass'
+    assert component.verdict('native_alone', 'wasip2') == 'n/a'
+    check_pages(out)
+    out = root / 'fails'
+    result = report(out, ('wasip2', sample('wasip2-served-failure')))
+    assert result.returncode == 1, outcome(result)
+    assert result.stderr.splitlines() == ['report: wasip2: component_demo/answers: run'], (
+        outcome(result))
+    assert matrix(out / 'index.html').verdict('component_demo', 'wasip2') == 'run'
+    component = matrix(out / 'component_demo.html')
+    assert component.verdict('answers', 'wasip2') == 'run'
+    assert component.verdict('bindings', 'wasip2') == 'pass'
+    output = linked(out / 'component_demo.html', component.cells[('answers', 'wasip2')].href)
+    for text in ('the transcript differs from libs/component_demo/test/answers.expected',
+                 '-HTTP/1.1 405 Method Not Allowed', '+HTTP/1.1 404 Not Found',
+                 "wasmtime's standard error:"):
+        assert text in output.text, (text, output.text)
+    check_pages(out)
+
+
 def test_lanes_and_pages_work_alone(root: Path) -> None:
     # lanes.py reads and judges a lane, with no page written.
     lane = lanes.read_lane('native', sample('native-failures'))
@@ -664,7 +697,7 @@ def test_samples_read_as_b2_writes_them_today(root: Path) -> None:
     # writes what the report expects.
     for name in record_samples.SAMPLES_BY_NAME:
         lane = name.split('-')[0]
-        scratch = harness.scratch_superproject('demo')
+        scratch = record_samples.scratch(name)
         try:
             fresh = root / 'fresh' / f'{name}.xml'
             fresh.parent.mkdir(exist_ok=True)
@@ -691,6 +724,7 @@ CASES = [
     test_a_lane_is_what_its_name_says,
     test_a_failure_outside_every_test_fails_the_lane,
     test_output_cdata_cannot_hold_is_shown,
+    test_served_test_passes_and_fails_as_a_run,
     test_lanes_and_pages_work_alone,
     test_samples_name_no_temporary_directory,
     test_samples_read_as_b2_writes_them_today,

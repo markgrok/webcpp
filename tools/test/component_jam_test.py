@@ -9,16 +9,27 @@
 wit-bindgen for wasip2 and wasip3, where a translation unit that includes them compiles and a
 component that uses them links; natively it adds nothing and asks for no tool, unless its
 -headers target is named; a missing wit-bindgen, WIT or world file stops the build naming it and
-where it was looked for; a dry run generates the header; and the bindings are written again only
-when what they are made from changes. Each case builds a scratch superproject with the fixture
-library component_demo, given this checkout's wit-bindgen and WIT. Run with the names of some
-cases to run only those."""
+where it was looked for; a dry run generates the header; the bindings are written again only
+when what they are made from changes, or one of them is missing; a name declared twice in a
+library is refused; and an argument holding a $ or a ' reaches wit-bindgen as it is written.
+webcpp.serve builds an HTTP component, serves it with wasmtime and checks its answers, as a test
+of b2's that --dump-tests lists and the report reads, in two lanes at once; a wrong transcript is
+a run failure in the report; native and emscripten are refused, and a native lane builds no
+served test and asks for no tool; a missing wasmtime stops the build naming it, only when a
+served test is built; no wasmtime is left by a test that passes, one that fails, or a b2 that
+is interrupted. Each case builds a scratch superproject with the fixture library
+component_demo, given this checkout's wit-bindgen and WIT. Run with the names of some cases to
+run only those."""
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import signal
+import subprocess
 import sys
+import time
 
 import harness
 from oracle_jam_test import without
@@ -60,7 +71,7 @@ def test_bindings_generated_for_wasip2_and_wasip3(root):
     for toolset, version in ((WASIP2, 'p2'), (WASIP3, 'p3')):
         result = harness.run_b2(root, '-a', toolset, TEST)
         harness.expect(result, True)
-        assert passed(result) == {'bindings'}, result.stdout[-4000:]
+        assert passed(result) == {'bindings', 'answers'}, result.stdout[-4000:]
         directory = generated(root, version)
         for name in ('demo_world.h', 'demo_world.c', 'demo_world_component_type.o',
                      f'wit/world-{version}.wit', 'wit/deps/http.wit'):
@@ -280,8 +291,264 @@ def test_unchanged_inputs_keep_the_bindings(root):
     assert build(f'-sWASI_WIT_P2={wit}') == fourth
     (wit / 'random.wit').write_text((wit / 'random.wit').read_text() + '\n')
     assert build(f'-sWASI_WIT_P2={wit}') != fourth
+    # A file of theirs that is missing, its stamp still there, writes them again.
+    for name in ('demo_world.h', 'demo_world.c', 'demo_world_component_type.o'):
+        before = build(f'-sWASI_WIT_P2={wit}')
+        (header.parent / name).unlink()
+        assert build(f'-sWASI_WIT_P2={wit}') != before, name
+        assert (header.parent / name).is_file(), name
     # No temporary directory is left beside them.
     assert sorted(path.name for path in header.parent.parent.iterdir()) == ['demo-bindings-p2']
+
+
+def test_a_name_declared_twice_is_refused(root):
+    # Two declarations of one name in a library would share a directory of bindings.
+    harness.replace(root / TEST / 'Jamfile', 'webcpp.targets native wasip2 wasip3 ;',
+                    'webcpp.targets native wasip2 wasip3 ;\n'
+                    'webcpp.wit-bindings demo-bindings-p2 : ../wit/world-p2.wit : demo : demo_world'
+                    ' : p2 ;')
+    result = harness.run_b2(root, '-d0', 'declared-targets')
+    harness.expect(result, False, 'webcpp.wit-bindings demo-bindings-p2 is declared twice in the '
+                   'library component_demo: in libs/component_demo/build.jam and in '
+                   'libs/component_demo/test/Jamfile')
+
+
+def test_shell_characters_in_arguments_reach_wit_bindgen(root):
+    # A $ and a ' in an argument are neither expanded nor end a quotation, in the script that
+    # runs wit-bindgen and in the stamp.
+    harness.link_wasi_tools(root)
+    suffix = "_it's$HOME`id`"
+    harness.replace(root / LIBRARY / 'build.jam', 'demo_world : p2 ;',
+                    f'demo_world : p2 : --type-section-suffix "{suffix}" ;')
+    harness.expect(harness.run_b2(root, '-a', WASIP2, TEST), True)
+    directory = generated(root, 'p2')
+    inputs = (directory / 'inputs').read_text()
+    assert (f'arguments --world "demo" --rename-world "demo_world" "--type-section-suffix" '
+            f'"{suffix}"\n') in inputs, inputs
+    assert suffix.encode() in (directory / 'demo_world_component_type.o').read_bytes()
+
+
+SERVED_EXPECTED = harness.FIXTURES / 'component_demo/test/answers.expected'
+
+
+def linked_wasmtime(root):
+    """-sWASMTIME= a link, inside root, to the wasmtime on PATH: every wasmtime the build starts
+    is then named with root's path, which the processes of another run do not hold."""
+    real = shutil.which('wasmtime')
+    assert real, 'wasmtime is not on PATH'
+    link = root / 'linked tools/wasmtime'
+    link.parent.mkdir(exist_ok=True)
+    link.symlink_to(real)
+    return f'-sWASMTIME={link}'
+
+
+def left(root, seconds=5):
+    """The processes that name root, which a finished build must not leave, after waiting up to
+    seconds for them to go: a killed process is a zombie until its parent reaps it."""
+    deadline = time.monotonic() + seconds
+    while True:
+        listed = subprocess.run(['ps', '-A', '-o', 'pid=,command='], capture_output=True,
+                                text=True, check=True)
+        found = [line for line in listed.stdout.splitlines() if root.name in line]
+        if not found or time.monotonic() > deadline:
+            return found
+        time.sleep(0.1)
+
+
+def start_b2(root, *arguments):
+    """b2 started in root, in a session of its own, as harness.run_b2 runs it, without waiting."""
+    environment = {name: value for name, value in os.environ.items()
+                   if name not in harness.COMPILER_PATHS}
+    return subprocess.Popen(['b2', f'--user-config={harness.user_config(root)}', *arguments],
+                            cwd=root, env=environment, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, errors='replace',
+                            start_new_session=True)
+
+
+def built_in(root, name, version):
+    """The files called name that a build for the WASI version, 2 or 3, wrote under root/bin."""
+    return [path for path in (root / 'bin').rglob(name) if f'wasip{version}' in str(path)]
+
+
+def link_line(output, program):
+    """The line of b2's -d+2 output that links program."""
+    return next(line for line in output.splitlines()
+                if '-mexec-model=reactor' in line and f'/{program} ' in line.replace('"', ' '))
+
+
+def test_served_component_green_on_wasip2_and_wasip3(root):
+    harness.link_wasi_tools(root)
+    wasmtime = linked_wasmtime(root)
+    # Two lanes at once, each in a build directory of its own: two wasmtimes serve at the same
+    # time, each on a port of its own.
+    lanes = {version: start_b2(root, '-a', '-d+2', f'--build-dir=bin/lane-wasip{version}',
+                               f'toolset=clang-wasip{version}', wasmtime, TEST)
+             for version in (2, 3)}
+    for version, process in lanes.items():
+        output, _ = process.communicate(timeout=harness.TIMEOUT)
+        assert process.returncode == 0, (version, output[-4000:])
+        assert passed(subprocess.CompletedProcess([], 0, output)) == {'bindings', 'answers'}, (
+            output[-4000:])
+        served = built_in(root, 'answers.served', version)
+        assert len(served) == 1, served
+        assert served[0].read_bytes() == SERVED_EXPECTED.read_bytes()
+        # The component is built in the test's directory, as a reactor, and linked on wasip2
+        # with the handler of a program built without exceptions, which it calls.
+        assert 'answers.test' in served[0].parts, served
+        line = link_line(output, 'answers.wasm')
+        assert ('throw_exception.o' in line) == (version == 2), line
+        # The program to serve by hand is not built by default.
+        assert not built_in(root, 'answers-component.wasm', version)
+    assert not left(root), left(root)
+    # Named, it is: a component.
+    harness.expect(harness.run_b2(root, WASIP2, f'{TEST}//answers-component'), True)
+    components = built_in(root, 'answers-component.wasm', 2)
+    assert len(components) == 1 and components[0].read_bytes()[:8] == COMPONENT, components
+
+
+def test_wrong_expected_is_a_run_failure_in_the_report(root):
+    harness.link_wasi_tools(root)
+    wasmtime = linked_wasmtime(root)
+    harness.replace(root / TEST / 'answers.expected', 'HTTP/1.1 404 Not Found',
+                    'HTTP/1.1 405 Method Not Allowed')
+    # Alone, b2 fails.
+    harness.expect(harness.run_b2(root, '-a', WASIP2, wasmtime, TEST), False,
+                   '-HTTP/1.1 405 Method Not Allowed', '+HTTP/1.1 404 Not Found')
+    assert not left(root), left(root)
+    # With --out-xml, b2 exits 0, and the report is the verdict: the test is listed, and its
+    # failure is a run failure, its diff a click away.
+    result = harness.run_b2(root, '-a', '--dump-tests', '--out-xml=wasip2.xml', WASIP2, wasmtime,
+                            TEST)
+    harness.expect(result, True)
+    lane = (root / 'wasip2.xml').read_text()
+    assert '<test type="SERVE" name="component_demo/answers">' in lane, lane[-4000:]
+    report = subprocess.run([sys.executable, str(harness.ROOT / 'tools/report/report.py'),
+                             '--lane', f'wasip2={root / "wasip2.xml"}', '--out',
+                             str(root / 'report')], capture_output=True, text=True, check=False)
+    assert report.returncode == 1, (report.stdout, report.stderr)
+    assert report.stderr.splitlines() == ['report: wasip2: component_demo/answers: run'], (
+        report.stderr)
+    page = (root / 'report/component_demo.html').read_text()
+    linked = re.search(r'href="(output/[^"]*answers[^"]*)"', page)
+    assert linked, page
+    output = (root / 'report' / linked.group(1)).read_text()
+    assert '-HTTP/1.1 405 Method Not Allowed' in output and '+HTTP/1.1 404 Not Found' in output, (
+        output)
+    assert not left(root), left(root)
+
+
+def refused(root, jamfile, files=('p.cpp', 'p.requests', 'p.expected')):
+    """The output of b2 loading a library directory whose Jamfile is jamfile, beside files, a
+    served program p.cpp with its requests and transcript unless told otherwise."""
+    directory = root / LIBRARY / 'refused'
+    shutil.rmtree(directory, ignore_errors=True)
+    directory.mkdir()
+    (directory / 'Jamfile').write_text('import webcpp ;\n\n' + jamfile)
+    for name in files:
+        (directory / name).write_text('')
+    return harness.run_b2(root, '-d0', '-n', f'{LIBRARY}/refused')
+
+
+def test_serve_refuses_native(root):
+    where = 'webcpp.serve p.cpp in libs/component_demo/refused/Jamfile'
+    for target in ('native', 'emscripten'):
+        harness.expect(refused(root, f'webcpp.serve p.cpp : : wasip2 {target} ;\n'), False,
+                       f'{where}: {target} is not a target a component is served on')
+    # A Jamfile whose targets name neither wasip2 nor wasip3 serves nothing: refused too.
+    for declared in ('webcpp.targets native ;\n', ''):
+        harness.expect(refused(root, f'{declared}webcpp.serve p.cpp ;\n'), False,
+                       f"{where}: its Jamfile's targets, native, name neither wasip2 nor wasip3")
+    # One that declares native beside a WASI target serves on that target alone, with no word.
+    harness.expect(refused(root, 'webcpp.targets native wasip2 ;\nwebcpp.serve p.cpp ;\n'), True)
+    # The requests and the transcript are read beside the source.
+    for missing in ('p.requests', 'p.expected'):
+        files = [name for name in ('p.cpp', 'p.requests', 'p.expected') if name != missing]
+        harness.expect(refused(root, 'webcpp.serve p.cpp : : wasip3 ;\n', files), False,
+                       f'{where}: there is no {missing} beside it')
+
+
+def test_native_lane_skips_served_tests(root):
+    harness.link_wasi_tools(root)
+    nowhere = ('-sWIT_BINDGEN=/nonexistent', '-sWASI_WIT_P2=/nonexistent',
+               '-sWASI_WIT_P3=/nonexistent', '-sWASMTIME=/nonexistent')
+    # A dry run asks for no tool and generates nothing.
+    harness.expect(harness.run_b2(root, '-n', '-a', *nowhere, TEST), True)
+    assert not (root / 'bin/generated').exists()
+    result = harness.run_b2(root, '-a', '--dump-tests', '--out-xml=native.xml', *nowhere, TEST)
+    harness.expect(result, True)
+    assert passed(result) == {'native_alone'}, result.stdout[-4000:]
+    assert not (root / 'bin/generated').exists()
+    assert not list((root / 'bin').rglob('answers*')), sorted((root / 'bin').rglob('answers*'))
+    # The lane lists the served test, which it does not build.
+    assert '<test type="SERVE" name="component_demo/answers">' in (root / 'native.xml').read_text()
+
+
+def test_missing_wasmtime_names_it(root):
+    harness.link_wasi_tools(root)
+    named = 'wasmtime, which serves the test of webcpp.serve answers.cpp in ' \
+            'libs/component_demo/test/Jamfile, was not found:'
+    result = harness.run_b2(root, '-a', '-sWASMTIME=/nonexistent', WASIP2, TEST)
+    harness.expect(result, False, named, '-sWASMTIME=/nonexistent is not a file',
+                   'It is looked for at -sWASMTIME=<path>, else on PATH.')
+    result = harness.run_b2(root, '-a', WASIP3, TEST, env_extra=without(root, 'wasmtime'))
+    harness.expect(result, False, named, 'no -sWASMTIME=<path> was given, and there is none on '
+                   'PATH')
+    # Only a served test asks for it.
+    harness.expect(harness.run_b2(root, '-a', '-sWASMTIME=/nonexistent', WASIP2,
+                                  f'{TEST}//bindings'), True)
+
+
+# A stand-in for wasmtime that starts the real one in its own process group, writes the pids of
+# both into its first argument's file once the real one serves, and says so itself only seconds
+# later: a window in which the test interrupts b2.
+SLOW_WASMTIME = """#!{python}
+import os
+import subprocess
+import sys
+import time
+
+real = subprocess.Popen([{real!r}, *sys.argv[1:]], stderr=subprocess.PIPE)
+line = real.stderr.readline()
+with open({mark!r}, 'w') as mark:
+    mark.write(f'{{os.getpid()}} {{real.pid}}')
+time.sleep(3)
+sys.stderr.buffer.write(line)
+sys.stderr.flush()
+for line in real.stderr:
+    sys.stderr.buffer.write(line)
+    sys.stderr.flush()
+real.wait()
+"""
+
+
+def test_an_interrupted_b2_leaves_no_wasmtime(root):
+    harness.link_wasi_tools(root)
+    mark = root / 'serving'
+    slow = root / 'linked tools/slow-wasmtime'
+    slow.parent.mkdir()
+    slow.write_text(SLOW_WASMTIME.format(python=sys.executable, real=shutil.which('wasmtime'),
+                                         mark=str(mark)))
+    slow.chmod(0o755)
+    process = start_b2(root, '-a', WASIP2, f'-sWASMTIME={slow}', f'{TEST}//answers')
+    deadline = time.monotonic() + harness.TIMEOUT
+    while not mark.exists() or not mark.read_text():
+        assert process.poll() is None, process.communicate()[0][-4000:]
+        assert time.monotonic() < deadline, 'wasmtime never served'
+        time.sleep(0.05)
+    pids = [int(word) for word in mark.read_text().split()]
+    # b2 is interrupted as a terminal does it: SIGINT to its process group, which holds b2
+    # alone, since b2 gives each action a group of its own. b2 ends; serve.py, left behind,
+    # finishes its run and stops wasmtime.
+    os.killpg(process.pid, signal.SIGINT)
+    process.communicate(timeout=60)
+    assert process.returncode != 0
+    assert not left(root, seconds=60), left(root)
+    for pid in pids:
+        try:
+            os.kill(pid, 0)
+            raise AssertionError(f'{pid} is still there')
+        except ProcessLookupError:
+            pass
 
 
 CASES = [
@@ -296,6 +563,14 @@ CASES = [
     test_dry_run_generates_the_header,
     test_headers_target_generates_on_any_toolset,
     test_unchanged_inputs_keep_the_bindings,
+    test_a_name_declared_twice_is_refused,
+    test_shell_characters_in_arguments_reach_wit_bindgen,
+    test_served_component_green_on_wasip2_and_wasip3,
+    test_wrong_expected_is_a_run_failure_in_the_report,
+    test_serve_refuses_native,
+    test_native_lane_skips_served_tests,
+    test_missing_wasmtime_names_it,
+    test_an_interrupted_b2_leaves_no_wasmtime,
 ]
 
 

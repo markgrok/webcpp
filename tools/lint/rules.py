@@ -81,7 +81,7 @@ RAW_RULES = {
     'run-fail': 'webcpp.run-fail',
     'compile': 'webcpp.compile',
     'compile-fail': 'webcpp.compile-fail',
-    'exe': 'webcpp.example or webcpp.run',
+    'exe': 'webcpp.example, webcpp.run or webcpp.serve',
     'unit-test': 'webcpp.boost-test',
 }
 

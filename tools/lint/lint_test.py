@@ -568,7 +568,9 @@ def test_raw_rules(root):
         'webcpp.boost-test\n',
         at(root, test, 'raw_bracket'),
         at(root, test, 'raw_qualified'),
-        at(root, example, 'raw_exe'),
+        f"{at(root, example, 'raw_exe')} exe is b2's own rule; a test or example Jamfile "
+        'declares its programs with the rules of tools/webcpp.jam, here webcpp.example, '
+        'webcpp.run or webcpp.serve\n',
         at(root, parsing, 'after_case.cpp'),
         at(root, parsing, 'quoted.cpp'),
     ], spared=(at(root, test, 'a comment may name'), at(root, test, 'webcpp.compile '),

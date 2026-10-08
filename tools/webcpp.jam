@@ -38,10 +38,12 @@
 #     webcpp.cases name : script : cases : expected ;
 #
 # and the rules of a WebAssembly component, tools/component/component.jam's,
-# with which a library's build.jam declares the C bindings of a world:
+# with which a library's build.jam declares the C bindings of a world, and
+# its test and example Jamfiles an HTTP component that wasmtime serves:
 #
 #     webcpp.wit-bindings name : world-file : world : rename : version
 #       : wit-bindgen-argument * ;
+#     webcpp.serve source : requirements * : targets * ;
 #
 # A target is what a program is built for: emscripten (b2's toolset
 # emscripten), wasip2 and wasip3 (the clang toolsets of user-config.jam
@@ -220,7 +222,8 @@ rule targets ( targets + )
 # targets, else for their Jamfile's, else for native. Each pair <library>
 # <target> is recorded for declared, and each program as "<kind> <name>
 # <target>..." for programs: kind is the rule that declares it, run,
-# run-fail, compile, compile-fail, boost-test, example or headers-alone.
+# run-fail, compile, compile-fail, boost-test, example, headers-alone or
+# serve.
 local rule program ( kind : names + : targets * )
 {
     local jamfile = [ jamfile ] ;
@@ -537,4 +540,19 @@ rule wit-bindings ( name : world-file : world : rename : version : arguments * )
 {
     webcpp-component.wit-bindings [ where ] : $(name) : $(world-file) : $(world) : $(rename)
         : $(version) : $(arguments) ;
+}
+
+# An HTTP component built from source, served by wasmtime and checked, a test
+# of b2's: the program <stem>-component and the test <stem>, which passes
+# when the transcript of the answers to <stem>.requests equals <stem>.expected
+# (tools/component/component.jam). It is built for its own targets, which
+# may be only wasip2 and wasip3, else for those of its Jamfile that are.
+rule serve ( source : requirements * : targets * )
+{
+    local found = [ where ] ;
+    local jamfile = [ jamfile ] ;
+    local served = [ webcpp-component.served-targets $(found) : $(source) : $(targets)
+        : $(.targets.$(jamfile)) ] ;
+    webcpp-component.serve $(found) : $(source) : $(requirements) $(.handler)
+        : [ program serve : $(source:B) : $(served) ] ;
 }

@@ -7,11 +7,12 @@
 
 """Checks tools/doc/counts.py: the fixture demo counts its examples and its tests per target, its
 Boost.Test suite and its headers compiled alone, from the programs b2 recorded; the fixture
-oracle_demo counts its agreeing, divergent and without-twin programs from twins.py --list, which
-runs no twin; a library's own doc/counts.py adds its counts, its standard error shown and never
-counted, and fails the count when it names a generic one, counts nothing, prints nothing or
-fails; and so does a library that declares twins and has none. Each case copies a fixture
-library into a scratch directory. Run with the names of some cases to run only those."""
+component_demo counts its served programs, as tests and on their own; the fixture oracle_demo counts
+its agreeing, divergent and without-twin programs from twins.py --list, which runs no twin; a
+library's own doc/counts.py adds its counts, its standard error shown and never counted, and fails
+the count when it names a generic one, counts nothing, prints nothing or fails; and so does a
+library that declares twins and has none. Each case copies a fixture library into a scratch
+directory. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -54,9 +55,25 @@ DEMO_COUNTS = {
     'n-tests-emscripten': '0',
     'n-tests-wasip2': '6',
     'n-tests-wasip3': '6',
+    'n-served': '0',
+    'n-served-native': '0',
+    'n-served-emscripten': '0',
+    'n-served-wasip2': '0',
+    'n-served-wasip3': '0',
     'n-boost-test-suites': '1',
     'n-headers': '2',
 }
+
+# The programs of component_demo's test Jamfile, as tools/webcpp.jam records them, with a served
+# example and its native-only header test beside them: an example Jamfile's served program is a
+# test, as the report shows it.
+COMPONENT_PROGRAMS = (
+    'compile bindings wasip2 wasip3',
+    'run native_alone native',
+    'serve answers wasip2 wasip3',
+    'serve hello wasip2',
+    'headers-alone alone-component_demo native',
+)
 
 ORACLE_PROGRAMS = (
     'run square native',
@@ -162,6 +179,28 @@ def test_twins_list_faults_fail(root: Path) -> None:
     fails(count(directory, ORACLE_PROGRAMS, *ORACLE_TWINS), 'no twin', 'test/oracle/twins')
 
 
+def test_served_programs_are_tests_and_counted(root: Path) -> None:
+    # A program of kind serve is a test, on its targets, and is counted on its own too.
+    found = counted(count(library(root, 'component_demo'), COMPONENT_PROGRAMS))
+    assert {name: found[name] for name in found if 'served' in name or 'tests' in name} == {
+        'n-tests': '5',
+        'n-tests-native': '2',
+        'n-tests-emscripten': '0',
+        'n-tests-wasip2': '3',
+        'n-tests-wasip3': '2',
+        'n-served': '2',
+        'n-served-native': '0',
+        'n-served-emscripten': '0',
+        'n-served-wasip2': '2',
+        'n-served-wasip3': '1',
+    }, found
+    assert (found['n-examples'], found['n-headers']) == ('0', '1'), found
+    # A library's own count may not take the name.
+    script = own_counts(root / 'libs/component_demo', 'print("n-served-wasip3=4")\n')
+    fails(count(root / 'libs/component_demo', COMPONENT_PROGRAMS), f'{script}: n-served-wasip3',
+          'tools/doc/counts.py')
+
+
 def test_headers_are_those_compiled_alone(root: Path) -> None:
     # n-headers counts what webcpp.headers-alone recorded, one program per header, and reads no
     # header itself: the tree's headers are b2's to find.
@@ -240,6 +279,7 @@ CASES = [
     test_oracle_demo_counts_twins_without_running_them,
     test_twins_list_faults_fail,
     test_headers_are_those_compiled_alone,
+    test_served_programs_are_tests_and_counted,
     test_library_counts_are_added,
     test_library_count_named_as_a_generic_one_fails,
     test_library_count_of_nothing_fails,

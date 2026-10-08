@@ -1,0 +1,3 @@
+GET /v1/greeting?name=ana
+HEAD /
+POST /missing

@@ -9,15 +9,15 @@
 
 Usage: record_samples.py [NAME ...]
 
-A sample is what `b2 -a --dump-tests --out-xml=FILE` writes, run with the arguments of a lane
-(the Jamroot's lane command) in a scratch superproject that holds the fixture library demo and
-whatever SAMPLES plants beside it. It is then trimmed of what report.py never reads, and of what
-would only describe the machine that recorded it: the <os> element (uname, which names the
-host), every <properties> and <sources> element, and the actions b2 runs for itself, which have
-no <name>, when they succeeded (creating a directory, for one). The temporary directory, under
-which the scratch superproject is and whose path names the machine too, is written as $TMPDIR.
-report_test.py records every sample afresh, untrimmed, and checks that the report reads it as it
-reads the committed one.
+A sample is what `b2 -a --dump-tests --out-xml=FILE` writes, run with the arguments of a lane (the
+Jamroot's lane command) in a scratch superproject that holds the fixture library demo, or
+component_demo with this checkout's wit-bindgen and WIT, and whatever SAMPLES plants beside it. It
+is then trimmed of what report.py never reads, and of what would only describe the machine that
+recorded it: the <os> element (uname, which names the host), every <properties> and <sources>
+element, and the actions b2 runs for itself, which have no <name>, when they succeeded (creating a
+directory, for one). The temporary directory, under which the scratch superproject is and whose path
+names the machine too, is written as $TMPDIR. report_test.py records every sample afresh, untrimmed,
+and checks that the report reads it as it reads the committed one.
 
 b2 records the compilers' paths, which user-config.jam can place under the home directory: the
 scratch superproject reaches .local/ through a link outside it, and a sample that still names the
@@ -119,6 +119,13 @@ def plant_broken_handler(root: Path) -> None:
     handler.write_text(handler.read_text() + '#error "planted: the handler does not compile"\n')
 
 
+def plant_wrong_transcript(root: Path) -> None:
+    """Makes the transcript component_demo's served test expects say another status than its
+    component answers."""
+    harness.replace(root / 'libs/component_demo/test/answers.expected', 'HTTP/1.1 404 Not Found',
+                    'HTTP/1.1 405 Method Not Allowed')
+
+
 def plant_odd_output(root: Path) -> None:
     """Adds the library odd, whose test prints what CDATA cannot hold."""
     harness.add_library(root, 'odd', 'import webcpp ;\n\nwebcpp.run prints : prints.cpp ;\n',
@@ -127,11 +134,14 @@ def plant_odd_output(root: Path) -> None:
 
 @dataclass(frozen=True)
 class Sample:
-    """A lane to record: its toolset arguments, what it builds, and what is planted first."""
+    """A lane to record: its toolset arguments, what it builds, what is planted first, and the
+    fixture library it is recorded beside, demo, or component_demo, which needs wit-bindgen and
+    the WIT."""
 
     lane: tuple[str, ...]
     targets: tuple[str, ...]
     plant: Callable[[Path], None] | None = None
+    fixture: str = 'demo'
 
 
 SAMPLES_BY_NAME = {
@@ -154,7 +164,22 @@ SAMPLES_BY_NAME = {
     'wasip2-dependency': Sample(WASIP2, ('libs/demo/test//pass',), plant_broken_handler),
     # A failure whose output b2 writes into CDATA unescaped.
     'native-odd-output': Sample(NATIVE, ('libs/odd/test//prints',), plant_odd_output),
+    # component_demo's tests on wasip2, its served component among them: all pass.
+    'wasip2-served': Sample(WASIP2, ('libs/component_demo/test',), fixture='component_demo'),
+    # The same, its served component answering other than the transcript it expects.
+    'wasip2-served-failure': Sample(WASIP2, ('libs/component_demo/test',),
+                                    plant_wrong_transcript, fixture='component_demo'),
 }
+
+
+def scratch(name: str) -> Path:
+    """A scratch superproject in which the sample name is recorded: with its fixture library,
+    and, for component_demo, this checkout's wit-bindgen and WIT."""
+    fixture = SAMPLES_BY_NAME[name].fixture
+    root = harness.scratch_superproject(fixture)
+    if fixture == 'component_demo':
+        harness.link_wasi_tools(root)
+    return root
 
 
 def record(name: str, root: Path) -> Path:
@@ -228,7 +253,7 @@ def main(names: list[str]) -> int:
         return 2
     homes = {str(Path.home()).encode(), str(Path.home().resolve()).encode()}
     for name in names or SAMPLES_BY_NAME:
-        root = harness.scratch_superproject('demo')
+        root = scratch(name)
         holder = reroute_local(root)
         try:
             data = scrub(trim(record(name, root).read_bytes()))

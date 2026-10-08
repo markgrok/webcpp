@@ -1,0 +1,19 @@
+$ curl -i -X GET http://localhost:8080/v1/greeting?name=ana
+HTTP/1.1 200 OK
+content-type: text/plain
+x-method: GET
+
+GET /v1/greeting?name=ana
+
+$ curl -i -X HEAD http://localhost:8080/
+HTTP/1.1 200 OK
+content-type: text/plain
+x-method: HEAD
+
+
+$ curl -i -X POST http://localhost:8080/missing
+HTTP/1.1 404 Not Found
+content-type: text/plain
+x-method: POST
+
+POST /missing

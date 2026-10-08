@@ -17,3 +17,6 @@ webcpp.compile bindings : bindings.cpp : <library>/webcpp/component_demo//demo-b
 # Natively, the same bindings add nothing, and ask for no wit-bindgen.
 webcpp.run native_alone : native_alone.cpp : <library>/webcpp/component_demo//demo-bindings
   : native ;
+# On wasip2 and wasip3, an HTTP component served by wasmtime, whose answers
+# are checked; natively it is not built.
+webcpp.serve answers.cpp : <library>/webcpp/component_demo//demo-bindings ;

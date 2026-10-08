@@ -5,11 +5,12 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 #
 # The rules of a WebAssembly component, which tools/webcpp.jam offers a
-# library's Jamfiles as webcpp.wit-bindings:
+# library's Jamfiles as webcpp.wit-bindings and webcpp.serve:
 #
 #     import webcpp ;
 #     webcpp.wit-bindings <name> : <world-file> : <world> : <rename> : <version>
 #       : <wit-bindgen-argument> * ;
+#     webcpp.serve <source> : <requirements> * : <targets> * ;
 #
 # webcpp.wit-bindings declares the target <name>, the C bindings that
 # wit-bindgen generates for the world <world> of <world-file> (relative to
@@ -25,7 +26,9 @@
 # bindings and needs no wit-bindgen. It also declares the explicit target
 # <name>-headers, whose usage requirements put the same directory on the
 # include path on any toolset, for a native build that parses a header of
-# the bindings, such as the API reference: it is built only when named.
+# the bindings, such as the API reference: it is built only when named. A
+# name is declared once in a library: a second declaration, in any of its
+# Jamfiles, stops the build, naming both.
 #
 # The bindings are generated while b2 computes the properties of a target
 # that uses them, for its toolset (a conditional requirement), in a dry run
@@ -37,9 +40,12 @@
 # beside it. Their freshness is decided by content, never by timestamps: the
 # stamp inputs records the world file's checksum, the WIT directory's listing
 # and checksums, wit-bindgen's version and every argument, and the bindings
-# are written again only when it differs, into a temporary directory that
-# then replaces the old one whole. Unchanged, they keep their timestamps, and
-# nothing that includes them is compiled again.
+# are written again only when it differs, or when one of the files
+# wit-bindgen writes is missing, into a temporary directory that then
+# replaces the old one whole. Unchanged, they keep their timestamps, and
+# nothing that includes them is compiled again. Every path and argument
+# reaches the shell single-quoted, so that a space, a $ or a ' in one is
+# written as it is.
 #
 # The tools, looked up only when bindings are generated:
 #
@@ -54,8 +60,17 @@
 # world file is not, the build stops, naming it and every place it was
 # looked for.
 #
+# webcpp.serve declares the test <stem>, which builds source as a component
+# that exports an HTTP handler, serves it with wasmtime, sends it the
+# requests of <stem>.requests and passes when the transcript of the answers
+# equals <stem>.expected (tools/component/serve.py). It is built only for
+# wasip2 and wasip3, and is a test of b2's, which --dump-tests lists and
+# --out-xml records, so that the report sees it fail. wasmtime is
+# -sWASMTIME=<path>, else wasmtime on PATH, looked up only when a served test
+# is built.
+#
 # This file is loaded as the module webcpp-component, beside webcpp-doc and
-# webcpp-oracle. webcpp.wit-bindings receives first where its Jamfile is, as
+# webcpp-oracle. Each of its rules receives first where its Jamfile is, as
 # tools/webcpp.jam's `where` finds it (found): the project, its directory
 # absolute in b2's form, that directory relative to the superproject, the
 # Jamfile relative to the superproject, and the superproject's directory,
@@ -64,9 +79,16 @@ import alias ;
 import common ;
 import errors ;
 import feature ;
+import generators ;
 import modules ;
+import os ;
 import path ;
 import project ;
+import regex ;
+import set ;
+import testing ;
+import toolset ;
+import type ;
 
 # This directory, and the superproject's, absolute.
 .here = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
@@ -116,6 +138,15 @@ rule wit-bindings ( found + : name : world-file : world : rename : version : arg
     local library = [ MATCH "^libs/([^/]+)" : $(found[3]) ] ;
     library ?= $(found[3]) ;
     local key = $(library)/$(name) ;
+    # Two declarations of one name in a library would write their bindings
+    # into one directory.
+    if $(.jamfile.$(key))
+    {
+        errors.user-error "webcpp.wit-bindings $(name) is declared twice in the library"
+            "$(library): in $(.jamfile.$(key)) and in $(found[4]). Both would write their"
+            "bindings into the same directory; give one another name." ;
+    }
+    .jamfile.$(key) = $(found[4]) ;
     local build-dir = [ build-dir ] ;
     local out = $(build-dir)/generated/$(library)/$(name) ;
     .world-file.$(key) = [ path.native [ path.root [ path.make $(world-file) ] $(found[2]) ] ] ;
@@ -249,8 +280,21 @@ local rule wit ( key : version )
     return $(installed) ;
 }
 
+# Each of words as one word of the shell, single-quoted: a ' is written '\'',
+# and nothing else is special there, $ and ` included.
+local rule quoted ( words * )
+{
+    local result ;
+    for local word in $(words)
+    {
+        local pieces = [ regex.split $(word) "'" ] ;
+        result += "'$(pieces:J='\\'')'" ;
+    }
+    return $(result) ;
+}
+
 # Writes the bindings of key, once per run, when their stamp differs from the
-# one they were written with.
+# one they were written with, or when one of them is missing.
 local rule generate ( key )
 {
     if $(.generated.$(key))
@@ -266,14 +310,23 @@ local rule generate ( key )
     local tool = [ wit-bindgen $(key) ] ;
     local wit = [ wit $(key) : $(.version.$(key)) ] ;
     local out = $(.out.$(key)) ;
-    local arguments = --world \"$(.world.$(key))\" --rename-world \"$(.rename.$(key))\"
+    local rename = $(.rename.$(key)) ;
+    # wit-bindgen's arguments, and the stamp's line that records them, each
+    # given in double quotes. Every value reaches the shell single-quoted, for
+    # a path or an argument may hold a space, a $ or a '.
+    local arguments = [ quoted --world $(.world.$(key)) --rename-world $(rename)
+        $(.arguments.$(key)) ] ;
+    local words = --world \"$(.world.$(key))\" --rename-world \"$(rename)\"
         \"$(.arguments.$(key))\" ;
+    local recorded = [ quoted "arguments $(words:J= )" ] ;
+    local shell = [ quoted $(out) $(wit) $(world-file) $(tool) $(rename) ] ;
     local command = "set -e
-out=\"$(out)\"
-work=\"$(out).work\"
-wit=\"$(wit)\"
-world=\"$(world-file)\"
-tool=\"$(tool)\"
+out=$(shell[1])
+work=\"${out}.work\"
+wit=$(shell[2])
+world=$(shell[3])
+tool=$(shell[4])
+rename=$(shell[5])
 rm -rf \"${work}\"
 mkdir -p \"${work}\"
 {
@@ -281,9 +334,11 @@ mkdir -p \"${work}\"
     printf 'wit %s\\n' \"${wit}\"
     (cd \"${wit}\" && find -L . -type f -exec cksum {} + | LC_ALL=C sort -k 3)
     printf 'wit-bindgen %s\\n' \"`\"${tool}\" --version`\"
-    printf 'arguments %s\\n' '$(arguments:J= )'
+    printf '%s\\n' $(recorded:J= )
 } > \"${work}/inputs\"
-if [ -f \"${out}/inputs\" ] && cmp -s \"${work}/inputs\" \"${out}/inputs\"
+if [ -f \"${out}/inputs\" ] && cmp -s \"${work}/inputs\" \"${out}/inputs\" \\
+    && [ -f \"${out}/${rename}.h\" ] && [ -f \"${out}/${rename}.c\" ] \\
+    && [ -f \"${out}/${rename}_component_type.o\" ]
 then
     rm -rf \"${work}\"
     exit 0
@@ -306,4 +361,154 @@ mv \"${work}\" \"${out}\"" ;
             "the bindings of $(world-file) into $(out):" $(written[1]) ;
     }
     .generated.$(key) = true ;
+}
+
+# The served test of webcpp.serve is a test of b2's, as run's is: SERVE, a
+# type of TEST that testing.make-test declares, which --dump-tests lists and
+# whose actions --out-xml records. It is a type of its own, so that no
+# generator of RUN's reaches it, and it is made as RUN is: the component, an
+# EXE, is served by serve-and-compare into <stem>.served, the transcript,
+# which testing.expect-success turns into <stem>.test when it was written.
+type.register SERVED : served ;
+type.register SERVE : : TEST ;
+generators.register-standard webcpp-component.serve-and-compare : EXE : SERVED ;
+generators.register-standard testing.expect-success : SERVED : SERVE ;
+
+# A served test's requests and its expected transcript, files beside its
+# source, bound in the action as testing.run binds its input files; and the
+# program's key, which a message names it by.
+feature.feature webcpp-requests : : free dependency ;
+feature.feature webcpp-expected : : free dependency ;
+feature.feature webcpp-served : : free incidental ;
+toolset.flags webcpp-component.serve-and-compare REQUESTS <webcpp-requests> ;
+toolset.flags webcpp-component.serve-and-compare EXPECTED <webcpp-expected> ;
+
+if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
+
+# The runner, beside this file, as an absolute native path: the action runs
+# in the directory b2 was started in.
+.server = [ path.native $(.here)/serve.py ] ;
+
+# What wasmtime serves a component of each version with: the parts of
+# wasi:cli that wasi-libc imports, and on p3 the WASI 0.3 interfaces and the
+# component model's async, which a p3 handler is lifted with.
+.wasmtime-flags.p2 = "-S cli" ;
+.wasmtime-flags.p3 = "-S cli,p3 -W component-model-async" ;
+
+# The targets a component is served on: those given, else those of the
+# Jamfile's webcpp.targets (declared) that are wasip2 or wasip3, for a
+# Jamfile may declare native for its other programs. A given native or
+# emscripten is refused, and so is a Jamfile whose targets name neither
+# wasip2 nor wasip3: the test would be built nowhere, without a word.
+rule served-targets ( found + : source : given * : declared * )
+{
+    for local target in $(given)
+    {
+        if $(target) in native emscripten
+        {
+            errors.user-error "webcpp.serve $(source) in $(found[4]): $(target) is not a"
+                "target a component is served on; webcpp.serve builds for wasip2 and wasip3"
+                "only" ;
+        }
+    }
+    if $(given)
+    {
+        return $(given) ;
+    }
+    declared ?= native ;
+    local served = [ set.intersection $(declared) : wasip2 wasip3 ] ;
+    if ! $(served)
+    {
+        errors.user-error "webcpp.serve $(source) in $(found[4]): its Jamfile's targets,"
+            "$(declared:J= ), name neither wasip2 nor wasip3, the targets a component is"
+            "served on; give webcpp.serve its targets, or webcpp.targets one of them" ;
+    }
+    return $(served) ;
+}
+
+# webcpp.serve <source> : <requirements> * ; the test <stem>, which builds
+# source as a reactor, a component that exports an HTTP handler, serves it
+# with wasmtime, sends it the requests of <stem>.requests, each line
+# `<METHOD> <target>`, and passes when the transcript of its answers equals
+# <stem>.expected, both beside source (tools/component/serve.py). only is
+# what builds it for its targets alone (webcpp.jam's filter), and
+# requirements the rest: the bindings of its world, and the handler of a
+# program built without exceptions (webcpp.jam's .handler). The test builds
+# the component itself, as run builds its program, so that the report counts
+# its compile and its link as the test's; the explicit target
+# <stem>-component is the same component, to serve by hand. The test is
+# always run again: the wasmtime that serves it plays no part in its
+# properties.
+rule serve ( found + : source : requirements * : only * )
+{
+    local stem = $(source:B) ;
+    local key = $(found[3])/$(stem) ;
+    .served.$(key) = "$(source) in $(found[4])" ;
+    for local suffix in .requests .expected
+    {
+        if ! [ path.glob $(found[2]) : $(source:S=$(suffix)) ]
+        {
+            errors.user-error "webcpp.serve $(source) in $(found[4]): there is no"
+                "$(source:S=$(suffix)) beside it, which webcpp.serve reads" ;
+        }
+    }
+    local component = $(requirements) $(only) <linkflags>-mexec-model=reactor ;
+    testing.make-test serve : $(source)
+      : $(component) <webcpp-requests>$(source:S=.requests)
+        <webcpp-expected>$(source:S=.expected) <webcpp-served>$(key)
+      : $(stem) ;
+    exe $(stem)-component : $(source) : $(component) ;
+    $(found[1]).mark-target-as-explicit $(stem)-component ;
+    $(found[1]).mark-target-as-always $(stem) ;
+}
+
+# wasmtime: -sWASMTIME=<path>, else on PATH. Looked up when a served test is
+# built, and only then; key names the test that asked.
+local rule wasmtime ( key )
+{
+    if $(.wasmtime)
+    {
+        return $(.wasmtime) ;
+    }
+    local what = "wasmtime, which serves the test of webcpp.serve $(.served.$(key)), was not"
+        "found:" ;
+    local given = [ given WASMTIME ] ;
+    if $(given)
+    {
+        if ! [ CHECK_IF_FILE $(given[1]) ]
+        {
+            errors.user-error $(what) "-sWASMTIME=$(given[2]) is not a file. It is looked for at"
+                "-sWASMTIME=<path>, else on PATH." ;
+        }
+        .wasmtime = $(given[1]) ;
+    }
+    else
+    {
+        .wasmtime = [ common.find-tool wasmtime ] ;
+        if ! $(.wasmtime)
+        {
+            errors.user-error $(what) "no -sWASMTIME=<path> was given, and there is none on"
+                "PATH. Install wasmtime 47.0.3 on PATH, or give its path with"
+                "-sWASMTIME=<path>." ;
+        }
+    }
+    return $(.wasmtime) ;
+}
+
+rule serve-and-compare ( target : source : properties * )
+{
+    # As testing.capture-output does: the files a dependency feature names are
+    # bound before the target is built.
+    DEPENDS $(target) : [ on $(target) return $(REQUESTS) $(EXPECTED) ] ;
+    local key = [ feature.get-values <webcpp-served> : $(properties) ] ;
+    PYTHON on $(target) = $(.python) ;
+    SERVER on $(target) = $(.server) ;
+    local version = [ version-of $(properties) ] ;
+    WASMTIME on $(target) = [ wasmtime $(key) ] ;
+    FLAGS on $(target) = $(.wasmtime-flags.$(version)) ;
+}
+
+actions serve-and-compare bind REQUESTS EXPECTED
+{
+    "$(PYTHON)" "$(SERVER)" --wasmtime "$(WASMTIME)" --flags="$(FLAGS)" --component "$(>[1])" --requests "$(REQUESTS)" --expected "$(EXPECTED)" --output "$(<)"
 }

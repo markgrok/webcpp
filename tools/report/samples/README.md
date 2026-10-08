@@ -2,20 +2,22 @@
 
 Each file is what `b2 -a --dump-tests --out-xml=FILE` wrote for one lane, run
 in a scratch superproject that holds the fixture library demo
-(`tools/test/fixtures/demo`) and the libraries
-`tools/report/record_samples.py` plants beside it. That script records them,
-`python3 tools/report/record_samples.py [NAME ...]`, and trims each of the
-`<os>` element (uname, which names the host), every `<properties>` and
-`<sources>` element, and the actions b2 runs for itself that succeeded: what
-`report.py` never reads. It writes the temporary directory, which names the
-machine too, as `$TMPDIR`. Never edit a sample by hand; record it again.
-`report_test.py` records every sample afresh, untrimmed, and checks that the
-report reads it as it reads the committed one.
+(`tools/test/fixtures/demo`), or component_demo
+(`tools/test/fixtures/component_demo`) with the checkout's wit-bindgen and
+WIT, and the libraries `tools/report/record_samples.py` plants beside it. That
+script records them, `python3 tools/report/record_samples.py [NAME ...]`, and
+trims each of the `<os>` element (uname, which names the host), every
+`<properties>` and `<sources>` element, and the actions b2 runs for itself
+that succeeded: what `report.py` never reads. It writes the temporary
+directory, which names the machine too, as `$TMPDIR`. Never edit a sample by
+hand; record it again. `report_test.py` records every sample afresh,
+untrimmed, and checks that the report reads it as it reads the committed one.
 
-They were recorded on 2026-10-08, on macOS arm64 with B2 5.5.3, Apple clang
-21 and wasi-sdk 34. The paths b2 recorded are those of the scratch
-superproject under `$TMPDIR`, and the wasi-sdk is reached through a link
-outside the home directory, which the script checks no sample names.
+They were recorded on 2026-10-08, on macOS arm64 with B2 5.5.3, Apple clang 21
+and wasi-sdk 34; the served ones with wit-bindgen 0.62.0 and wasmtime 47.0.3.
+The paths b2 recorded are those of the scratch superproject under `$TMPDIR`,
+and the wasi-sdk is reached through a link outside the home directory, which
+the script checks no sample names.
 
 | Sample | Lane | Built | What it shows |
 | --- | --- | --- | --- |
@@ -26,3 +28,5 @@ outside the home directory, which the script checks no sample names.
 | `wasip2-skipped-library.xml` | `toolset=clang-wasip2 testing.launcher=wasmtime` | `libs/demo/test libs/demo/example libs/nativeonly/test` | two libraries in one lane, one of which declares native only: demo's programs pass, and every program of nativeonly is skipped |
 | `wasip2-dependency.xml` | `toolset=clang-wasip2 testing.launcher=wasmtime` | demo's `pass`, with `tools/throw_exception.cpp` broken | a failure outside every test, and the test it keeps from running: on wasip2 every program is built without exceptions and links the handler |
 | `native-odd-output.xml` | `toolset=clang` | `libs/odd/test//prints` | a failure whose output holds `]]>`, markup and a byte that is not UTF-8, which b2 writes into its CDATA as they are |
+| `wasip2-served.xml` | `toolset=clang-wasip2 testing.launcher=wasmtime` | `libs/component_demo/test` | component_demo's tests passing, among them `answers`, an HTTP component that `webcpp.serve` builds, serves with wasmtime and checks, a test of type `serve` |
+| `wasip2-served-failure.xml` | `toolset=clang-wasip2 testing.launcher=wasmtime` | `libs/component_demo/test`, with `answers.expected` saying 405 where the component answers 404 | a served test whose transcript differs: a run failure, whose output holds the diff and what wasmtime wrote |
