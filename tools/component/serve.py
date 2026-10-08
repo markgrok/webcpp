@@ -30,9 +30,11 @@ otherwise, `curl -I <url>` for HEAD, since curl -X HEAD waits for a body that ne
 `--request-target <target>` before the bare origin for a target that is not a path, such as the `*`
 of OPTIONS); then `HTTP/1.1 <status> <reason>`, the response's headers in lower case,
 `<name>: <value>`, sorted, but for those wasmtime adds to every response (HOST_HEADERS), an empty
-line, and the body as it came. Two requests are
-separated by an empty line, after a line break that ends the body when it does not end with one.
-The host and the port are written fixed, so that one transcript holds on every machine and lane.
+line, and the body as it came. Two requests are separated by an empty line, after a line break
+that ends the body when it does not end with one. The host and the port are written fixed, so that
+one transcript holds on every machine and lane. An answer the host makes itself, such as wasmtime
+47's own 500 page for a component that traps, is recorded as it came too, so a wasmtime upgrade
+records such a transcript again, as it reviews HOST_HEADERS.
 
 wasmtime is stopped in every outcome: an answer missing, an exception, SIGINT, SIGTERM or SIGHUP.
 Its group is sent SIGTERM, and SIGKILL after GRACE seconds, so that nothing it started is left
