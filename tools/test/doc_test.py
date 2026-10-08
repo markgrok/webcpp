@@ -327,6 +327,19 @@ def test_page_needs_its_reference(root):
                    'is not libs/other/doc')
 
 
+def test_reference_needs_its_page(root):
+    # A doc directory that declares the reference and no page fails its own build, by name: the
+    # index would link a page that the build never makes. Building the reference alone is a
+    # page's work too.
+    prepare(root)
+    edit(root, 'libs/demo/doc/Jamfile', 'webcpp.doc demo : demo.adoc ;\n', '')
+    named = ('webcpp.reference demo: the library has no page, and libs/demo/doc/Jamfile declares '
+             'its reference alone; add webcpp.doc demo : <page>.adoc ;')
+    for target in ('libs/demo/doc', 'libs/demo/doc//reference'):
+        harness.expect(harness.run_b2(root, target), False, named)
+    assert not (root / PAGE).exists()
+
+
 def test_mrdocs_is_found_or_named(root):
     prepare(root)
     installed = mrdocs_root()
@@ -665,17 +678,20 @@ def test_index_lists_every_library(root):
         '        "licence": "MIT"\n'
         '    }\n'
         '}\n')
-    # The index links a library's page only when there is one: a doc Jamfile that declares no
-    # page, empty or with the reference alone, fails the index, naming it, as does a page it
-    # declares that is not there.
+    # The index links a library's page only when there is one: an empty doc Jamfile fails the
+    # index, naming it, as does a page it declares that is not there.
     declared = (other / 'doc/Jamfile').read_text()
     no_page = (f'{other}/doc/Jamfile: declares no page, webcpp.doc other : <page>.adoc ;, and '
                'every library of libs/ has a page, which the index links to')
-    for jamfile in ('', 'import webcpp ;\n\nwebcpp.reference other ;\n',
+    (other / 'doc/Jamfile').write_text('')
+    harness.expect(harness.run_b2(root, 'doc'), False, no_page)
+    # With the reference alone, the library's own doc build stops first, naming it.
+    for jamfile in ('import webcpp ;\n\nwebcpp.reference other ;\n',
                     'import webcpp ;\n\n# webcpp.doc other : other.adoc ;\n'
                     'webcpp.reference other ;\n'):
         (other / 'doc/Jamfile').write_text(jamfile)
-        harness.expect(harness.run_b2(root, 'doc'), False, no_page)
+        harness.expect(harness.run_b2(root, 'doc'), False, 'webcpp.reference other: the library '
+                       'has no page, and libs/other/doc/Jamfile declares its reference alone')
     (other / 'doc/Jamfile').write_text(declared)
     (other / 'doc/other.adoc').rename(other / 'doc/moved.adoc')
     listed = subprocess.run([sys.executable, str(root / 'tools/doc/libraries.py'),
@@ -736,6 +752,7 @@ CASES = [
     test_missing_tparam_fails_naming_the_template,
     test_detail_without_brief_fails_naming_it,
     test_page_needs_its_reference,
+    test_reference_needs_its_page,
     test_mrdocs_is_found_or_named,
     test_clang_is_given,
     test_library_settings_only_present_the_reference,

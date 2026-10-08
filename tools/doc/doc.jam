@@ -13,7 +13,7 @@
 #     webcpp.reference <library> : <requirements> * : <also-checked> * ;
 #
 # webcpp.reference declares the target reference of the library's doc
-# project: tools/doc/reference.py writes the library's API reference with
+# project, which a page declared with webcpp.doc must go with: tools/doc/reference.py writes the library's API reference with
 # MrDocs, strict, from one translation unit of every public header, and
 # checks with doc_comments.py what MrDocs does not. That translation unit is
 # read natively, with the include directories and the defines of the
@@ -224,7 +224,7 @@ rule reference ( library : requirements * : also-checked * )
     .reference.$(library) = true ;
     make reference.adoc : : @webcpp-doc%write-reference
       : <library>/webcpp/$(library)//$(library) $(requirements)
-        <webcpp-doc-page>$(library) ;
+        <webcpp-doc-page>$(library) <conditional>@webcpp-doc%needs-page ;
     $(current).mark-target-as-always reference.adoc ;
     # The check is a reference of its own, written under also-checked/ of the
     # build directory, apart from the files reference.py writes beside the
@@ -244,6 +244,21 @@ rule reference ( library : requirements * : also-checked * )
         checked = also-checked.adoc ;
     }
     alias reference : reference.adoc $(checked) ;
+}
+
+# A library's reference needs its page, as its page needs its reference: the
+# index links the page, which a doc Jamfile that declares the reference alone
+# never makes. The conditional stops the build, naming it, once every Jamfile
+# has loaded, so the two rules may come in either order.
+rule needs-page ( properties * )
+{
+    local id = [ feature.get-values <webcpp-doc-page> : $(properties) ] ;
+    if ! $(.source.$(id))
+    {
+        errors.user-error "webcpp.reference $(id): the library has no page, and"
+            "libs/$(id)/doc/Jamfile declares its reference alone; add"
+            "webcpp.doc $(id) : <page>.adoc ;" ;
+    }
 }
 
 # Where a page links another, by -sWEBCPP_INDEX: tree, the default, where b2
