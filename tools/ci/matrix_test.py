@@ -24,6 +24,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -330,6 +331,35 @@ def test_an_own_lane_on_a_target_writes_its_xml_and_the_report_merges_it(root):
         report.stderr), report.stderr
 
 
+def test_an_own_lanes_failing_served_test_fails_the_report(root):
+    # An own lane whose served test answers other than its transcript writes its XML as one that
+    # passes does, b2 exiting 0, and the report fails, naming the test under the lane's id, as a
+    # run failure.
+    shutil.copytree(harness.FIXTURES / 'component_demo', root / 'libs/component_demo',
+                    ignore=harness.built)
+    harness.link_wasi_tools(root)
+    jamfile = root / 'libs/component_demo/test/Jamfile'
+    jamfile.write_text(jamfile.read_text() + 'webcpp.lane served : answers : wasip2 wasip3 ;\n')
+    harness.replace(root / 'libs/component_demo/test/answers.expected', 'HTTP/1.1 404 Not Found',
+                    'HTTP/1.1 405 Method Not Allowed')
+    boost_only(root)
+    entry = [lane for lane in own_lanes(root, '--library', 'component_demo')
+             if lane.get('id') == 'wasip2.component_demo.served']
+    assert len(entry) == 1, own_lanes(root, '--library', 'component_demo')
+    result = run(root, 'own-lane', json.dumps(entry[0]), '--', '--build-dir=bin/own')
+    assert result.returncode == 0, (result.returncode, result.stdout[-4000:], result.stderr)
+    lanes = root / 'downloaded' / 'lane-wasip2.component_demo.served'
+    lanes.mkdir(parents=True)
+    xml = root.resolve() / 'bin/ci/wasip2.component_demo.served.xml'
+    xml.rename(lanes / xml.name)
+    report = run(root, 'report', '--plan', '{"include":[]}', '--own-lanes',
+                 json.dumps({'include': entry}), '--lanes', str(lanes.parent), '--out',
+                 str(root / 'report'))
+    assert report.returncode == 1, (report.returncode, report.stdout, report.stderr)
+    assert 'report: wasip2.component_demo.served: component_demo/answers: run' in (
+        report.stderr), report.stderr
+
+
 def test_a_lane_is_named_by_the_compiler_version(root):
     compiler = root / 'fake clang++'
     compiler.write_text('#!/bin/sh\necho 17.0.0\n')
@@ -579,6 +609,7 @@ CASES = [
     test_a_lane_that_cannot_build_fails,
     test_the_report_names_a_planned_lane_that_wrote_nothing,
     test_an_own_lane_on_a_target_writes_its_xml_and_the_report_merges_it,
+    test_an_own_lanes_failing_served_test_fails_the_report,
 ]
 
 
