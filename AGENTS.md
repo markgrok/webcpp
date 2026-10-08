@@ -207,15 +207,15 @@ taken from the path its `-s` option gives, else from `.local/`, else from
 `PATH`: MrDocs (`-sMRDOCS`), wit-bindgen and the WIT (above); wasi-sdk is
 where the `using clang` lines of `user-config.jam` name it.
 `tools/lint/compile_commands.py` runs b2 with `.local/user-config.jam`, else
-with the file `$WEBCPP_USER_CONFIG` names, else with b2's own search. The tests of the build and of the tools read
-`.local/user-config.jam`, else the file `$WEBCPP_USER_CONFIG` names, and stop
-with an error when neither exists (`tools/test/harness.py`); a test that
-needs wit-bindgen and the WIT links `.local/wit-bindgen` and
-`.local/wasi-wit`, or the directories `$WIT_BINDGEN_ROOT` and
-`$WASI_WIT_ROOT` name, into its scratch copy, and one that needs MrDocs
-`.local/mrdocs`, or `$MRDOCS_ROOT`. The doc build
-finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
-`b2 --user-config=.local/user-config.jam ...`.
+with the file `$WEBCPP_USER_CONFIG` names, else with b2's own search. The
+tests of the build and of the tools read `.local/user-config.jam`, else the
+file `$WEBCPP_USER_CONFIG` names, and stop with an error when neither
+exists (`tools/test/harness.py`); a test that needs wit-bindgen and the WIT
+links `.local/wit-bindgen` and `.local/wasi-wit`, or the directories
+`$WIT_BINDGEN_ROOT` and `$WASI_WIT_ROOT` name, into its scratch copy, and
+one that needs MrDocs `.local/mrdocs`, or `$MRDOCS_ROOT`. The doc build
+finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when
+told: `b2 --user-config=.local/user-config.jam ...`.
 
 ### The build commands
 
