@@ -516,8 +516,10 @@ local rule load-jamfiles ( directories * )
 # lane that names targets as one line "<library> <name> <directory>
 # <target>" per target, which the CI runs as that target's lane runs, and
 # reports. Each target is one of its Jamfile's webcpp.targets, which must
-# come before it (native when there are none). Only a Jamfile under the
-# library's test or example directory, which lanes loads, may declare one.
+# come before it (native when there are none). A served program is named by
+# such a lane on every target it is served on, which lanes checks. Only a
+# Jamfile under the library's test or example directory, which lanes loads,
+# may declare one.
 rule lane ( name : b2-targets + : targets * )
 {
     local found = [ where ] ;
@@ -555,6 +557,10 @@ rule lane ( name : b2-targets + : targets * )
     if $(targets)
     {
         .lanes += "$(library[1]) $(name) $(found[3]) "$(targets) ;
+        for local b2-target in $(b2-targets)
+        {
+            .laned.$(found[3])/$(b2-target) += $(targets) ;
+        }
     }
     else
     {
@@ -564,11 +570,37 @@ rule lane ( name : b2-targets + : targets * )
 
 # The lines "<library> <name> <directory> [<target>]" of the lanes that the
 # Jamfiles under directories (absolute, in b2's form) declare, at any depth,
-# sorted.
+# sorted. Every program served there (webcpp.serve, webcpp.serve-script) must
+# run in an own lane of its Jamfile on every target it is served on, or the
+# listing stops naming it: the ordinary lanes leave served programs to their
+# own lanes, so one that no lane runs would be tested nowhere.
 rule lanes ( directories * )
 {
     load-jamfiles $(directories) ;
+    for local program in $(.served-programs)
+    {
+        if ! $(.laned.$(program))
+        {
+            errors.user-error "$(.served-shown.$(program)) is in no own lane; name it in a"
+                "webcpp.lane that names its targets" ;
+        }
+        local dropped = [ set.difference $(.served-on.$(program)) : $(.laned.$(program)) ] ;
+        if $(dropped)
+        {
+            errors.user-error "$(.served-shown.$(program)) is served on $(dropped:J= ), which no"
+                "own lane that names it runs on; name $(dropped:J= ) in one of its lanes" ;
+        }
+    }
     return [ sequence.unique $(.lanes) ] ;
+}
+
+# Records the served program <directory>/<name>, shown as shown, served on
+# served, which lanes checks.
+local rule served-program ( found + : name : shown : served + )
+{
+    .served-programs += $(found[3])/$(name) ;
+    .served-shown.$(found[3])/$(name) = "$(shown) in $(found[4])" ;
+    .served-on.$(found[3])/$(name) = $(served) ;
 }
 
 # The test and example directories of library, absolute, in b2's form.
@@ -663,6 +695,7 @@ rule serve ( source : requirements * : targets * )
     local jamfile = [ jamfile ] ;
     local served = [ webcpp-component.served-targets $(found) : "webcpp.serve $(source)"
         : $(targets) : $(.targets.$(jamfile)) ] ;
+    served-program $(found) : $(source:B) : "webcpp.serve $(source)" : $(served) ;
     webcpp-component.serve $(found) : $(source) : $(requirements) $(.handler)
         : [ program serve : $(source:B) : $(served) ] ;
 }
@@ -677,6 +710,7 @@ rule serve-script ( name : script : stem : targets * )
     local jamfile = [ jamfile ] ;
     local served = [ webcpp-component.served-targets $(found) : "webcpp.serve-script $(name)"
         : $(targets) : $(.targets.$(jamfile)) ] ;
+    served-program $(found) : $(name) : "webcpp.serve-script $(name)" : $(served) ;
     webcpp-component.serve-script $(found) : $(name) : $(script) : $(stem)
         : [ program serve : $(name) : $(served) ] ;
 }

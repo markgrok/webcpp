@@ -32,7 +32,9 @@ from lanes import (EMPTY, KINDS, OWN_LANE, PASS, UNBUILT, Action, Lane, Row, pro
 
 OWN_SITE = 'https://github.com/webcpporg/'
 
-NOT_BUILT = "Not built in this lane, as when it does not declare the lane's target."
+# A served program declares wasip2 and wasip3, and an own lane runs it there, not the target's.
+NOT_BUILT = ("Not built in this lane, as when it does not declare the lane's target, or when a "
+             "lane of its own runs it.")
 
 OUTSIDE = 'outside failure'
 

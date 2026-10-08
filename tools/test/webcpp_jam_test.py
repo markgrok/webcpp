@@ -14,10 +14,11 @@ its globs match, with requirements and targets of its own, and a header two call
 that matches none refused; a compile-diagnostic test passes only on the error it states, and is
 skipped on a toolset that is not clang; `b2 declared-targets` lists what each library declares; a
 lane of a library's own is listed once per target it runs on, which must be one its Jamfile
-declares, and what it names leaves the ordinary lanes; a Boost.Test suite is built and run natively
-only, its framework always with exceptions; Boost.JSON's definitions link on every target; and every
-program sees C++20, the wasip2 one alone without exceptions. Each case builds a scratch superproject
-with the fixture library demo. Run with the names of some cases to run only those."""
+declares, what it names leaves the ordinary lanes, and every served program runs in one on every
+target it is served on; a Boost.Test suite is built and run natively only, its framework always with
+exceptions; Boost.JSON's definitions link on every target; and every program sees C++20, the wasip2
+one alone without exceptions. Each case builds a scratch superproject with the fixture library demo.
+Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -385,6 +386,60 @@ def test_a_lanes_programs_leave_the_ordinary_lanes(root):
     assert passed(lanes['wasip2']) == WASM_DEMO - served, passed(lanes['wasip2'])
     assert passed(lanes['native lane']) == served, passed(lanes['native lane'])
     assert passed(lanes['wasip2 lane']) == served, passed(lanes['wasip2 lane'])
+
+
+def served_library(root, lanes):
+    """Adds to root the library web, whose test Jamfile serves a component and one a script
+    builds, both on wasip2 and wasip3, and declares lanes, the Jamfile's lines after them."""
+    harness.add_library(root, 'web',
+                        'import webcpp ;\n'
+                        '\n'
+                        'webcpp.targets native wasip2 wasip3 ;\n'
+                        'webcpp.run plain : plain.cpp ;\n'
+                        'webcpp.serve answers.cpp ;\n'
+                        'webcpp.serve-script by_script : build.sh : answers ;\n' + lanes,
+                        {'plain.cpp': PLAIN_SOURCE, 'answers.cpp': PLAIN_SOURCE,
+                         'answers.requests': 'GET /\n', 'answers.expected': '',
+                         'build.sh': 'exit 1\n'})
+
+
+def test_every_served_program_runs_in_an_own_lane(root):
+    # A served program runs in an own lane on every target it is served on: one that no lane
+    # names, or that a lane runs on fewer targets, fails `b2 declared-lanes`, and with it the
+    # CI's plan, by name, before any job runs.
+    served_library(root, 'webcpp.lane http : answers by_script : wasip2 wasip3 ;\n')
+    result = harness.run_b2(root, '-d0', 'declared-lanes')
+    harness.expect(result, True)
+    assert result.stdout == ('web http libs/web/test wasip2\n'
+                             'web http libs/web/test wasip3\n'), result.stdout
+    jamfile = root / 'libs/web/test/Jamfile'
+    text = jamfile.read_text()
+    for lanes, message in (
+        # Forgotten: named by no lane.
+        ('webcpp.lane http : by_script : wasip2 wasip3 ;\n',
+         'webcpp.serve answers.cpp in libs/web/test/Jamfile is in no own lane; name it in a '
+         'webcpp.lane that names its targets'),
+        ('webcpp.lane http : answers : wasip2 wasip3 ;\n',
+         'webcpp.serve-script by_script in libs/web/test/Jamfile is in no own lane; name it in a '
+         'webcpp.lane that names its targets'),
+        # A lane that names no target runs it nowhere it is served.
+        ('webcpp.lane http : answers by_script ;\n',
+         'webcpp.serve answers.cpp in libs/web/test/Jamfile is in no own lane; name it in a '
+         'webcpp.lane that names its targets'),
+        # A lane on wasip2 alone would drop wasip3 without a word.
+        ('webcpp.lane http : answers by_script : wasip2 ;\n',
+         'webcpp.serve answers.cpp in libs/web/test/Jamfile is served on wasip3, which no own '
+         'lane that names it runs on'),
+    ):
+        jamfile.write_text(text.replace(
+            'webcpp.lane http : answers by_script : wasip2 wasip3 ;\n', lanes))
+        result = harness.run_b2(root, '-d0', 'declared-lanes')
+        harness.expect(result, False, message)
+    # Two lanes may share a program's targets between them.
+    jamfile.write_text(text.replace('webcpp.lane http : answers by_script : wasip2 wasip3 ;\n',
+                                    'webcpp.lane p2 : answers by_script : wasip2 ;\n'
+                                    'webcpp.lane p3 : answers by_script : wasip3 ;\n'))
+    harness.expect(harness.run_b2(root, '-d0', 'declared-lanes'), True)
 
 
 def test_example_mismatch_fails_naming_the_program(root):
@@ -798,6 +853,7 @@ CASES = [
     test_a_lane_on_targets_is_listed_once_per_target,
     test_a_lane_runs_only_on_targets_its_jamfile_declares,
     test_a_lanes_programs_leave_the_ordinary_lanes,
+    test_every_served_program_runs_in_an_own_lane,
     test_example_mismatch_fails_naming_the_program,
     test_example_reads_its_input,
     test_example_input_change_reruns,

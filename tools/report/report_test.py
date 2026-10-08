@@ -50,7 +50,10 @@ KINDS = {'compile', 'link', 'run', 'compiled', 'linked', 'ran', 'build', 'not ru
 
 FOOTER = 'Copyright (c) 2026 WebCpp.org'
 
-NOT_BUILT = "Not built in this lane, as when it does not declare the lane's target."
+# What an n/a cell says: a served program declares wasip2, and its own lane runs it there, so the
+# wasip2 lane's cell must not say it declares no wasip2.
+NOT_BUILT = ("Not built in this lane, as when it does not declare the lane's target, or when a "
+             "lane of its own runs it.")
 
 # The only site outside the report that a page may link to.
 OWN_SITE = 'https://github.com/webcpporg/'
@@ -461,7 +464,7 @@ def test_unreadable_xml_exits_2(root: Path) -> None:
     assert f'cannot write {blocked}' in result.stderr, outcome(result)
 
 
-def test_nine_lanes_fit_the_content_width_at_desktop(root: Path) -> None:
+def test_nine_lanes_fit_the_content_width_at_desktop(_root: Path) -> None:
     """A budget on pages.STYLE, standing in for what a real Chrome measured at 1280px wide (the
     screenshots this change records): the lane header must be free to wrap at a hyphen, since
     nowrap, the rule every other cell keeps, would hold it to its widest line's full width; and
@@ -571,6 +574,9 @@ def test_an_own_lane_is_named_after_its_target_and_library(root: Path) -> None:
     assert index.verdict('component_demo', own) == 'pass'
     assert index.verdict('component_demo', 'wasip2') == 'n/a'
     assert index.verdict('demo', own) == 'n/a'
+    # The served test, n/a in the target's own column, says why truthfully: its own lane runs it.
+    title = index.cells[('component_demo', 'wasip2')].attributes.get('title') or ''
+    assert title.endswith('or when a lane of its own runs it.'), title
     assert matrix(out / 'component_demo.html').verdict('answers', own) == 'pass'
     # Its header may wrap after each dot, as a lane's wraps at a hyphen.
     assert 'wasip2.<wbr>component_demo.<wbr>test.<wbr>served' in (out / 'index.html').read_text()
@@ -723,7 +729,7 @@ def tables(out: Path) -> dict[str, list[list[list[tuple[str, frozenset[str], str
             for page in sorted(out.glob('*.html'))}
 
 
-def test_samples_name_no_temporary_directory(root: Path) -> None:
+def test_samples_name_no_temporary_directory(_root: Path) -> None:
     # A sample is recorded in a scratch superproject under the temporary directory, whose path
     # names the machine (macOS's /var/folders/<hash>/T, which b2 also prints resolved, under
     # /private): the recording writes it as a placeholder, in each form, and only where it is a

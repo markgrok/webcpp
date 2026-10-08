@@ -408,7 +408,7 @@ webcpp.lane oracle : twins cases-machines cases-actors ;
 | `webcpp.original <word> + ;` | how a program of the original's language runs, once and first; and the target `node-modules`, which installs what `package-lock.json` beside the Jamfile pins with `npm ci`, through `tools/node/install.py`: once per lockfile under `.node-modules/`, linked at `node_modules`, so that runs at once never install over each other |
 | `webcpp.twins <examples> : <twins> : <suffix> : <extra-word> * ;` | the target `twins`: `twins.py` runs the twin `<twins>/<path><suffix>` of every program `<examples>/<path>.cpp`, at any depth, with the original's words and the extra words, and compares what it prints with the program's `.expected`, or with the twin's own `.expected` for a difference, which must then differ from the program's. Declared once per library: the page shows and counts its twins (chapter 8) |
 | `webcpp.cases <name> : <script> : <cases> : <expected> ;` | the target `cases-<name>`: the original runs `<script> <cases> <output>` into the build directory, and `compare.py` finds the output equal to `<expected>`, file by file and byte by byte. The Jamfile stops loading at a cases directory that does not exist, and at an expected directory whose removal would take the oracle's directory or the cases |
-| `webcpp.lane <name> : <b2-target> + : <target> * ;` | an own lane of the library, the explicit alias `<name>` over the b2 targets, each a main target of the same Jamfile, which the lane makes explicit too, so that the ordinary lanes never build them; `b2 declared-lanes` lists it and the CI runs it (chapter 9). An oracle's names no target. One that names targets runs on each, as the CI's lane of that target does, and its tests reach the report: each is one of the Jamfile's `webcpp.targets` (`native` without any), or the build stops naming it. Only a Jamfile under the library's `test/` or `example/` declares one |
+| `webcpp.lane <name> : <b2-target> + : <target> * ;` | an own lane of the library, the explicit alias `<name>` over the b2 targets, each a main target of the same Jamfile, which the lane makes explicit too, so that the ordinary lanes never build them; `b2 declared-lanes` lists it and the CI runs it (chapter 9). An oracle's names no target. One that names targets runs on each, as the CI's lane of that target does, and its tests reach the report: each is one of the Jamfile's `webcpp.targets` (`native` without any), or the build stops naming it. Every program of `webcpp.serve` and `webcpp.serve-script` must be named by a lane of its Jamfile on every target it is served on, or `b2 declared-lanes`, and with it the CI's plan, stops naming it. Only a Jamfile under the library's `test/` or `example/` declares one |
 
 The first `webcpp.twins` or `webcpp.cases` also declares the target
 `update-expected`, which writes every expected directory again from the
@@ -1085,6 +1085,12 @@ lanes, which build only its test and example directories' other programs.
   ```
   b2 -a --dump-tests --out-xml=wasip2.wasi.test.http.xml toolset=clang-wasip2 testing.launcher=wasmtime libs/wasi/test//http
   ```
+
+  A served program always runs so: `b2 declared-lanes` stops, naming it,
+  when no lane of its Jamfile names it (`webcpp.serve answers.cpp in
+  libs/web/test/Jamfile is in no own lane; name it in a webcpp.lane that
+  names its targets`), or when its lanes leave out a target it is served on,
+  so the CI's plan fails before any job runs rather than leave it untested.
 
   A lane on emscripten is declared like any other, and the CI refuses it by
   name until it gets an emscripten lane (chapter 13); it never runs one
