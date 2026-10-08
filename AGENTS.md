@@ -178,13 +178,14 @@ finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
 | `b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test libs/<name>/example` | the same for wasm32-wasip2; `clang-wasip3` for wasm32-wasip3; one toolset per command |
 | `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/` |
 | `b2 declared-targets -d0` | prints each `<library> <target>` pair the libraries declare: the CI's lanes |
-| `b2 declared-lanes -d0` | prints each `<library> <lane> <directory>` line of a library's own lanes, such as its oracle's (chapter 5) |
+| `b2 declared-lanes -d0` | prints each `<library> <lane> <directory>` line of a library's own lanes, such as its oracle's, and `<library> <lane> <directory> <target>` once per target for a lane that names the targets it runs on (chapters 5 and 9) |
+| `b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test//<lane>` | an own lane on wasip2, such as wasi's served tests, `libs/wasi/test//http` and `libs/wasi/example//http` (chapter 9) |
 | `b2 libs/<name>/test/oracle//oracle` | a port's oracle lane: the original runs the cases and the twins, and the results are compared (chapter 5) |
 | `b2 libs/<name>/test/oracle//update-expected` | writes the original's results again, the only writer of an expected result (chapter 5) |
 | `b2 -a ...` | any of these from scratch; the only build that counts as evidence |
 | `tools/lint/lint.sh --clang-format <wasi-sdk>/bin/clang-format --clang-tidy <wasi-sdk>/bin/clang-tidy` | the lint, of the superproject and every library (chapter 6) |
 | `python3 tools/<dir>/<name>_test.py` | a test of the build or of a tool (chapter 10) |
-| `python3 tools/ci/matrix.py plan`, `own-lanes`, `lane`, `register`, `report` | the CI's lanes, run the way the CI runs them (chapter 9) |
+| `python3 tools/ci/matrix.py plan`, `own-lanes`, `lane`, `own-lane`, `register`, `report` | the CI's lanes and own lanes, run the way the CI runs them (chapter 9) |
 | `python3 tools/ci/assemble.py --docs . --report <dir> --out <site>` | the site GitHub Pages serves, every link checked (chapter 9) |
 
 ## 2. Choosing and registering a port
@@ -407,7 +408,7 @@ webcpp.lane oracle : twins cases-machines cases-actors ;
 | `webcpp.original <word> + ;` | how a program of the original's language runs, once and first; and the target `node-modules`, which installs what `package-lock.json` beside the Jamfile pins with `npm ci`, through `tools/node/install.py`: once per lockfile under `.node-modules/`, linked at `node_modules`, so that runs at once never install over each other |
 | `webcpp.twins <examples> : <twins> : <suffix> : <extra-word> * ;` | the target `twins`: `twins.py` runs the twin `<twins>/<path><suffix>` of every program `<examples>/<path>.cpp`, at any depth, with the original's words and the extra words, and compares what it prints with the program's `.expected`, or with the twin's own `.expected` for a difference, which must then differ from the program's. Declared once per library: the page shows and counts its twins (chapter 8) |
 | `webcpp.cases <name> : <script> : <cases> : <expected> ;` | the target `cases-<name>`: the original runs `<script> <cases> <output>` into the build directory, and `compare.py` finds the output equal to `<expected>`, file by file and byte by byte. The Jamfile stops loading at a cases directory that does not exist, and at an expected directory whose removal would take the oracle's directory or the cases |
-| `webcpp.lane <name> : <target> + ;` | an own lane of the library, the alias `<name>` over the targets, which `b2 declared-lanes` lists and the CI runs (chapter 9). Only a Jamfile under the library's `test/` or `example/` declares one |
+| `webcpp.lane <name> : <b2-target> + : <target> * ;` | an own lane of the library, the explicit alias `<name>` over the b2 targets, each a main target of the same Jamfile, which the lane makes explicit too, so that the ordinary lanes never build them; `b2 declared-lanes` lists it and the CI runs it (chapter 9). An oracle's names no target. One that names targets runs on each, as the CI's lane of that target does, and its tests reach the report: each is one of the Jamfile's `webcpp.targets` (`native` without any), or the build stops naming it. Only a Jamfile under the library's `test/` or `example/` declares one |
 
 The first `webcpp.twins` or `webcpp.cases` also declares the target
 `update-expected`, which writes every expected directory again from the
@@ -1035,11 +1036,18 @@ never the verdict.
 `wasip2`, `wasip3`) or after the directory b2 builds its toolset in
 (`gcc-14`, `gcc-15`, `clang-linux-18`, `clang-darwin-21`, `msvc-14.3`). The
 CI names a native lane after its directory, and a wasm or emscripten lane
-after its target. The report checks every name against the toolset directory
-the file records: a lane named after a target must be built for it, and any
-other name must be that directory, or the report exits 2, naming the lane,
-the directory and the two names it may take. A lane that built nothing
-records no directory; its name is not checked, and it fails as empty.
+after its target. An own lane on a target (below) is named
+`<target>.<library>.<directory>.<lane>`, its directory under
+`libs/<library>/` with its slashes as dots: `wasip2.wasi.test.http`. No
+toolset directory begins with a target and a dot, so that name is never a
+lane's, and its column stands beside the target's own. The report checks
+every name against the toolset directory the file records: a lane named
+after a target must be built for it, an own lane must be built for the
+target its name begins with and list the tests of the library it names
+alone, and any other name must be that directory, or the report exits 2,
+naming the lane, the directory and the names it may take. A lane that built
+nothing records no directory; its name is checked against the toolset its
+command line names when it begins with a target, and it fails as empty.
 
 **Lanes in parallel.** Independent lanes run at the same time, each with its
 own build directory, and are read once all have finished:
@@ -1052,11 +1060,35 @@ Two concurrent b2 runs never share a build directory, and at most one of
 them builds the documentation (chapter 8).
 
 **Own lanes.** A library may also declare lanes of its own with
-`webcpp.lane` (chapter 5), such as xstate's oracle lane, which needs Node
-where a toolset lane does not. `b2 declared-lanes -d0` lists them, one line
-`<library> <lane> <directory>` each, and one runs as
-`b2 -a <directory>//<lane>`, whose exit status is its verdict. An own lane
-writes no XML, and is no column of the report.
+`webcpp.lane` (chapter 5). What a lane names leaves the library's ordinary
+lanes, which build only its test and example directories' other programs.
+`b2 declared-lanes -d0` lists them, one line each:
+
+- **An own lane that names no target,** such as xstate's oracle lane, which
+  needs Node where a toolset lane does not, is the line `<library> <lane>
+  <directory>`, and runs as `b2 -a <directory>//<lane>`, whose exit status
+  is its verdict. It writes no XML, and is no column of the report.
+- **An own lane that names targets** is the line `<library> <lane>
+  <directory> <target>` once per target, and runs on each as that target's
+  lane runs, from scratch, with `--dump-tests` and `--out-xml`: its tests
+  reach the report, in a column of its own (above). wasi's served tests and
+  served examples, the components wasmtime serves (`webcpp.serve`,
+  `webcpp.serve-script`), are its lanes `http`, in `test/` and in
+  `example/`, on wasip2 and wasip3:
+
+  ```
+  webcpp.lane http
+    : http_methods http_long_body http_no_content_type http_two_units
+    : wasip2 wasip3 ;
+  ```
+
+  ```
+  b2 -a --dump-tests --out-xml=wasip2.wasi.test.http.xml toolset=clang-wasip2 testing.launcher=wasmtime libs/wasi/test//http
+  ```
+
+  A lane on emscripten is declared like any other, and the CI refuses it by
+  name until it gets an emscripten lane (chapter 13); it never runs one
+  natively in its place.
 
 ### The report (`tools/report/`)
 
@@ -1113,7 +1145,12 @@ jobs:
   no lane fails the plan by name: the CI gets an emscripten lane when emsdk
   is pinned (chapter 13). Then `matrix.py own-lanes [--library <name>]`
   runs `b2 declared-lanes -d0` and prints the JSON matrix of the own lanes
-  of that library, or of every library.
+  of that library, or of every library: an entry `{library, lane,
+  directory}` for an own lane that names no target, and one per target for
+  one that names targets, which adds `platform`, its target, `id`, its name
+  in the report, and the `os` and `wasm` of the lane whose setup it shares,
+  the target's own, and the oracle's Clang 18 for native. An own lane on
+  emscripten fails the plan, by name.
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
@@ -1134,11 +1171,20 @@ jobs:
   embed-manifest-via=linker --abbreviate-paths`; b2 abbreviates each word of
   a toolset directory, and `msvc-14.3` and `msvc-14.5` are their own
   abbreviations, which `tools/ci/matrix_test.py` checks with b2's own rule.
-- **own lanes,** one job each, `Own lane (<library>, <lane>, <directory>)`,
-  on Linux x86-64 (ubuntu-24.04): the Boost action, `matrix.py register
-  clang-18` (an oracle lane checks Boost, chapter 5), the Node action, and
-  `b2 -a <directory>//<lane>`, whose exit status is the lane's verdict. A
-  library that declares no own lane, as xactor, has no such job.
+- **own lanes,** one job each, which runs `matrix.py own-lane <entry>`: it
+  registers the lane's toolset, prints its b2 command and runs it. A library
+  that declares no own lane, as xactor, has no such job.
+  - One that names no target, `Own lane (<library>, <lane>, <directory>)`,
+    on Linux x86-64 (ubuntu-24.04): the Boost action, the Node action, and
+    `b2 -a toolset=clang-18 <directory>//<lane>` (an oracle lane checks
+    Boost, chapter 5), whose exit status is the lane's verdict.
+  - One that names a target, `Own lane (<library>, <lane>, <directory>,
+    <target>)`, on its entry's image: the Boost action and what the target's
+    lane installs, the same steps by their YAML anchors (`&wasi-sdk`,
+    `&wasmtime`), so that a step added to a WASI lane is added to it too; then
+    `b2 -a --dump-tests --out-xml=<id>.xml toolset=<toolset> [<options>]
+    <directory>//<lane>`, and it uploads `<id>.xml` as a lane uploads its
+    XML, the artifact `lane-<id>`.
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
   Intel macOS) and `clang++-18`, `b2 -a libs/<library>/doc`, or for the
   superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's.
@@ -1152,14 +1198,18 @@ jobs:
   SHA-256, on every workflow of the superproject and of `libs/*`, with
   `.github/actionlint.yaml`. It also runs clean locally before a workflow
   change is committed.
-- **report:** `matrix.py report` merges every lane's XML with
+- **report:** `matrix.py report --plan <matrix> --own-lanes <matrix>`
+  merges the XML of every lane and of every own lane on a target with
   `tools/report/report.py` into the test matrix, uploaded as an artifact. Its
-  exit status is the verdict; a planned lane that wrote no XML fails it by
-  name, and so does a lane's job that failed, or an own lane's.
+  exit status is the verdict; a planned lane or own lane on a target that
+  wrote no XML fails it by name, and so does a lane's job that failed, or an
+  own lane's.
 
-`matrix.py lane` takes, after `--`, more arguments for b2, so that a lane is
-run locally exactly as the CI runs it, beside others:
-`python3 tools/ci/matrix.py lane '<entry>' -- --build-dir=bin/lane-gcc-15`.
+`matrix.py lane` and `matrix.py own-lane` take, after `--`, more arguments
+for b2, so that a lane is run locally exactly as the CI runs it, beside
+others: `python3 tools/ci/matrix.py lane '<entry>' --
+--build-dir=bin/lane-gcc-15`. Each registers the lane's toolset in
+`.local/user-config.jam`, wasi-sdk's directory quoted as one word of Jam.
 
 **The actions,** `tools/ci/actions/`, each a script beside its `action.yml`:
 
@@ -1225,7 +1275,9 @@ only branch.
     libs/<name>/example` natively, and with `toolset=clang-wasip2
     testing.launcher=wasmtime` and `toolset=clang-wasip3
     testing.launcher=wasmtime` where declared, and every own lane the
-    library declares, `b2 -a libs/<name>/test/oracle//oracle` for an oracle;
+    library declares, `b2 -a libs/<name>/test/oracle//oracle` for an oracle
+    and, on each target it names, `b2 -a toolset=clang-wasip2
+    testing.launcher=wasmtime libs/wasi/test//http` for one on wasip2;
   - `b2 -a doc`;
   - the lint: `lint: clean`;
   - the tests of the build and of the tools, when they or what they test

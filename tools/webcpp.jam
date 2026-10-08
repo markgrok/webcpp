@@ -20,9 +20,10 @@
 #       : targets * ;
 #
 # the rule with which any test or example Jamfile of a library declares one
-# of its own lanes, which `b2 declared-lanes` lists:
+# of its own lanes, which `b2 declared-lanes` lists, once per target it
+# runs on:
 #
-#     webcpp.lane name : targets + ;
+#     webcpp.lane name : b2-targets + : targets * ;
 #
 # the rules of the documentation, tools/doc/doc.jam's, with which a library's
 # doc Jamfile declares its page and its reference, and the superproject's
@@ -506,13 +507,21 @@ local rule load-jamfiles ( directories * )
     }
 }
 
-# webcpp.lane <name> : <target> + ; one of a library's own lanes, such as
-# its oracle's: the explicit alias <name> over targets, recorded as
-# "<library> <name> <directory>" for lanes. Only a Jamfile under the
+# webcpp.lane <name> : <b2-target> + : <target> * ; one of a library's own
+# lanes, such as its oracle's, or its served tests': the explicit alias
+# <name> over b2-targets, each a main target of this Jamfile, which the lane
+# makes explicit too, so that the library's ordinary lanes never build them.
+# A lane that names no target is recorded as "<library> <name> <directory>"
+# for lanes, and the CI runs it with Clang 18, its exit status its verdict; a
+# lane that names targets as one line "<library> <name> <directory>
+# <target>" per target, which the CI runs as that target's lane runs, and
+# reports. Each target is one of its Jamfile's webcpp.targets, which must
+# come before it (native when there are none). Only a Jamfile under the
 # library's test or example directory, which lanes loads, may declare one.
-rule lane ( name : targets + )
+rule lane ( name : b2-targets + : targets * )
 {
     local found = [ where ] ;
+    local jamfile = [ jamfile ] ;
     local library = [ MATCH "^libs/([^/]+)/(test|example)(/.*)?$" : $(found[3]) ] ;
     if ! $(library)
     {
@@ -520,13 +529,42 @@ rule lane ( name : targets + )
             "example Jamfile of a library: only one under libs/<library>/test or"
             "libs/<library>/example declares a lane, so that b2 declared-lanes finds it" ;
     }
-    alias $(name) : $(targets) ;
-    $(found[1]).mark-target-as-explicit $(name) ;
-    .lanes += "$(library[1]) $(name) $(found[3])" ;
+    check "webcpp.lane $(name)" : $(targets) ;
+    local declared = $(.targets.$(jamfile)) ;
+    declared ?= native ;
+    for local target in $(targets)
+    {
+        if ! $(target) in $(declared)
+        {
+            errors.user-error "webcpp.lane $(name) in $(found[4]): $(target) is not among the"
+                "targets its Jamfile declares, $(declared:J= ): a lane runs on targets that"
+                "webcpp.targets declares before it" ;
+        }
+    }
+    for local b2-target in $(b2-targets)
+    {
+        if [ MATCH "([/<>])" : $(b2-target) ]
+        {
+            errors.user-error "webcpp.lane $(name) in $(found[4]): $(b2-target) is not a target"
+                "of its own Jamfile, which the lane would leave in the library's ordinary"
+                "lanes; a lane names main targets of the Jamfile that declares it" ;
+        }
+    }
+    alias $(name) : $(b2-targets) ;
+    $(found[1]).mark-target-as-explicit $(name) $(b2-targets) ;
+    if $(targets)
+    {
+        .lanes += "$(library[1]) $(name) $(found[3]) "$(targets) ;
+    }
+    else
+    {
+        .lanes += "$(library[1]) $(name) $(found[3])" ;
+    }
 }
 
-# The lines "<library> <name> <directory>" of the lanes that the Jamfiles
-# under directories (absolute, in b2's form) declare, at any depth, sorted.
+# The lines "<library> <name> <directory> [<target>]" of the lanes that the
+# Jamfiles under directories (absolute, in b2's form) declare, at any depth,
+# sorted.
 rule lanes ( directories * )
 {
     load-jamfiles $(directories) ;

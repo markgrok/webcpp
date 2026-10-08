@@ -8,12 +8,15 @@
 """Checks tools/ci/matrix.py: the plan has a lane per compiler for each target the libraries
 declare, with the libraries that declare it, and fails on a target the CI has no lane for or a
 library that does not exist; the own lanes the libraries declare are listed, of every library or of
-one, and a library that does not exist or a line of b2's that is no own lane fails; a lane is named
-and registered by the compiler's version when the image decides it, and a WASI lane by the lines
-of tools/ci/wasi-sdk.jam; a lane runs the lane command and
-writes its XML, and fails when b2 cannot build; the report merges the lanes and fails, by name, a
-planned lane that wrote nothing. Each case runs the scratch superproject's own copy of matrix.py,
-with the fixture library demo. Run with the names of some cases to run only those."""
+one, once per target an own lane runs on and as before for one that names none, and a library that
+does not exist, a line of b2's that is no own lane or an own lane on a target the CI cannot set up
+fails; a lane is named and registered by the compiler's version when the image decides it, and a
+WASI lane by the lines of tools/ci/wasi-sdk.jam, its wasi-sdk directory one word of Jam; a lane runs
+the lane command and writes its XML, and fails when b2 cannot build; an own lane runs as the lane it
+shares does, and writes its XML under its own name; the report merges the lanes and the own lanes on
+a target and fails, by name, a planned lane that wrote nothing. Each case runs the scratch
+superproject's own copy of matrix.py, with the fixture library demo. Run with the names of some
+cases to run only those."""
 
 from __future__ import annotations
 
@@ -165,15 +168,133 @@ def test_own_lanes_of_every_library_and_of_one(root):
     assert result.stdout == '', result.stdout
     # What the job runs, b2 -a <directory>//<lane>, is built from these words alone: a line that
     # is not three of them, or whose directory is not the library's, fails the listing.
-    for printed, named in (('alpha http', 'not "<library> <lane> <directory>"'),
+    for printed, named in (('alpha http', 'not "<library> <lane> <directory> [<target>]"'),
                            ('alpha http libs/beta/test', 'not in libs/alpha/test or'),
-                           ('alpha http; libs/alpha/test', 'not "<library> <lane> <directory>"')):
+                           ('alpha http; libs/alpha/test',
+                            'not "<library> <lane> <directory> [<target>]"'),
+                           ('alpha http libs/alpha/test wasm', 'wasm is not a target'),
+                           ('alpha http libs/alpha/test wasip2 wasip3',
+                            'not "<library> <lane> <directory> [<target>]"')):
         try:
             matrix.parsed_own_lanes(printed)
         except matrix.Failure as failure:
             assert named in str(failure), (printed, failure)
         else:
             raise AssertionError(f'{printed!r} was read as an own lane')
+
+
+def test_own_lanes_on_targets(root):
+    # A lane that names targets is an entry per target, which says what the job sets up and the
+    # name of the XML it writes; a lane that names none keeps its entry of three words, exactly.
+    boost_only(root)
+    harness.add_library(root, 'alpha',
+                        'import webcpp ;\n'
+                        'webcpp.targets native wasip2 wasip3 ;\n'
+                        'webcpp.run plain : plain.cpp ;\n'
+                        'webcpp.lane http : plain : wasip3 wasip2 ;\n',
+                        {'plain.cpp': 'int main() {}\n'})
+    (root / 'libs/alpha/example').mkdir()
+    (root / 'libs/alpha/example/Jamfile').write_text(
+        'import webcpp ;\n'
+        'webcpp.example page.cpp ;\n'
+        'webcpp.lane http : page.output : native ;\n')
+    harness.add_library(root, 'beta', 'import webcpp ;\n', {})
+    (root / 'libs/beta/test/oracle').mkdir()
+    (root / 'libs/beta/test/oracle/Jamfile').write_text(
+        'import webcpp ;\n'
+        'alias twins ;\n'
+        'webcpp.lane oracle : twins ;\n')
+    alpha = [{'library': 'alpha', 'lane': 'http', 'directory': 'libs/alpha/example',
+              'platform': 'native', 'id': 'native.alpha.example.http', 'os': 'ubuntu-24.04',
+              'wasm': False},
+             {'library': 'alpha', 'lane': 'http', 'directory': 'libs/alpha/test',
+              'platform': 'wasip2', 'id': 'wasip2.alpha.test.http', 'os': 'ubuntu-24.04',
+              'wasm': True},
+             {'library': 'alpha', 'lane': 'http', 'directory': 'libs/alpha/test',
+              'platform': 'wasip3', 'id': 'wasip3.alpha.test.http', 'os': 'ubuntu-24.04',
+              'wasm': True}]
+    assert own_lanes(root) == alpha + [
+        {'library': 'beta', 'lane': 'oracle', 'directory': 'libs/beta/test/oracle'}]
+    assert own_lanes(root, '--library', 'alpha') == alpha
+    assert run(root, 'own-lanes', '--library', 'beta').stdout == (
+        '{"include":[{"library":"beta","lane":"oracle","directory":"libs/beta/test/oracle"}]}\n')
+    # A target the job cannot set up yet fails the listing by name, rather than run natively;
+    # the own lanes of another library are still listed.
+    harness.add_library(root, 'gamma',
+                        'import webcpp ;\n'
+                        'webcpp.targets emscripten ;\n'
+                        'webcpp.run plain : plain.cpp ;\n'
+                        'webcpp.lane browser : plain : emscripten ;\n',
+                        {'plain.cpp': 'int main() {}\n'})
+    result = run(root, 'own-lanes')
+    assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
+    assert ('gamma declares its own lane browser in libs/gamma/test on emscripten, which the CI '
+            "cannot set up yet: an own lane on emscripten needs the emscripten lane's setup, "
+            'which comes when emsdk is pinned (AGENTS.md, Roadmap)') in result.stderr, (
+                result.stderr)
+    assert result.stdout == '', result.stdout
+    assert own_lanes(root, '--library', 'alpha') == alpha
+
+
+def test_an_own_lanes_command(root):
+    config = root / 'config.jam'
+    oracle = matrix.parsed_own_lanes('beta oracle libs/beta/test/oracle')[0]
+    # Without a target, as an oracle runs: Clang 18, from scratch, its exit status the verdict.
+    assert matrix.own_lane_command(oracle, config, None, ['--build-dir=bin/x']) == [
+        'b2', f'--user-config={config}', '-a', 'toolset=clang-18', '--build-dir=bin/x',
+        'libs/beta/test/oracle//oracle']
+    # On a target, as that target's lane runs: its toolset and options, and the XML the report
+    # reads.
+    served = matrix.parsed_own_lanes('alpha http libs/alpha/test wasip2')[0]
+    xml = Path('bin/ci/wasip2.alpha.test.http.xml')
+    assert matrix.own_lane_command(served, config, xml, []) == [
+        'b2', f'--user-config={config}', '-a', '--dump-tests', f'--out-xml={xml}',
+        'toolset=clang-wasip2', 'testing.launcher=wasmtime', 'libs/alpha/test//http']
+    # The lane the job sets up for each target runs on the own-lanes job's image, and the native
+    # one is the oracle's Clang 18.
+    for target, lane_id in (('native', 'clang-18'), ('wasip2', 'wasip2'), ('wasip3', 'wasip3')):
+        lane = matrix.own_lane_base(target)
+        assert (lane.id, lane.os) == (lane_id, 'ubuntu-24.04'), lane
+
+
+def test_an_own_lane_on_a_target_writes_its_xml_and_the_report_merges_it(root):
+    jamfile = root / 'libs/demo/test/Jamfile'
+    jamfile.write_text(jamfile.read_text() + 'webcpp.lane served : pass : wasip2 ;\n')
+    config = boost_only(root)
+    # wasi-sdk where the CI's action installs it, which the lane's toolset is registered against.
+    (root / '.local/wasi-sdk').symlink_to((matrix.ROOT / '.local/wasi-sdk').resolve())
+    entry = own_lanes(root, '--library', 'demo')
+    assert [lane['id'] for lane in entry] == ['wasip2.demo.test.served'], entry
+    output = root / 'github-output'
+    output.write_text('')
+    result = run(root, 'own-lane', json.dumps(entry[0]), '--', '--build-dir=bin/own',
+                 github_output=output)
+    assert result.returncode == 0, (result.returncode, result.stdout[-4000:], result.stderr)
+    xml = root.resolve() / 'bin/ci/wasip2.demo.test.served.xml'
+    printed = (f'own lane wasip2.demo.test.served: b2 '
+               f'{shlex.quote(f"--user-config={config.resolve()}")} -a --dump-tests '
+               f'{shlex.quote(f"--out-xml={xml}")} toolset=clang-wasip2 '
+               'testing.launcher=wasmtime --build-dir=bin/own libs/demo/test//served\n')
+    assert result.stdout.startswith(printed), (printed, result.stdout[:2000])
+    assert output.read_text().splitlines() == ['lane=wasip2.demo.test.served',
+                                               f'xml={xml.as_posix()}'], output.read_text()
+    lanes = root / 'downloaded'
+    (lanes / 'lane-wasip2.demo.test.served').mkdir(parents=True)
+    xml.rename(lanes / 'lane-wasip2.demo.test.served' / xml.name)
+    own = json.dumps({'include': entry})
+    report = run(root, 'report', '--plan', '{"include":[]}', '--own-lanes', own, '--lanes',
+                 str(lanes), '--out', str(root / 'report'))
+    # The lane is a column of the matrix under its own name, and its test passed there.
+    assert report.returncode == 0, (report.returncode, report.stdout, report.stderr)
+    page = (root / 'report/demo.html').read_text()
+    assert 'data-lane="wasip2.demo.test.served"' in page, page[:2000]
+    # An own lane on a target that wrote no XML fails the report by name, as a lane does.
+    (lanes / 'lane-wasip2.demo.test.served' / xml.name).unlink()
+    report = run(root, 'report', '--plan', '{"include":[]}', '--own-lanes', own, '--lanes',
+                 str(lanes), '--out', str(root / 'report-missing'))
+    assert report.returncode == 2, (report.returncode, report.stdout, report.stderr)
+    assert ('the lane wasip2.demo.test.served (Own lane (demo, served, libs/demo/test, wasip2)) '
+            'wrote no XML') in report.stderr, report.stderr
 
 
 def test_a_lane_is_named_by_the_compiler_version(root):
@@ -185,7 +306,7 @@ def test_a_lane_is_named_by_the_compiler_version(root):
     assert (lane.lane, lane.toolset) == ('clang-darwin-17', 'clang-17'), lane
     assert lane.using == 'using clang : 17 : clang++ ;', lane.using
     wasip2 = matrix.resolved(next(lane for lane in matrix.LANES if lane.id == 'wasip2'))
-    assert f'using clang : wasip2 : {matrix.ROOT.as_posix()}/.local/wasi-sdk/bin/clang++\n' in (
+    assert f'using clang : wasip2 : "{matrix.ROOT.as_posix()}/.local/wasi-sdk"/bin/clang++\n' in (
         wasip2.using), wasip2.using
     # Registered once, after what the file holds.
     config = root / 'config.jam'
@@ -248,8 +369,10 @@ def test_register_writes_the_lanes_toolsets_in_order(root):
     assert result.returncode == 0, (result.returncode, result.stderr)
     lines = config.read_text().splitlines()
     assert lines[1] == 'using clang : 18 : clang++-18 ;', lines
-    assert lines[2] == (f'using clang : wasip2 : {root.resolve().as_posix()}/'
-                        '.local/wasi-sdk/bin/clang++'), lines
+    # wasi-sdk's directory is one word of Jam, quoted, though the scratch superproject's path holds
+    # a space: a lane registered there builds (test_an_own_lane_on_a_target_writes_its_xml...).
+    assert lines[2] == (f'using clang : wasip2 : "{root.resolve().as_posix()}/'
+                        '.local/wasi-sdk"/bin/clang++'), lines
     assert lines[-1].endswith(' ;') and not any(line.endswith(' ;') for line in lines[2:-1]), lines
     unknown = run(root, 'register', 'clang-99', '--user-config', str(config))
     assert unknown.returncode == 2, (unknown.returncode, unknown.stderr)
@@ -261,7 +384,7 @@ def test_the_wasm_toolsets_come_from_wasi_sdk_jam(root):
     # each between `# tag::<target>[]` and `# end::<target>[]`, and the documentation shows them
     # from there; register writes them with wasi-sdk's directory in place of $(wasi-sdk).
     jam = root / 'tools/ci/wasi-sdk.jam'
-    wasi_sdk = f'{root.resolve().as_posix()}/.local/wasi-sdk'
+    wasi_sdk = f'"{root.resolve().as_posix()}/.local/wasi-sdk"'
     for target in ('wasip2', 'wasip3'):
         region = jam.read_text().split(f'# tag::{target}[]\n')[1].split(f'# end::{target}[]')[0]
         assert region.startswith(f'using clang : {target} : $(wasi-sdk)/bin/clang++\n'), region
@@ -376,6 +499,8 @@ CASES = [
     test_a_target_without_a_lane_fails,
     test_an_unknown_library_fails,
     test_own_lanes_of_every_library_and_of_one,
+    test_own_lanes_on_targets,
+    test_an_own_lanes_command,
     test_a_lane_is_named_by_the_compiler_version,
     test_abbreviated_paths_keep_the_lane_name,
     test_register_writes_the_lanes_toolsets_in_order,
@@ -383,6 +508,7 @@ CASES = [
     test_a_lane_writes_its_xml_and_the_report_merges_it,
     test_a_lane_that_cannot_build_fails,
     test_the_report_names_a_planned_lane_that_wrote_nothing,
+    test_an_own_lane_on_a_target_writes_its_xml_and_the_report_merges_it,
 ]
 
 

@@ -4,10 +4,10 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-# The superproject's CI: the lanes, the docs, the lint, the tests of the tools and the report of
-# library.yml, over every library of libs/ at the commit its submodule points to, and the index
-# page with every library's page. Then tools/ci/assemble.py lays out the site and checks every
-# link of it, on every run, and on main it is published to GitHub Pages,
+# The superproject's CI: the lanes, the own lanes, the docs, the lint, the tests of the tools and
+# the report of library.yml, over every library of libs/ at the commit its submodule points to, and
+# the index page with every library's page. Then tools/ci/assemble.py lays out the site and checks
+# every link of it, on every run, and on main it is published to GitHub Pages,
 # https://webcpporg.github.io/webcpp/:
 #
 #   index.html          the index page;

@@ -27,8 +27,11 @@
 #   lanes       one job per lane, which runs the lane command, b2 -a --dump-tests
 #               --out-xml=<lane>.xml for one toolset, and uploads the XML. With --out-xml, b2
 #               exits 0 even when a test fails: the report gives the verdict.
-#   own-lanes   one job per own lane, on Linux x86-64 with Node and Clang 18, which runs
-#               b2 -a <directory>//<lane>; its exit status is the lane's verdict. A library that
+#   own-lanes   one job per own lane and target it runs on. One that names no target, as an
+#               oracle, runs on Linux x86-64 with Node and Clang 18, b2 -a <directory>//<lane>, and
+#               its exit status is its verdict. One that names a target, as wasi's served tests,
+#               is set up as that target's lane is, runs b2 -a --dump-tests --out-xml with its
+#               toolset, and uploads the XML, which the report reads as a lane's. A library that
 #               declares none, as xactor, has no such job.
 #   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64;
 #               the index is built with -sWEBCPP_INDEX=site, its links where the site serves
@@ -39,9 +42,10 @@
 #               clang-tidy and running every other rule; with the full history, which the
 #               banned-word rule reads.
 #   actionlint  every workflow of the superproject and of the libraries.
-#   report      merges every lane's XML with tools/report/report.py into the test matrix. Its
-#               exit status is the verdict, and it fails too when a lane's job failed or wrote
-#               no XML, or when an own lane's job failed.
+#   report      merges the XML of every lane and every own lane on a target with
+#               tools/report/report.py into the test matrix. Its exit status is the verdict, and it
+#               fails too when a lane's job failed or wrote no XML, or when an own lane's job
+#               failed.
 #
 # No b2 call passes -j: b2 runs as many jobs as the runner has processors.
 name: Library
@@ -151,10 +155,14 @@ jobs:
       - *library
       - *boost
 
-      - if: matrix.wasm
+      # What a WASI lane installs, which the own-lanes job installs too, by these anchors, for an
+      # own lane on wasip2 or wasip3: a step a WASI lane needs is one of them.
+      - &wasi-sdk
+        if: matrix.wasm
         uses: ./tools/ci/actions/wasi-sdk
 
-      - if: matrix.wasm
+      - &wasmtime
+        if: matrix.wasm
         uses: ./tools/ci/actions/wasmtime
 
       # The lane registers its toolset in .local/user-config.jam, prints its b2 command and runs
@@ -175,16 +183,24 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # A library's own lane, such as its oracle: it compiles nothing, but its targets inherit the
-  # requirements of the library's test project, the library's target among them, and with it the
-  # Jamroot's check of Boost, so the job has Boost and a toolset, Clang 18, as the docs job does;
-  # and Node, whose npm cache the action keys on every oracle's lock file. The job is named by
-  # its matrix entry: Own lane (xstate, oracle, libs/xstate/test/oracle).
+  # A library's own lane. One that names no target, such as an oracle, compiles nothing, but its
+  # targets inherit the requirements of the library's test project, the library's target among
+  # them, and with it the Jamroot's check of Boost, so the job has Boost and a toolset, Clang 18,
+  # as the docs job does; and Node, whose npm cache the action keys on every oracle's lock file.
+  # One that names a target, such as wasi's served tests on wasip2, installs what that target's
+  # lane installs (its entry's wasm, as a lane's, selects the WASI steps, by their anchors), runs
+  # with its toolset and uploads its XML as a lane does, under its id: wasip2.wasi.test.http. The
+  # job is named by its entry: Own lane (xstate, oracle, libs/xstate/test/oracle), and
+  # Own lane (wasi, http, libs/wasi/test, wasip2).
   own-lanes:
-    name: Own lane
+    name: >-
+      ${{ matrix.platform
+      && format('Own lane ({0}, {1}, {2}, {3})', matrix.library, matrix.lane, matrix.directory,
+      matrix.platform)
+      || format('Own lane ({0}, {1}, {2})', matrix.library, matrix.lane, matrix.directory) }}
     needs: plan
     if: needs.plan.outputs.has-own-lanes == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os || 'ubuntu-24.04' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -195,17 +211,27 @@ jobs:
       - *make-room
       - *library
       - *boost
+      - *wasi-sdk
+      - *wasmtime
 
-      - uses: ./tools/ci/actions/node
+      - if: ${{ !matrix.platform }}
+        uses: ./tools/ci/actions/node
 
+      # It registers its toolset in .local/user-config.jam, prints its b2 command and runs it.
       - name: Own lane
+        id: lane
         env:
-          LANE: ${{ matrix.lane }}
-          DIRECTORY: ${{ matrix.directory }}
-        run: |
-          python3 tools/ci/matrix.py register clang-18
-          env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH \
-            b2 --user-config=.local/user-config.jam -a toolset=clang-18 "$DIRECTORY//$LANE"
+          LANE: ${{ toJSON(matrix) }}
+        run: python3 tools/ci/matrix.py own-lane "$LANE"
+
+      - name: Upload the lane's XML
+        if: always() && steps.lane.outputs.xml != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lane-${{ matrix.id }}
+          path: ${{ steps.lane.outputs.xml }}
+          if-no-files-found: error
+          retention-days: 7
 
   docs:
     name: Documentation
@@ -393,10 +419,14 @@ jobs:
           pattern: lane-*
           path: bin/lanes
 
+      # The lanes' XML and the own lanes', each artifact lane-<id>.
       - name: Report
         env:
           MATRIX: ${{ needs.plan.outputs.matrix }}
-        run: python3 tools/ci/matrix.py report --plan "$MATRIX" --lanes bin/lanes --out bin/report
+          OWN_LANES: ${{ needs.plan.outputs.own-lanes }}
+        run: |
+          python3 tools/ci/matrix.py report --plan "$MATRIX" --own-lanes "$OWN_LANES" \
+            --lanes bin/lanes --out bin/report
 
       - name: Upload the report
         if: always()
@@ -408,7 +438,7 @@ jobs:
           retention-days: 7
 
       # A lane whose job failed after b2 wrote its XML, which the report may read as whole; and an
-      # own lane, which writes no XML, whose job is its verdict: skipped only when the plan found
+      # own lane, whose job is its verdict when it writes no XML: skipped only when the plan found
       # none.
       - name: Every lane's job succeeded
         if: ${{ !cancelled() }}

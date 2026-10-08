@@ -5,18 +5,19 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, and
-only once per target; wasip2 builds without exceptions and wasip3 with them, and a native build
-without exceptions is the user's own request, which links the handler as wasip2 does; no variant
-is built without RTTI; an example is compared with its expected output, its standard input its
-.input file or nothing; every public header compiles alone, each call of webcpp.headers-alone
-taking the headers its globs match, with requirements and targets of its own, and a header two
-calls take or a glob that matches none refused; a compile-diagnostic test passes only on the
-error it states, and is skipped on a toolset that is not clang; `b2 declared-targets` lists what
-each library declares; a Boost.Test suite is built and run natively only, its framework always
-with exceptions; Boost.JSON's definitions link on every target; and every program sees C++20, the
-wasip2 one alone without exceptions. Each case builds a scratch superproject with the fixture
-library demo. Run with the names of some cases to run only those."""
+"""Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, and only
+once per target; wasip2 builds without exceptions and wasip3 with them, and a native build without
+exceptions is the user's own request, which links the handler as wasip2 does; no variant is built
+without RTTI; an example is compared with its expected output, its standard input its .input file or
+nothing; every public header compiles alone, each call of webcpp.headers-alone taking the headers
+its globs match, with requirements and targets of its own, and a header two calls take or a glob
+that matches none refused; a compile-diagnostic test passes only on the error it states, and is
+skipped on a toolset that is not clang; `b2 declared-targets` lists what each library declares; a
+lane of a library's own is listed once per target it runs on, which must be one its Jamfile
+declares, and what it names leaves the ordinary lanes; a Boost.Test suite is built and run natively
+only, its framework always with exceptions; Boost.JSON's definitions link on every target; and every
+program sees C++20, the wasip2 one alone without exceptions. Each case builds a scratch superproject
+with the fixture library demo. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -318,6 +319,72 @@ def test_a_wrong_declaration_is_refused(root):
         harness.expect(result, False, message)
         # It names the line of the Jamfile.
         assert 'libs/demo/test/Jamfile:' in result.stdout, result.stdout[-4000:]
+
+
+def test_a_lane_on_targets_is_listed_once_per_target(root):
+    # A lane that names targets is one line of `b2 declared-lanes` per target, which the CI runs
+    # as an own lane for that target; a lane that names none keeps its line of three words.
+    jamfile = root / 'libs/demo/test/Jamfile'
+    jamfile.write_text(jamfile.read_text()
+                       + 'webcpp.lane served : pass parses_json : wasip3 wasip2 ;\n'
+                       + 'webcpp.lane plain : fails ;\n')
+    result = harness.run_b2(root, '-d0', 'declared-lanes')
+    harness.expect(result, True)
+    assert result.stdout == ('demo plain libs/demo/test\n'
+                             'demo served libs/demo/test wasip2\n'
+                             'demo served libs/demo/test wasip3\n'), result.stdout
+
+
+def test_a_lane_runs_only_on_targets_its_jamfile_declares(root):
+    jamfile = root / 'libs/demo/test/Jamfile'
+    text = jamfile.read_text()
+    for lane, message in (
+        ('webcpp.lane served : pass : wasm ;\n',
+         'webcpp.lane served: wasm is not a target; the targets are native emscripten wasip2 '
+         'wasip3'),
+        ('webcpp.lane served : pass : wasip2 emscripten ;\n',
+         'webcpp.lane served in libs/demo/test/Jamfile: emscripten is not among the targets its '
+         'Jamfile declares, native wasip2 wasip3'),
+        # The lane's targets leave the ordinary lanes, which a target of another project would
+        # not: it is refused, by name.
+        ('webcpp.lane served : ../example//hello : wasip2 ;\n',
+         'webcpp.lane served in libs/demo/test/Jamfile: ../example//hello is not a target of its '
+         'own Jamfile'),
+    ):
+        jamfile.write_text(text + lane)
+        result = harness.run_b2(root, '-d0', 'declared-lanes')
+        harness.expect(result, False, message)
+        # It names the line of the Jamfile.
+        assert 'libs/demo/test/Jamfile:' in result.stdout, result.stdout[-4000:]
+    # A Jamfile without webcpp.targets builds its programs natively alone, and its lanes too.
+    harness.add_library(root, 'plain', PLAIN + 'webcpp.lane served : plain : wasip2 ;\n',
+                        {'plain.cpp': PLAIN_SOURCE})
+    jamfile.write_text(text)
+    result = harness.run_b2(root, '-d0', 'declared-lanes')
+    harness.expect(result, False, 'webcpp.lane served in libs/plain/test/Jamfile: wasip2 is not '
+                   'among the targets its Jamfile declares, native')
+
+
+def test_a_lanes_programs_leave_the_ordinary_lanes(root):
+    # What a lane names is explicit: the ordinary lanes, b2 on the test and example directories,
+    # no longer build it, and the lane does, on each target it names.
+    jamfile = root / 'libs/demo/test/Jamfile'
+    jamfile.write_text(jamfile.read_text()
+                       + 'webcpp.lane served : pass parses_json : native wasip2 ;\n')
+    lanes = harness.run_lanes(root, {
+        'native': ('-a', '--build-dir=bin/native', 'libs/demo/test', 'libs/demo/example'),
+        'wasip2': ('-a', '--build-dir=bin/wasip2', *WASIP2, 'libs/demo/test',
+                   'libs/demo/example'),
+        'native lane': ('-a', '--build-dir=bin/native-lane', 'libs/demo/test//served'),
+        'wasip2 lane': ('-a', '--build-dir=bin/wasip2-lane', *WASIP2, 'libs/demo/test//served'),
+    })
+    for name, result in lanes.items():
+        assert result.returncode == 0, (name, result.stdout[-4000:])
+    served = {'pass', 'parses_json'}
+    assert passed(lanes['native']) == NATIVE_DEMO - served, passed(lanes['native'])
+    assert passed(lanes['wasip2']) == WASM_DEMO - served, passed(lanes['wasip2'])
+    assert passed(lanes['native lane']) == served, passed(lanes['native lane'])
+    assert passed(lanes['wasip2 lane']) == served, passed(lanes['wasip2 lane'])
 
 
 def test_example_mismatch_fails_naming_the_program(root):
@@ -728,6 +795,9 @@ CASES = [
     test_emscripten_builds_only_what_declares_it,
     test_declared_targets_lists_pairs,
     test_a_wrong_declaration_is_refused,
+    test_a_lane_on_targets_is_listed_once_per_target,
+    test_a_lane_runs_only_on_targets_its_jamfile_declares,
+    test_a_lanes_programs_leave_the_ordinary_lanes,
     test_example_mismatch_fails_naming_the_program,
     test_example_reads_its_input,
     test_example_input_change_reruns,

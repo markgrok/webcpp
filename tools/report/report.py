@@ -29,9 +29,11 @@ example failed, a lane built nothing, or a lane that built something built none 
 examples of a library it lists (the CI puts in a lane only the libraries that declare its
 target), each named on the standard error; 2, each named and with nothing written, when an
 input cannot be read, when a lane is built with more than one toolset, when a lane named after
-a target (native, emscripten, wasip2, wasip3) is built for another, or when a lane named after no
-target is not named after the directory b2 built its toolset in (clang-darwin-21, gcc-15); 2
-also when the pages cannot be written.
+a target (native, emscripten, wasip2, wasip3) is built for another, when a lane named after no
+target is not named after the directory b2 built its toolset in (clang-darwin-21, gcc-15), or
+when a library's own lane on a target, named <target>.<library>.<rest> (wasip2.wasi.test.http), is
+built for another target or lists the tests of another library; 2 also when the pages cannot be
+written.
 """
 
 from __future__ import annotations

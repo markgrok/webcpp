@@ -12,12 +12,14 @@ empty lane failed by name, and so a library a lane built nothing of, two lanes m
 matrix, input it cannot read or report truthfully refused before anything is written (a lane whose
 name says another target than its toolset builds for, among them), a failure outside every test,
 output that b2's XML cannot hold, and a served component's test that passes and one whose transcript
-differs, a run failure. One case uses lanes.py and pages.py alone; one checks that no sample names
-the machine's temporary directory; a last one records every sample afresh, untrimmed, and checks
-that the report reads it as it reads the committed one. Every page written is checked to be
-self-contained, to link only to the report's own pages, to the site it is served in (its index and
-each library's page) and to github.com/webcpporg, and to name its lane on every lane cell, which a
-phone shows as a chip. Run with the names of some cases to run only those."""
+differs, a run failure, and a library's own lane on a target, named after the target and the
+library, which its column and its failures show and which it must hold true. One case uses lanes.py
+and pages.py alone; one checks that no sample names the machine's temporary directory; a last one
+records every sample afresh, untrimmed, and checks that the report reads it as it reads the
+committed one. Every page written is checked to be self-contained, to link only to the report's own
+pages, to the site it is served in (its index and each library's page) and to github.com/webcpporg,
+and to name its lane on every lane cell, which a phone shows as a chip. Run with the names of some
+cases to run only those."""
 
 from __future__ import annotations
 
@@ -555,6 +557,55 @@ def test_a_lane_is_what_its_name_says(root: Path) -> None:
         outcome(result))
 
 
+def test_an_own_lane_is_named_after_its_target_and_library(root: Path) -> None:
+    # An own lane on a target is named <target>.<library>.<directory>.<lane>, its directory under
+    # libs/<library>/ with its slashes as dots: never a lane's name, so its column stands beside
+    # the target's own. It is counted as any lane is: its tests appear in the matrix under its
+    # name, and its failure fails the report.
+    own = 'wasip2.component_demo.test.served'
+    out = root / 'report'
+    result = report(out, ('wasip2', sample('wasip2-pass')), (own, sample('wasip2-served')))
+    assert result.returncode == 0, outcome(result)
+    index = matrix(out / 'index.html')
+    assert index.names()[1:] == ['wasip2', own], index.names()
+    assert index.verdict('component_demo', own) == 'pass'
+    assert index.verdict('component_demo', 'wasip2') == 'n/a'
+    assert index.verdict('demo', own) == 'n/a'
+    assert matrix(out / 'component_demo.html').verdict('answers', own) == 'pass'
+    # Its header may wrap after each dot, as a lane's wraps at a hyphen.
+    assert 'wasip2.<wbr>component_demo.<wbr>test.<wbr>served' in (out / 'index.html').read_text()
+    check_pages(out)
+    result = report(root / 'fails', (own, sample('wasip2-served-failure')))
+    assert result.returncode == 1, outcome(result)
+    assert result.stderr.splitlines() == [f'report: {own}: component_demo/answers: run'], (
+        outcome(result))
+    # The target its name begins with is the one its toolset builds for, and the library it
+    # names is the only one whose tests it lists.
+    served = sample('wasip2-served')
+    refused = {
+        'wasip3.component_demo.test.served': (
+            served, 'built with clang-darwin-wasip2, which builds for wasip2'),
+        'native.component_demo.test.served': (
+            served, 'built with clang-darwin-wasip2, which builds for wasip2'),
+        'wasip2.demo.test.served': (
+            served, 'an own lane of demo, and lists the tests of component_demo'),
+        'wasip2.demo.example.served': (
+            sample('wasip2-skipped-library'), 'an own lane of demo, and lists the tests of '
+            'nativeonly'),
+    }
+    for name, (path, named) in refused.items():
+        out = root / f'out-{name}'
+        result = report(out, (name, path))
+        assert result.returncode == 2, (name, outcome(result))
+        assert f'the lane {name} is {named}' in result.stderr, (name, outcome(result))
+        assert not out.exists(), name
+    # A name whose first word is no target is a toolset directory's, checked as before.
+    result = report(root / 'out-other', ('wasm.component_demo.test.served', served))
+    assert result.returncode == 2, outcome(result)
+    assert 'name it clang-darwin-wasip2, after the directory b2 builds its toolset in' in (
+        result.stderr), outcome(result)
+
+
 def test_a_failure_outside_every_test_fails_the_lane(root: Path) -> None:
     # The handler of tools/throw_exception.cpp, which pass links on wasip2, does not compile: the
     # action is no test's, and pass is compiled but never linked nor run.
@@ -723,6 +774,7 @@ CASES = [
     test_nine_lanes_fit_the_content_width_at_desktop,
     test_unreadable_xml_exits_2,
     test_a_lane_is_what_its_name_says,
+    test_an_own_lane_is_named_after_its_target_and_library,
     test_a_failure_outside_every_test_fails_the_lane,
     test_output_cdata_cannot_hold_is_shown,
     test_served_test_passes_and_fails_as_a_run,

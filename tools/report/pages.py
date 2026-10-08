@@ -27,7 +27,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import quote
 
-from lanes import EMPTY, KINDS, PASS, UNBUILT, Action, Lane, Row, problems, step, worst
+from lanes import (EMPTY, KINDS, OWN_LANE, PASS, UNBUILT, Action, Lane, Row, problems, step,
+                   worst)
 
 OWN_SITE = 'https://github.com/webcpporg/'
 
@@ -305,8 +306,13 @@ def lane_header(lane: Lane) -> str:
     toolset = ''
     if lane.toolset is not None and lane.toolset.lower() != lane.name.lower():
         toolset = f'<span class="toolset">{e(lane.toolset)}</span>'
+    # An own lane's name, wasip2.wasi.test.http, may wrap after each dot, as a toolset's does at
+    # a hyphen; a version's dot, msvc-14.3, stays whole.
+    shown = e(lane.name)
+    if OWN_LANE.fullmatch(lane.name):
+        shown = '.<wbr>'.join(e(word) for word in lane.name.split('.'))
     return (f'<th scope="col" role="columnheader" class="{classes}"{titled} '
-            f'data-lane="{e(lane.name)}">{e(lane.name)}{toolset}</th>')
+            f'data-lane="{e(lane.name)}">{shown}{toolset}</th>')
 
 
 def legend() -> list[str]:

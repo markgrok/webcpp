@@ -13,7 +13,9 @@ command does, so <directory> in the file is that root. A test is found by --dump
 lists it whether or not the lane built it; an example by the <name>.output that webcpp.example
 compares. A lane is one toolset: the directory b2 names after it, in which every program of the
 lane is built. A lane is named after the target that toolset builds for (native, emscripten,
-wasip2, wasip3), or after that directory (clang-darwin-21, gcc-15).
+wasip2, wasip3), or after that directory (clang-darwin-21, gcc-15). A library's own lane on a
+target, which webcpp.lane declares, is named <target>.<library>.<rest> (wasip2.wasi.test.http):
+its toolset builds for that target, and it lists the tests of that library alone.
 
 The paths in a file are those of the machine that ran the lane, a CI runner as often as not, and
 are never opened: they are matched as text, a backslash read as a slash.
@@ -68,6 +70,11 @@ CDATA = re.compile(r'(<([A-Za-z][\w.-]*)[^<>]*>)<!\[CDATA\[(.*?)\]\]>(</\2>)', r
 NOT_XML = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f' + chr(0xFFFE) + chr(0xFFFF) + ']')
 
 # A toolset the command line names: "toolset=clang-wasip2", as b2 records its arguments.
+
+# The name of an own lane on a target: <target>.<library>.<rest>, the rest its directory under
+# libs/<library>/ and its name (tools/ci/matrix.py). No toolset directory begins with a target and
+# a dot, so the name is never a lane's.
+OWN_LANE = re.compile(r'(native|emscripten|wasip2|wasip3)\.([a-z][a-z0-9_]*)\.(.+)')
 COMMAND_TOOLSET = re.compile(r'"-{0,2}toolset=([^"]*)"')
 
 
@@ -354,7 +361,13 @@ def read_lane(name: str, path: Path) -> Lane:
         raise InputError(f'{path}: the lane {name} is built with {", ".join(sorted(toolsets))}; '
                          'a lane is one toolset')
     lane.toolset = next(iter(toolsets), None)
-    named_target = name.lower()
+    own = OWN_LANE.fullmatch(name)
+    named_target = own.group(1) if own else name.lower()
+    if own:
+        others = sorted({row.library for row in lane.rows.values()} - {own.group(2)})
+        if others:
+            raise InputError(f'{path}: the lane {name} is an own lane of {own.group(2)}, and lists '
+                             f'the tests of {", ".join(others)}')
     if lane.toolset is not None and named_target in TARGETS:
         built_for = target_of(lane.toolset)
         if built_for != named_target:

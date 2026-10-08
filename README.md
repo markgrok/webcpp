@@ -115,6 +115,13 @@ variant without them, and none without RTTI. A program that a library does
 not declare for a target is skipped there.
 `b2 declared-targets -d0` lists the targets each library declares.
 
+A library may also run some of its programs in lanes of its own, which
+`test` and `example` leave out: the HTTP components wasmtime serves, for
+one. `b2 declared-lanes -d0` lists them, each with the target it runs on,
+and one runs as
+
+    b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test//<lane>
+
 ## Documentation
 
     b2 doc
