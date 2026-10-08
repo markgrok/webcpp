@@ -9,8 +9,11 @@
 
 Usage: libraries.py --root <superproject> --output <libraries.adoc>
 
-A library is a directory of <root>/libs with a build.jam, as the Jamroot registers it, and
-describes itself in meta/libraries.json, Boost's file: an object, or a list of them, with
+A library is a directory of <root>/libs with a build.jam, as the Jamroot registers it. It has a
+page, which its doc/Jamfile declares, `webcpp.doc <library> : <page>.adoc ;` outside a comment,
+and which is there beside it: a doc Jamfile that declares the reference alone, or nothing, would
+have the index link a page that the build never makes. And it describes itself in
+meta/libraries.json, Boost's file: an object, or a list of them, with
 Boost's fields and webcpp's "port-of", which is null for a library of webcpp's own and otherwise
 names the original it ports: {"name", "language", "version", "url", "licence"}. A row of the
 table is an object: the library's name, linked to its page, {library-pages}<library>/{library-page},
@@ -45,6 +48,10 @@ ESCAPES = {'^': '&circ;', '_': '&lowbar;', '*': '&ast;', '`': '&grave;', '#': '&
            "'": '&apos;', '/': '&sol;'}
 
 URL = re.compile(r'https://[^\s\[\]]+')
+
+# A declaration of a library's page in its doc/Jamfile, once its comments are gone:
+# `webcpp.doc <library> : <page>.adoc ;`, its words separated by any white space.
+PAGE = re.compile(r'(?<![\w.-])webcpp\.doc\s+(\S+)\s+:\s+(\S+\.adoc)\s+;')
 
 # An apostrophe in a word, between a letter or a digit and a letter: the one Asciidoctor's
 # replacements make curly in the page's prose, ([[:alnum:]])'(?=[[:alpha:]]).
@@ -96,6 +103,25 @@ def ports(entry: dict[str, Any], origin: Path) -> str:
             f'{escaped(fields["language"])} ({escaped(fields["licence"])})')
 
 
+def page_of(library: Path) -> Path:
+    """The page library's doc/Jamfile declares, which must be there."""
+    jamfile = library / 'doc/Jamfile'
+    if not jamfile.is_file():
+        raise Invalid(f'{jamfile}: there is no such file; every library of libs/ has a page, '
+                      'which the index links to')
+    # A Jam comment runs from # to the end of its line.
+    text = re.sub(r'#[^\n]*', '', jamfile.read_text(encoding='utf-8'))
+    pages = [page for name, page in PAGE.findall(text) if name == library.name]
+    if not pages:
+        raise Invalid(f'{jamfile}: declares no page, webcpp.doc {library.name} : <page>.adoc ;, '
+                      'and every library of libs/ has a page, which the index links to')
+    page = library / 'doc' / pages[0]
+    if not page.is_file():
+        raise Invalid(f'{page}: there is no such file; libs/{library.name}/doc/Jamfile declares it '
+                      f'the page of {library.name}, which the index links to')
+    return page
+
+
 def rows(root: Path) -> list[str]:
     """The rows of the table, one per entry of each library, by the library's directory."""
     found = []
@@ -105,9 +131,7 @@ def rows(root: Path) -> list[str]:
         if not origin.is_file():
             raise Invalid(f'{origin}: there is no such file; every library of libs/ describes '
                           'itself in meta/libraries.json')
-        if not (library / 'doc/Jamfile').is_file():
-            raise Invalid(f'{library / "doc/Jamfile"}: there is no such file; every library of '
-                          'libs/ has a page, which the index links to')
+        page_of(library)
         try:
             described = json.loads(origin.read_text(encoding='utf-8'))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:

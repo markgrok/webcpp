@@ -10,7 +10,8 @@ MrDocs; a public function without a Doc Comment, a template parameter without @t
 detail symbol without a brief each fail it, naming the symbol and the file; doc-check and the
 check of the rendered page run on it; MrDocs is found where the build looks for it, or named when
 it is not there; `b2 doc` builds the index page from every library's meta/libraries.json,
-linking each page in the tree, or, with -sWEBCPP_INDEX=site, where the site serves it; a page
+linking each page in the tree, or, with -sWEBCPP_INDEX=site, where the site serves it, and fails
+on a library whose doc Jamfile declares no page, or one that is not there; a page
 shows the counts its build computes, of the programs b2 recorded and of the twins of the fixture
 library oracle_demo, whose divergent twin's output the page must show; and a page's link into
 another library's page, in either layout, is checked against that page, built first; the
@@ -106,29 +107,38 @@ def add_component_demo(root: Path) -> None:
     harness.link_wasi_tools(root)
 
 
-def add_third(root: Path) -> None:
-    """Places a third library, third, with a page of its own whose one section is #only-third and
-    a header its tests compile alone, in the scratch superproject root, a git repository of its
-    own too."""
-    third = root / 'libs/third'
-    (third / 'include/webcpp').mkdir(parents=True)
-    (third / 'doc').mkdir()
-    (third / 'build.jam').write_text('project /webcpp/third ;\n\n'
-                                     'alias third : : : : <include>include ;\n')
-    (third / 'README.md').write_text('# third\n')
-    (third / 'test').mkdir()
-    (third / 'test/Jamfile').write_text('import webcpp ;\n\n'
-                                        'webcpp.headers-alone third : ../include ;\n')
-    (third / 'include/webcpp/third.hpp').write_text(
-        '#ifndef WEBCPP_THIRD_HPP\n#define WEBCPP_THIRD_HPP\n\nnamespace webcpp::third {\n\n'
+def add_paged(root: Path, name: str) -> Path:
+    """Places a library name, with a page of its own whose one section is #only-<name> and a
+    header its tests compile alone, in the scratch superproject root, a git repository of its
+    own too, and returns its directory."""
+    library = root / 'libs' / name
+    guard = f'WEBCPP_{name.upper()}_HPP'
+    (library / 'include/webcpp').mkdir(parents=True)
+    (library / 'doc').mkdir()
+    (library / 'build.jam').write_text(f'project /webcpp/{name} ;\n\n'
+                                       f'alias {name} : : : : <include>include ;\n')
+    (library / 'README.md').write_text(f'# {name}\n')
+    (library / 'test').mkdir()
+    (library / 'test/Jamfile').write_text('import webcpp ;\n\n'
+                                          f'webcpp.headers-alone {name} : ../include ;\n')
+    (library / f'include/webcpp/{name}.hpp').write_text(
+        f'#ifndef {guard}\n#define {guard}\n\nnamespace webcpp::{name} {{\n\n'
         '/** Returns three.\n\n    @return 3.\n*/\nconstexpr int three() noexcept {\n'
-        '    return 3;\n}\n\n}  // namespace webcpp::third\n\n#endif\n')
-    (third / 'doc/Jamfile').write_text('import webcpp ;\n\nwebcpp.doc third : third.adoc ;\n'
-                                       'webcpp.reference third ;\n')
-    (third / 'doc/third.adoc').write_text('= third\n\n[#only-third]\n== Only here\n\n'
-                                          'third returns three.\n\n[#reference]\n'
-                                          '== Reference\n\ninclude::{reference}[leveloffset=+1]\n')
-    subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=third, check=True)
+        f'    return 3;\n}}\n\n}}  // namespace webcpp::{name}\n\n#endif\n')
+    (library / 'doc/Jamfile').write_text(f'import webcpp ;\n\nwebcpp.doc {name} : {name}.adoc ;\n'
+                                         f'webcpp.reference {name} ;\n')
+    (library / f'doc/{name}.adoc').write_text(f'= {name}\n\n[#only-{name}]\n== Only here\n\n'
+                                              f'{name} returns three.\n\n[#reference]\n'
+                                              '== Reference\n\ninclude::{reference}'
+                                              '[leveloffset=+1]\n')
+    subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=library, check=True)
+    return library
+
+
+def add_third(root: Path) -> None:
+    """Places a third library, third, with a page of its own whose one section is #only-third, in
+    the scratch superproject root."""
+    add_paged(root, 'third')
 
 
 def page_text(root: Path, page: str = PAGE) -> str:
@@ -614,11 +624,8 @@ def test_counts_warn_and_fail_through_the_build(root):
 def test_index_lists_every_library(root):
     prepare(root)
     # A second library, a port, with a page of its own to link to.
-    other = (root / 'libs/other').resolve()
-    (other / 'meta').mkdir(parents=True)
-    (other / 'doc').mkdir()
-    (other / 'build.jam').write_text('project /webcpp/other ;\n')
-    (other / 'doc/Jamfile').write_text('')
+    other = add_paged(root, 'other').resolve()
+    (other / 'meta').mkdir()
     (other / 'meta/libraries.json').write_text(
         '{\n'
         '    "key": "other",\n'
@@ -636,6 +643,26 @@ def test_index_lists_every_library(root):
         '        "licence": "MIT"\n'
         '    }\n'
         '}\n')
+    # The index links a library's page only when there is one: a doc Jamfile that declares no
+    # page, empty or with the reference alone, fails the index, naming it, as does a page it
+    # declares that is not there.
+    declared = (other / 'doc/Jamfile').read_text()
+    no_page = (f'{other}/doc/Jamfile: declares no page, webcpp.doc other : <page>.adoc ;, and '
+               'every library of libs/ has a page, which the index links to')
+    for jamfile in ('', 'import webcpp ;\n\nwebcpp.reference other ;\n',
+                    'import webcpp ;\n\n# webcpp.doc other : other.adoc ;\n'
+                    'webcpp.reference other ;\n'):
+        (other / 'doc/Jamfile').write_text(jamfile)
+        harness.expect(harness.run_b2(root, 'doc'), False, no_page)
+    (other / 'doc/Jamfile').write_text(declared)
+    (other / 'doc/other.adoc').rename(other / 'doc/moved.adoc')
+    listed = subprocess.run([sys.executable, str(root / 'tools/doc/libraries.py'),
+                             '--root', str(root), '--output', str(root / 'libraries.adoc')],
+                            capture_output=True, text=True, check=False)
+    assert listed.returncode == 1, (listed.returncode, listed.stdout, listed.stderr)
+    assert (f'{other}/doc/other.adoc: there is no such file; libs/other/doc/Jamfile declares it '
+            'the page of other, which the index links to') in listed.stdout, listed.stdout
+    (other / 'doc/moved.adoc').rename(other / 'doc/other.adoc')
     result = harness.run_b2(root, 'doc')
     harness.expect(result, True)
     html = (root / 'doc/html/index.html').read_text()
@@ -656,6 +683,7 @@ def test_index_lists_every_library(root):
     assert '<a href="https://github.com/webcpporg/original">original.js 1.2.3</a>' in html, html
     # And each library's page, which the index links to, is built with it.
     assert (root / PAGE).is_file()
+    assert (other / 'doc/html/index.html').is_file()
     # For the site, where each library's page is libs/<name>/ beside the index, the same index
     # links there; tools/ci/assemble.py lays the site out so.
     result = harness.run_b2(root, 'doc', '-sWEBCPP_INDEX=site')
