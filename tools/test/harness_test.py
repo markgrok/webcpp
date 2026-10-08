@@ -7,7 +7,9 @@
 
 """Checks harness.py: a b2 run that outlasts its timeout raises subprocess.TimeoutExpired, and
 leaves none of its actions running. b2 gives each action a process group of its own, so killing
-b2's group alone would leave them running. Run with the names of some cases to run only those."""
+b2's group alone would leave them running. Lanes run at once start on a bin that exists, and a
+lane that fails stops the others, with what they started. Run with the names of some cases to run
+only those."""
 
 from __future__ import annotations
 
@@ -95,8 +97,64 @@ def test_a_timeout_stops_every_action(root):
         raise AssertionError(f'the action {pid} outlived the timeout of its b2 run')
 
 
+# A stand-in for b2, first on PATH: it fails when the directory it runs in has no bin, as two b2
+# runs at once may when neither finds bin and both make it; with --fail it fails after a moment;
+# with --sleep <file> it starts a child, as an action, writes the child's pid to the file, and
+# waits far longer than any case; otherwise it says it is done.
+FAKE_B2 = """#!{python}
+import os
+import subprocess
+import sys
+import time
+
+arguments = sys.argv[1:]
+if not os.path.isdir('bin'):
+    print('there is no bin')
+    sys.exit(9)
+if '--fail' in arguments:
+    time.sleep(1)
+    print('failed')
+    sys.exit(3)
+if '--sleep' in arguments:
+    child = subprocess.Popen(['sleep', '600'])
+    with open(arguments[arguments.index('--sleep') + 1], 'w') as pid:
+        pid.write(str(child.pid))
+    time.sleep(600)
+print('done')
+"""
+
+
+def test_lanes_start_on_bin_and_a_failure_stops_the_others(root):
+    tools = root / 'fake tools'
+    tools.mkdir()
+    (tools / 'b2').write_text(FAKE_B2.format(python=sys.executable))
+    (tools / 'b2').chmod(0o755)
+    path = {'PATH': f'{tools}{os.pathsep}{os.environ["PATH"]}'}
+    # A scratch superproject has no bin: run_lanes makes it before any lane starts.
+    assert not (root / 'bin').exists()
+    ended = harness.run_lanes(root, {'one': ('--ok',), 'two': ('--ok',)}, env_extra=path)
+    assert {name: (result.returncode, result.stdout) for name, result in ended.items()} == {
+        'one': (0, 'done\n'), 'two': (0, 'done\n')}, ended
+    # A lane that fails stops the one still running, the child it started included, at once:
+    # the failure comes first, and the case does not wait for the sleeper's ten minutes.
+    pid_file = root / 'child.pid'
+    began = time.monotonic()
+    ended = harness.run_lanes(root, {'sleeps': ('--sleep', str(pid_file)), 'fails': ('--fail',)},
+                              env_extra=path, timeout=120)
+    assert time.monotonic() - began < 60, time.monotonic() - began
+    assert list(ended) == ['fails', 'sleeps'], ended
+    assert ended['fails'].returncode == 3 and ended['fails'].stdout == 'failed\n', ended
+    assert ended['sleeps'].returncode != 0, ended
+    assert pid_file.is_file(), 'the sleeping lane did not start its child'
+    child = int(pid_file.read_text())
+    if alive(child):
+        os.kill(child, signal.SIGKILL)
+        raise AssertionError(f'the child {child} of the stopped lane outlived it')
+
+
 CASES = [
     test_a_timeout_stops_every_action,
+    test_lanes_start_on_bin_and_a_failure_stops_the_others,
 ]
 
 

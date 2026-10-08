@@ -360,43 +360,6 @@ def left(root, seconds=5):
         time.sleep(0.1)
 
 
-def start_b2(root, *arguments):
-    """b2 started in root, in a session of its own, as harness.run_b2 runs it, without waiting."""
-    environment = {name: value for name, value in os.environ.items()
-                   if name not in harness.COMPILER_PATHS}
-    return subprocess.Popen(['b2', f'--user-config={harness.user_config(root)}', *arguments],
-                            cwd=root, env=environment, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, errors='replace',
-                            start_new_session=True)
-
-
-def run_lanes(root, lanes):
-    """Runs one b2 per lane of lanes, {name: its arguments}, at once, and returns what each that
-    ended gave, by name, in order, as a CompletedProcess.
-
-    root/bin is made first. Each b2 makes the directories of its build directory as it opens the
-    log of its configuration checks, and b2 makes a directory by asking whether it is there and
-    then making it (path.makedirs): two that start at once on a root without bin can both find
-    it missing, and the one whose MAKEDIR comes second fails with "Could not create directory
-    'bin'". A lane that fails stops the others, session and all, so that none still runs, and
-    writes into root, when the case asserts and its root is removed.
-    """
-    (root / 'bin').mkdir(exist_ok=True)
-    started = {name: start_b2(root, *arguments) for name, arguments in lanes.items()}
-    ended = {}
-    try:
-        for name, process in started.items():
-            output, _ = process.communicate(timeout=harness.TIMEOUT)
-            ended[name] = subprocess.CompletedProcess(process.args, process.returncode, output)
-            if process.returncode != 0:
-                break
-    finally:
-        for process in started.values():
-            if process.poll() is None:
-                harness.stop_session(process)
-    return ended
-
-
 def built_in(root, name, version):
     """The files called name that a build for the WASI version, 2 or 3, wrote under root/bin."""
     return [path for path in (root / 'bin').rglob(name) if f'wasip{version}' in str(path)]
@@ -413,9 +376,10 @@ def test_served_component_green_on_wasip2_and_wasip3(root):
     wasmtime = linked_wasmtime(root)
     # Two lanes at once, each in a build directory of its own: two wasmtimes serve at the same
     # time, each on a port of its own.
-    lanes = run_lanes(root, {version: ('-a', '-d+2', f'--build-dir=bin/lane-wasip{version}',
-                                       f'toolset=clang-wasip{version}', wasmtime, TEST)
-                             for version in (2, 3)})
+    lanes = harness.run_lanes(root, {
+        version: ('-a', '-d+2', f'--build-dir=bin/lane-wasip{version}',
+                  f'toolset=clang-wasip{version}', wasmtime, TEST)
+        for version in (2, 3)})
     for version, result in lanes.items():
         output = result.stdout
         assert result.returncode == 0, (version, output[-4000:])
@@ -612,9 +576,10 @@ def test_a_script_builds_a_served_component(root):
     harness.link_wasi_tools(root)
     by_hand(root)
     wasmtime = linked_wasmtime(root)
-    lanes = run_lanes(root, {version: ('-a', f'--build-dir=bin/lane-wasip{version}',
-                                       f'toolset=clang-wasip{version}', wasmtime, TEST)
-                             for version in (2, 3)})
+    lanes = harness.run_lanes(root, {
+        version: ('-a', f'--build-dir=bin/lane-wasip{version}', f'toolset=clang-wasip{version}',
+                  wasmtime, TEST)
+        for version in (2, 3)})
     for version, result in lanes.items():
         output = result.stdout
         assert result.returncode == 0, (version, output[-4000:])
@@ -689,7 +654,7 @@ def test_an_interrupted_b2_leaves_no_wasmtime(root):
     slow.write_text(SLOW_WASMTIME.format(python=sys.executable, real=shutil.which('wasmtime'),
                                          mark=str(mark)))
     slow.chmod(0o755)
-    process = start_b2(root, '-a', WASIP2, f'-sWASMTIME={slow}', f'{TEST}//answers')
+    process = harness.start_b2(root, '-a', WASIP2, f'-sWASMTIME={slow}', f'{TEST}//answers')
     deadline = time.monotonic() + harness.TIMEOUT
     while not mark.exists() or not mark.read_text():
         assert process.poll() is None, process.communicate()[0][-4000:]

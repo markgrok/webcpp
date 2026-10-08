@@ -22,8 +22,11 @@ import signal
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
+import threading
+import time
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from pathlib import Path
+from typing import TypeVar
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / 'tools/test/fixtures'
@@ -83,6 +86,70 @@ def run_b2(root: Path, *args: str, env_extra: dict | None = None, stdin: int | N
             stop_session(process)
             raise
     return subprocess.CompletedProcess(command, process.returncode, output)
+
+
+# What names a lane of run_lanes: its version, its name.
+Lane = TypeVar('Lane', bound=Hashable)
+
+
+def start_b2(root: Path, *args: str, env_extra: dict | None = None) -> subprocess.Popen:
+    """b2 started in root, in a session of its own, as run_b2 starts it, without waiting;
+    env_extra is run_b2's."""
+    env = {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
+    for name, value in (env_extra or {}).items():
+        if value is None:
+            env.pop(name, None)
+        else:
+            env[name] = value
+    return subprocess.Popen(['b2', f'--user-config={user_config(root)}', *args], cwd=root,
+                            env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, errors='replace', start_new_session=True)
+
+
+def run_lanes(root: Path, lanes: Mapping[Lane, Sequence[str]], env_extra: dict | None = None,
+              timeout: float = TIMEOUT) -> dict[Lane, subprocess.CompletedProcess]:
+    """Runs one b2 per lane of lanes, {name: its arguments}, at once, and returns what each gave,
+    by name, in the order they ended.
+
+    root/bin is made first. Each b2 makes the directories of its build directory as it opens the
+    log of its configuration checks, and b2 makes a directory by asking whether it is there and
+    then making it (path.makedirs): two that start at once on a root without bin can both find
+    it missing, and the one whose MAKEDIR comes second fails with "Could not create directory
+    'bin'". A lane that fails stops the others at once, sessions and all (stop_session), so that
+    none still runs, and writes into root, when the case asserts and its root is removed; each
+    stopped lane ends after the one that failed. A run that outlasts timeout stops every lane
+    and raises subprocess.TimeoutExpired.
+    """
+    (root / 'bin').mkdir(exist_ok=True)
+    started = {name: start_b2(root, *arguments, env_extra=env_extra)
+               for name, arguments in lanes.items()}
+    ended: dict[Lane, subprocess.CompletedProcess] = {}
+    failed = threading.Event()
+
+    def collect(name: Lane, process: subprocess.Popen) -> None:
+        output, _ = process.communicate()
+        ended[name] = subprocess.CompletedProcess(process.args, process.returncode, output)
+        if process.returncode != 0:
+            failed.set()
+
+    threads = [threading.Thread(target=collect, args=item, daemon=True)
+               for item in started.items()]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + timeout
+    try:
+        while any(thread.is_alive() for thread in threads):
+            if failed.wait(0.1):
+                break
+            if time.monotonic() > deadline:
+                raise subprocess.TimeoutExpired([str(lane) for lane in lanes], timeout)
+    finally:
+        for process in started.values():
+            if process.poll() is None:
+                stop_session(process)
+        for thread in threads:
+            thread.join()
+    return ended
 
 
 def stop_session(process: subprocess.Popen) -> None:

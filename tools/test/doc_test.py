@@ -345,29 +345,16 @@ def test_doc_builds_at_once_share_the_packages(root):
     # the packages again, as -a does, and two that install them at the same time: none fails,
     # and the install is made once for a lockfile, then only pointed at.
     prepare(root)
-    environment = {name: value for name, value in os.environ.items()
-                   if name not in harness.COMPILER_PATHS}
-
-    def start(*arguments):
-        return subprocess.Popen(['b2', f'--user-config={harness.user_config(root)}', *arguments],
-                                cwd=root, env=environment, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, errors='replace',
-                                start_new_session=True)
-
-    (root / 'bin').mkdir()
+    install = '/webcpp/doc-tools//node-modules'
     for round in range(3):
-        install = '/webcpp/doc-tools//node-modules'
-        runs = [start('-a', f'--build-dir=bin/page-{round}', 'libs/demo/doc'),
-                start('-a', f'--build-dir=bin/install-{round}-a', install),
-                start('-a', f'--build-dir=bin/install-{round}-b', install)]
-        try:
-            outputs = [run.communicate(timeout=harness.TIMEOUT)[0] for run in runs]
-        finally:
-            for run in runs:
-                if run.poll() is None:
-                    harness.stop_session(run)
-        for run, output in zip(runs, outputs):
-            assert run.returncode == 0, (round, run.args, output[-4000:])
+        ended = harness.run_lanes(root, {
+            'page': ('-a', f'--build-dir=bin/page-{round}', 'libs/demo/doc'),
+            'install a': ('-a', f'--build-dir=bin/install-{round}-a', install),
+            'install b': ('-a', f'--build-dir=bin/install-{round}-b', install),
+        })
+        for name, result in ended.items():
+            assert result.returncode == 0, (round, name, result.stdout[-4000:])
+        assert len(ended) == 3, ended
     assert (root / PAGE).is_file()
     installs = sorted((root / 'tools/doc/.node-modules').iterdir())
     assert len(installs) == 1, installs
