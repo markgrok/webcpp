@@ -6,12 +6,16 @@
 #
 # The toolsets of the WASI targets: b2's clang, registered against wasi-sdk
 # 34 under the versions wasip2 and wasip3, as a user-config.jam declares them,
-# where $(wasi-sdk) is wasi-sdk's directory, set before them with
-# `local wasi-sdk = /path/to/wasi-sdk ;`. Each is the region between its
-# tag:: and end:: lines. tools/ci/matrix.py register writes a lane's region
-# into the lane's user-config.jam, with the directory where
-# tools/ci/actions/wasi-sdk installs wasi-sdk in place of $(wasi-sdk), and
-# the documentation shows the regions from here.
+# where $(wasi-sdk) is wasi-sdk's directory, which the region wasi-sdk sets
+# before them. Each is the region between its tag:: and end:: lines.
+# tools/ci/matrix.py register writes a lane's region into the lane's
+# user-config.jam, with the directory where tools/ci/actions/wasi-sdk
+# installs wasi-sdk in place of $(wasi-sdk), and the documentation shows the
+# regions from here. No build loads this file.
+
+# tag::wasi-sdk[]
+local wasi-sdk = /path/to/wasi-sdk ;
+# end::wasi-sdk[]
 
 # tag::wasip2[]
 using clang : wasip2 : $(wasi-sdk)/bin/clang++
