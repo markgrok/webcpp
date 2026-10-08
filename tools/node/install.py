@@ -56,7 +56,7 @@ import stat
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -129,7 +129,7 @@ def acquired(fd: int, system: Flock | Locking) -> Callable[[], None]:
 
 
 @contextmanager
-def held(path: Path, system: object) -> Iterator[None]:
+def held(path: Path, system: object) -> Generator[None, None, None]:
     """Holds an exclusive lock on the file path, made if need be, with system, a module such as
     primitive() returns."""
     if not isinstance(system, (Flock, Locking)):
