@@ -165,14 +165,17 @@ def test_npm_ci_runs_again_only_when_the_lockfile_changes(root):
     harness.expect(result, True)
     assert NPM_CI.search(result.stdout), result.stdout[-4000:]
     assert sorted((oracle / '.node-modules').iterdir()) == installs, installs
-    # A package.json or lockfile whose content changed installs anew, and the old install goes.
+    # A package.json or lockfile whose content changed installs anew, and the old install stays
+    # as the previous one, for a build that may still read it.
     harness.replace(oracle / 'package.json', 'with no dependency.', 'with no dependency at all.')
     os.utime(lockfile, (later + 10, later + 10))
     result = harness.run_b2(root, LANE)
     harness.expect(result, True)
-    now = sorted((oracle / '.node-modules').iterdir())
-    assert len(now) == 2 and now != installs, (installs, now)
-    assert (oracle / 'node_modules').resolve().parent == now[1].resolve(), now
+    [lock, old] = installs
+    previous = oracle / '.node-modules/.previous'
+    assert previous.read_text() == f'{old.name}\n', previous.read_text()
+    [new] = sorted(set((oracle / '.node-modules').iterdir()) - {lock, old, previous})
+    assert (oracle / 'node_modules').resolve().parent == new.resolve(), new
 
 
 # A stand-in for npm, first on PATH, that does what npm ci does to the directory it runs in,

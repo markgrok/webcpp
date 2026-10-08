@@ -21,33 +21,208 @@ as it finds any node_modules beside a script, made under another name and rename
 link, so that a reader sees the old install or the new one, never none. A run whose install is
 there already only checks the link, so `b2 -a` reinstalls nothing.
 
-The whole run holds an exclusive lock on .node-modules/.lock (fcntl.flock, which the system
-releases when the process ends, however it ends): runs at once wait for one another, and the
-second finds the install the first made. Once the link names the current install, everything
-else under .node-modules/ goes, the lock aside: the install of a lockfile that has changed since,
-the temporary directory of an npm ci that was killed, a node_modules that npm ci made in
-<directory> itself before, each renamed aside first, so that a prune killed half-way leaves a
-name the next run prunes again, and then removed.
+The whole run holds an exclusive lock on .node-modules/.lock, which the system releases when the
+process ends, however it ends: runs at once wait for one another, and the second finds the
+install the first made. Once the link names the current install, everything else under
+.node-modules/ goes but the lock and two installs: the current one, and the previous one, which
+the link named before it last changed and which .node-modules/.previous names. A build that
+resolved node_modules before its lockfile changed may still be reading the previous install, so
+that install stays for one generation more and goes when the link changes again. What goes is
+the install of an older lockfile, the temporary directory of an npm ci that was killed, and a
+node_modules that npm ci made in <directory> itself before, each renamed aside first, so that a
+prune killed half-way leaves a name the next run prunes again, and then removed, read-only
+entries and all; and beside node_modules, the link of a run killed before it renamed it.
 
-Exit 0 when the link names the install; 1 when npm ci fails, with its output, the link left as
-it was; 2 on a usage error.
+On Windows, the lock is msvcrt's rather than fcntl's, retried for as long as another run holds
+it, since msvcrt gives up after about ten seconds. The link is a directory symbolic link, or a
+junction where making one needs a privilege the user lacks; and since Windows renames no link to
+a directory over another, the old link is removed just before the new one takes its name, so a
+reader may find none for that moment. An entry that Windows will not move or remove, because a
+process has a file open in it, is named on stderr and left for a later run. These Windows paths
+are checked with stand-ins for msvcrt only, never on Windows itself.
+
+Exit 0 when the link names the install; 1, naming the cause, when npm ci fails, with its output,
+the link left as it was, or when npm, a lock or a link cannot be had; 2 on a usage error.
 """
 
 from __future__ import annotations
 
-import fcntl
+import errno
 import hashlib
+import importlib
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
 
 INSTALLS = '.node-modules'
 LOCK = '.lock'
+# The file that names the previous install, which a running build may still read.
+PREVIOUS = '.previous'
 # What a prune renames a directory to before it removes it.
 REMOVED = '.removed.'
+# What the link is made as, with its run's pid, before it is renamed to node_modules.
+LINKING = 'node_modules.'
+# What msvcrt.locking(LK_LOCK) raises when another still holds the lock after its ten tries:
+# EDEADLOCK, which is EDEADLK where both exist.
+WAITED = {errno.EDEADLK, getattr(errno, 'EDEADLOCK', errno.EDEADLK)}
+
+
+@runtime_checkable
+class Flock(Protocol):
+    """fcntl's lock, POSIX's: flock waits until it has the lock, which closing the file
+    releases."""
+
+    LOCK_EX: int
+
+    def flock(self, fd: int, operation: int, /) -> None: ...
+
+
+@runtime_checkable
+class Locking(Protocol):
+    """msvcrt's lock, Windows': locking locks bytes from the file's position, and LK_LOCK gives up
+    after about ten seconds."""
+
+    LK_LOCK: int
+    LK_UNLCK: int
+
+    def locking(self, fd: int, mode: int, nbytes: int, /) -> None: ...
+
+
+def primitive() -> object:
+    """The module whose lock this system has: fcntl on POSIX, msvcrt on Windows."""
+    for name in ('fcntl', 'msvcrt'):
+        try:
+            return importlib.import_module(name)
+        except ImportError:
+            continue
+    raise RuntimeError('neither fcntl (POSIX) nor msvcrt (Windows) can be imported, and without '
+                       'a lock runs at once would install over each other')
+
+
+def acquired(fd: int, system: Flock | Locking) -> Callable[[], None]:
+    """Takes the lock on fd with system, waiting as long as another holds it; returns what
+    releases it."""
+    if isinstance(system, Flock):
+        system.flock(fd, system.LOCK_EX)
+        return lambda: None
+    os.lseek(fd, 0, os.SEEK_SET)
+    while True:
+        try:
+            system.locking(fd, system.LK_LOCK, 1)
+            break
+        except OSError as failure:
+            if failure.errno not in WAITED:
+                raise
+
+    def released() -> None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        system.locking(fd, system.LK_UNLCK, 1)
+
+    return released
+
+
+@contextmanager
+def held(path: Path, system: object) -> Iterator[None]:
+    """Holds an exclusive lock on the file path, made if need be, with system, a module such as
+    primitive() returns."""
+    if not isinstance(system, (Flock, Locking)):
+        raise RuntimeError(f'{system!r} has neither flock nor locking')
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o666)
+    try:
+        released = acquired(fd, system)
+        try:
+            yield
+        finally:
+            released()
+    finally:
+        os.close(fd)
+
+
+def is_link(path: Path) -> bool:
+    """Whether path is a symbolic link or, on Windows, a junction: what is removed as a link, never
+    emptied as a directory."""
+    try:
+        status = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    reparse = getattr(status, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    return stat.S_ISLNK(status.st_mode) or bool(reparse)
+
+
+def unlinked(path: Path) -> None:
+    """Removes the link path, which names a directory, and not what it names."""
+    if sys.platform == 'win32':
+        os.rmdir(path)
+    else:
+        path.unlink()
+
+
+def made_link(link: Path, target: Path) -> None:
+    """Makes link a link to the directory target, relative to link's directory: a symbolic link
+    or, on Windows, where one may need Developer Mode or an administrator, a junction."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+        return
+    except OSError as refused:
+        if sys.platform != 'win32':
+            raise
+        import _winapi
+        try:
+            # A junction's target is absolute.
+            _winapi.CreateJunction(str(link.parent / target), str(link))
+        except OSError as failed:
+            raise RuntimeError(f'cannot link {link} to {target}: Windows refused a symbolic link '
+                               f'({refused}) and a junction ({failed})') from failed
+
+
+def deleted(path: Path) -> None:
+    """Removes the file or the directory tree path, making writable what refuses to go: npm may
+    leave a file read-only, which Windows does not remove, or a directory, which no system
+    empties."""
+    if is_link(path):
+        unlinked(path)
+        return
+    if not path.is_dir():
+        path.unlink()
+        return
+
+    def writable(function: Callable[..., Any], name: str, failure: BaseException) -> None:
+        if function not in (os.unlink, os.remove, os.rmdir):
+            raise failure
+        parent = os.path.dirname(name)
+        os.chmod(parent, os.stat(parent).st_mode | stat.S_IRWXU)
+        if not is_link(Path(name)):
+            os.chmod(name, os.lstat(name).st_mode | stat.S_IRWXU)
+        function(name)
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=writable)
+    else:
+        shutil.rmtree(path, onerror=lambda function, name, info: writable(function, name, info[1]))
+
+
+def removed(path: Path) -> None:
+    """Renames path aside under its parent, then removes it; what the system refuses to move or to
+    remove is named and left for a later run."""
+    aside = path.parent / f'{REMOVED}{os.getpid()}.{path.name.lstrip(".")}'
+    try:
+        path.rename(aside)
+    except FileNotFoundError:
+        return
+    except OSError as refused:
+        print(f'install.py: {path} is left for a later run: {refused}', file=sys.stderr)
+        return
+    try:
+        deleted(aside)
+    except OSError as refused:
+        print(f'install.py: {aside} is left for a later run: {refused}', file=sys.stderr)
 
 
 def digest(directory: Path) -> str:
@@ -63,55 +238,103 @@ def installed(directory: Path, name: str) -> Path:
     done = directory / INSTALLS / name
     if (done / 'node_modules').is_dir():
         return done
+    # On Windows npm is npm.cmd, which only a search of PATH with PATHEXT finds.
+    npm = shutil.which('npm')
+    if npm is None:
+        raise RuntimeError(f'npm is not on PATH, so the packages of {directory} cannot be '
+                           'installed')
+    if os.path.lexists(done):
+        # An install that lost its node_modules, made again.
+        removed(done)
     work = Path(tempfile.mkdtemp(prefix=f'{name}.', dir=directory / INSTALLS))
     try:
         for file in ('package.json', 'package-lock.json'):
             shutil.copy2(directory / file, work / file)
-        npm = subprocess.run(['npm', 'ci', '--no-audit', '--no-fund', '--prefer-offline',
+        ran = subprocess.run([npm, 'ci', '--no-audit', '--no-fund', '--prefer-offline',
                               '--loglevel=error'], cwd=work, capture_output=True, text=True,
                              check=False)
-        if npm.returncode != 0:
-            raise RuntimeError(f'npm ci failed in {directory}:\n{npm.stdout}{npm.stderr}')
+        if ran.returncode != 0:
+            raise RuntimeError(f'npm ci failed in {directory}:\n{ran.stdout}{ran.stderr}')
         # A lockfile with no package still has an install, empty.
         (work / 'node_modules').mkdir(exist_ok=True)
         work.rename(done)
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        removed(work)
     return done
 
 
-def removed(path: Path) -> None:
-    """Renames path aside under its parent, then removes it."""
-    aside = path.parent / f'{REMOVED}{os.getpid()}.{path.name.lstrip(".")}'
-    try:
-        path.rename(aside)
-    except FileNotFoundError:
-        return
-    shutil.rmtree(aside, ignore_errors=True)
+def pointed(directory: Path) -> str | None:
+    """The install that directory/node_modules links to, if it is a link to one."""
+    link = directory / 'node_modules'
+    if not is_link(link):
+        return None
+    target = Path(os.path.realpath(link))
+    if target.name != 'node_modules':
+        return None
+    if target.parent.parent != Path(os.path.realpath(directory / INSTALLS)):
+        return None
+    return target.parent.name
 
 
 def linked(directory: Path, done: Path) -> None:
     """Makes directory/node_modules a link to done's node_modules, replacing what is there at
     once."""
-    link = directory / 'node_modules'
-    target = Path(INSTALLS) / done.name / 'node_modules'
-    if link.is_symlink() and Path(os.readlink(link)) == target:
+    if pointed(directory) == done.name:
         return
-    if link.is_dir() and not link.is_symlink():
+    link = directory / 'node_modules'
+    if link.is_dir() and not is_link(link):
         # A node_modules that npm ci made in the directory itself: moved under .node-modules/,
         # which the prune empties.
         link.rename(directory / INSTALLS / f'{REMOVED}{os.getpid()}.node_modules')
-    temporary = directory / f'node_modules.{os.getpid()}'
-    temporary.unlink(missing_ok=True)
-    temporary.symlink_to(target, target_is_directory=True)
-    os.replace(temporary, link)
+    temporary = directory / f'{LINKING}{os.getpid()}'
+    if is_link(temporary):
+        unlinked(temporary)
+    made_link(temporary, Path(INSTALLS) / done.name / 'node_modules')
+    if sys.platform == 'win32':
+        # Windows renames no link to a directory over another.
+        if is_link(link):
+            unlinked(link)
+        os.rename(temporary, link)
+    else:
+        os.replace(temporary, link)
+
+
+def previous(directory: Path) -> str:
+    """The install the link named before the current one, or nothing."""
+    try:
+        return (directory / INSTALLS / PREVIOUS).read_text().strip()
+    except FileNotFoundError:
+        return ''
+
+
+def remembered(directory: Path, name: str) -> None:
+    """Records name as the previous install, at once."""
+    temporary = directory / INSTALLS / f'{PREVIOUS}.{os.getpid()}'
+    temporary.write_text(f'{name}\n')
+    os.replace(temporary, directory / INSTALLS / PREVIOUS)
 
 
 def pruned(directory: Path, done: Path) -> None:
-    """Removes everything under .node-modules but the current install and the lock."""
+    """Removes everything under .node-modules but the lock, the current install and the previous
+    one, and the links that killed runs left beside node_modules."""
+    kept = {LOCK, PREVIOUS, done.name, previous(directory)}
     for entry in sorted((directory / INSTALLS).iterdir()):
-        if entry.name not in (done.name, LOCK):
+        if entry.name not in kept:
             removed(entry)
+    for entry in sorted(directory.glob(f'{LINKING}*')):
+        if entry.name[len(LINKING):].isdigit() and is_link(entry):
+            unlinked(entry)
+
+
+def updated(directory: Path) -> None:
+    """Installs directory's packages unless they are, links them, and prunes what no run uses."""
+    before = pointed(directory)
+    done = installed(directory, digest(directory))
+    if before is not None and before != done.name:
+        # Recorded before the link changes, so that a run killed in between loses no install.
+        remembered(directory, before)
+    linked(directory, done)
+    pruned(directory, done)
 
 
 def main(argv: list[str]) -> int:
@@ -121,15 +344,12 @@ def main(argv: list[str]) -> int:
         return 2
     directory = Path(argv[0]).resolve()
     (directory / INSTALLS).mkdir(exist_ok=True)
-    with open(directory / INSTALLS / LOCK, 'w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            done = installed(directory, digest(directory))
-        except RuntimeError as failure:
-            print(f'install.py: {failure}', file=sys.stderr)
-            return 1
-        linked(directory, done)
-        pruned(directory, done)
+    try:
+        with held(directory / INSTALLS / LOCK, primitive()):
+            updated(directory)
+    except RuntimeError as failure:
+        print(f'install.py: {failure}', file=sys.stderr)
+        return 1
     return 0
 
 

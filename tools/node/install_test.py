@@ -8,19 +8,26 @@
 """Checks tools/node/install.py with a stand-in for npm, first on PATH, which writes a package into
 node_modules after a moment and counts its runs: the packages are installed once per lockfile and
 linked at node_modules, and a second run installs nothing; installs at once run npm once and all
-succeed; an install of a lockfile that changed is pruned, and so is the directory a killed npm ci
-left; a node_modules that npm ci made in the directory itself gives way to the link; and a failed
-npm ci fails the run, naming it, and leaves the link as it was. Run with the names of some cases to
-run only those."""
+succeed; the install of a lockfile that changed is kept for one generation more, for a build that
+still uses it, and then pruned, as is at once the directory a killed npm ci left, even one it made
+read-only; a node_modules that npm ci made in the directory itself gives way to the link; a failed
+npm ci fails the run, naming it, and leaves the link as it was, and so does an npm not on PATH.
+The lock, which Windows takes with msvcrt rather than fcntl, is checked with stand-ins for both, and
+the installer is imported where there is no fcntl. Run with the names of some cases to run only
+those."""
 
 from __future__ import annotations
 
+import errno
 import os
 import subprocess
 import sys
 import tempfile
+import types
 from collections.abc import Callable
 from pathlib import Path
+
+import install as installer
 
 SCRIPT = Path(__file__).resolve().parent / 'install.py'
 
@@ -87,8 +94,9 @@ def runs(scratch: Path) -> int:
 
 
 def installs(directory: Path) -> list[str]:
-    """What .node-modules holds, but its lock."""
-    return sorted(name for name in os.listdir(directory / '.node-modules') if name != '.lock')
+    """What .node-modules holds, but its lock and the name of the previous install."""
+    return sorted(name for name in os.listdir(directory / '.node-modules')
+                  if name not in ('.lock', '.previous'))
 
 
 def linked(directory: Path) -> str:
@@ -121,16 +129,33 @@ def test_installs_at_once_run_npm_once(scratch: Path) -> None:
     assert len(installs(directory)) == 1, installs(directory)
 
 
-def test_a_changed_lockfile_prunes_the_old_install(scratch: Path) -> None:
-    directory = project(scratch)
+def test_a_changed_lockfile_keeps_the_previous_generation(scratch: Path) -> None:
+    # A build that resolved node_modules before the lockfile changed still reads the install it
+    # found, so the install the link named before is kept for one generation more: generation 1
+    # outlives the install of generation 2, and any run of it, and goes with generation 3.
+    directory = project(scratch, lock='one')
     env = environment(scratch)
     assert install(directory, env).returncode == 0
-    first = installs(directory)
+    first = installer.digest(directory)
     project(scratch, lock='two')
+    second = installer.digest(directory)
+    for _ in range(2):
+        assert install(directory, env).returncode == 0
+        assert linked(directory) == '{"lock": "two"}\n'
+        assert installs(directory) == sorted([first, second]), installs(directory)
+    kept = directory / '.node-modules' / first / 'node_modules/pinned/index.js'
+    assert kept.read_text() == '{"lock": "one"}\n', kept
+    # A killed npm ci's directory, which it had made read-only, goes at once all the same.
+    left = directory / '.node-modules' / f'{second}.k1ll3d'
+    (left / 'node_modules/half').mkdir(parents=True)
+    (left / 'node_modules/half/index.js').write_text('half\n')
+    (left / 'node_modules/half').chmod(0o500)
+    project(scratch, lock='three')
+    third = installer.digest(directory)
     assert install(directory, env).returncode == 0
-    assert linked(directory) == '{"lock": "two"}\n'
-    second = installs(directory)
-    assert len(second) == 1 and second != first, (first, second)
+    assert linked(directory) == '{"lock": "three"}\n'
+    assert installs(directory) == sorted([second, third]), installs(directory)
+    assert runs(scratch) == 3, runs(scratch)
 
 
 def test_what_a_killed_install_left_is_pruned(scratch: Path) -> None:
@@ -144,8 +169,11 @@ def test_what_a_killed_install_left_is_pruned(scratch: Path) -> None:
     (left / 'node_modules/half').mkdir(parents=True)
     aside = directory / '.node-modules' / '.removed.0123'
     aside.mkdir()
+    # A killed link, the link made under another name before it is renamed over node_modules.
+    (directory / 'node_modules.99999').symlink_to('.node-modules', target_is_directory=True)
     assert install(directory, env).returncode == 0
     assert installs(directory) == current, installs(directory)
+    assert not os.path.lexists(directory / 'node_modules.99999'), os.listdir(directory)
     assert runs(scratch) == 1, runs(scratch)
 
 
@@ -167,13 +195,104 @@ def test_a_failed_install_keeps_the_link(scratch: Path) -> None:
     assert len(installs(directory)) == 1, installs(directory)
 
 
+def test_an_npm_not_on_path_is_named(scratch: Path) -> None:
+    directory = project(scratch)
+    empty = scratch / 'empty'
+    empty.mkdir()
+    result = install(directory, dict(os.environ, PATH=str(empty)))
+    assert result.returncode == 1, result
+    assert 'npm' in result.stderr and 'PATH' in result.stderr, result.stderr
+    assert not (directory / 'node_modules').exists(), directory
+
+
+def fake_msvcrt(refusals: int, error: int = errno.EDEADLK) -> tuple[types.SimpleNamespace,
+                                                                    list[tuple[int, int, int]]]:
+    """A stand-in for msvcrt whose locking(LK_LOCK) fails, as it does after about ten seconds
+    of another's lock, refusals times with error, and the calls it was given, with the position
+    of their file."""
+    calls: list[tuple[int, int, int]] = []
+
+    def locking(fd: int, mode: int, nbytes: int) -> None:
+        calls.append((mode, nbytes, os.lseek(fd, 0, os.SEEK_CUR)))
+        if mode == fake.LK_LOCK and sum(call[0] == fake.LK_LOCK for call in calls) <= refusals:
+            raise OSError(error, os.strerror(error))
+
+    fake = types.SimpleNamespace(LK_LOCK=1, LK_UNLCK=0, locking=locking)
+    return fake, calls
+
+
+def test_msvcrt_is_retried_until_the_lock_is_had(scratch: Path) -> None:
+    fake, calls = fake_msvcrt(refusals=3)
+    lock = scratch / 'lock'
+    with installer.held(lock, fake):
+        assert calls == [(1, 1, 0)] * 4, calls
+    assert calls == [(1, 1, 0)] * 4 + [(0, 1, 0)], calls
+    # An error that is not another's lock is raised at once.
+    fake, calls = fake_msvcrt(refusals=1, error=errno.EBADF)
+    try:
+        with installer.held(lock, fake):
+            raise AssertionError('locked')
+    except OSError as failure:
+        assert failure.errno == errno.EBADF, failure
+    assert calls == [(1, 1, 0)], calls
+
+
+def test_fcntl_locks_the_whole_file(scratch: Path) -> None:
+    calls: list[int] = []
+    fake = types.SimpleNamespace(LOCK_EX=2, flock=lambda fd, operation: calls.append(operation))
+    with installer.held(scratch / 'lock', fake):
+        assert calls == [2], calls
+    assert calls == [2], calls
+    assert installer.primitive() is sys.modules['fcntl'], installer.primitive()
+
+
+# Imports the installer where there is no fcntl, as on Windows. subprocess and pathlib import
+# fcntl on POSIX and not on Windows, so they are imported first; then fcntl is hidden, and msvcrt
+# is the stand-in that FAKE_MSVCRT names, or is missing too.
+WITHOUT_FCNTL = """
+import pathlib, subprocess, sys, types
+sys.modules['fcntl'] = None
+if sys.argv[1] == 'msvcrt':
+    fake = types.ModuleType('msvcrt')
+    fake.LK_LOCK, fake.LK_UNLCK, fake.locking = 1, 0, lambda fd, mode, nbytes: None
+    sys.modules['msvcrt'] = fake
+else:
+    sys.modules['msvcrt'] = None
+sys.path.insert(0, sys.argv[2])
+import install
+if sys.argv[1] == 'msvcrt':
+    assert install.primitive() is fake, install.primitive()
+    print('msvcrt chosen')
+else:
+    sys.exit(install.main([sys.argv[3]]))
+"""
+
+
+def test_imported_without_fcntl(scratch: Path) -> None:
+    here = str(SCRIPT.parent)
+    result = subprocess.run([sys.executable, '-c', WITHOUT_FCNTL, 'msvcrt', here], text=True,
+                            capture_output=True, check=False, timeout=60)
+    assert result.returncode == 0 and 'msvcrt chosen' in result.stdout, result
+    directory = project(scratch)
+    result = subprocess.run([sys.executable, '-c', WITHOUT_FCNTL, 'none', here, str(directory)],
+                            env=environment(scratch), text=True, capture_output=True, check=False,
+                            timeout=60)
+    assert result.returncode == 1, result
+    assert 'fcntl' in result.stderr and 'msvcrt' in result.stderr, result.stderr
+    assert runs(scratch) == 0, runs(scratch)
+
+
 CASES: list[Case] = [
     test_installed_once_and_linked,
     test_installs_at_once_run_npm_once,
-    test_a_changed_lockfile_prunes_the_old_install,
+    test_a_changed_lockfile_keeps_the_previous_generation,
     test_what_a_killed_install_left_is_pruned,
     test_a_node_modules_of_npm_gives_way_to_the_link,
     test_a_failed_install_keeps_the_link,
+    test_an_npm_not_on_path_is_named,
+    test_msvcrt_is_retried_until_the_lock_is_had,
+    test_fcntl_locks_the_whole_file,
+    test_imported_without_fcntl,
 ]
 
 
