@@ -24,7 +24,8 @@ of its named template parameters with @tparam, and names no other; the invented 
 named detail, at any depth, has a brief: its Doc Comment opens with a sentence. A public
 symbol's brief, the first paragraph of its Doc Comment, which MrDocs shows whole as the brief, is
 one sentence: it holds one `.`, `!` or `?` followed by a space or by its end, an abbreviation
-such as e.g., i.e. or etc. and a code span (`x.y`, \\c x.y) not counting.
+such as e.g., i.e. or etc. and a code span (`x.y`, \\c x.y) not counting, while an inline
+command whose argument ends with one (`@ref x.`) ends a sentence as text would.
 
 A Doc Comment is the one clang attaches, which MrDocs reads too; a declaration and its
 redeclarations, such as an out-of-line definition, are one symbol, documented when any of them
@@ -171,15 +172,31 @@ def has_brief(comment: Node) -> bool:
     return False
 
 
+# The end of an inline command's argument that ends a sentence: clang keeps the `.` of
+# `@ref status.` in the argument, not in the text after it.
+ARGUMENT_END = re.compile(r'[.!?]+$')
+
+
+def prose_of(node: Node) -> str:
+    """The text of a comment node and of everything under it, as text_of, with each inline
+    command (\\c x, @ref x) read as one word that keeps the `.`, `!` or `?` its argument ends
+    with, so that it still ends a sentence."""
+    if node.get('kind') == 'InlineCommandComment':
+        arguments = node.get('args', [])
+        end = ARGUMENT_END.search(arguments[-1]) if arguments else None
+        return ' command' + (end.group(0) if end else '') + ' '
+    return node.get('text', '') + ''.join(prose_of(child) for child in node.get('inner', []))
+
+
 def brief_of(comment: Node) -> str:
     """The text of a Doc Comment's brief: its first paragraph that holds prose, before any
-    command, or its @brief; an inline command's argument (\\c x) is left out."""
+    command, or its @brief; an inline command (\\c x) reads as a word, as prose_of says."""
     for child in comment.get('inner', []):
         kind = child.get('kind')
         if kind == 'ParagraphComment' and text_of(child).strip():
-            return ' '.join(text_of(part) for part in child.get('inner', []))
+            return prose_of(child)
         if kind == 'BlockCommandComment' and child.get('name') in BRIEF_COMMANDS:
-            return text_of(child)
+            return prose_of(child)
         if kind != 'ParagraphComment':
             return ''
     return ''

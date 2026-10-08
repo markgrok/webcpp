@@ -410,6 +410,26 @@ def test_brief_is_one_sentence(library: Library) -> None:
     expect(library.check(), 0)
 
 
+def test_brief_ending_on_an_inline_command_is_one_sentence(library: Library) -> None:
+    # The sentence's end is the inline command's argument's, which clang keeps in the argument:
+    # `@ref detail::sum.` ends the first sentence, and `\c sum.` ends one the same way.
+    for opening in ('/** Returns a value added to itself, as @ref detail::sum.',
+                    '/** Returns a value added to itself, as \\c sum.',
+                    '/** @brief Returns a value added to itself, as @ref detail::sum.'):
+        path = library.header('box.hpp', DOCUMENTED.replace(
+            '/** Returns a value added to itself.\n', f'{opening} It is twice the value.\n'))
+        result = library.check()
+        expect(result, 1,
+               f'{line_of(path, "constexpr T twice(T value)")} webcpp::demo::twice: the brief, '
+               'the first paragraph of its Doc Comment, holds 2 sentences')
+        assert len(findings(result)) == 1, result.stdout
+    # One that ends the brief is its one sentence, and one inside a sentence ends none.
+    library.header('box.hpp', DOCUMENTED.replace(
+        '/** Returns a value added to itself.\n',
+        '/** Returns @ref detail::sum of a value and itself, as @ref detail::sum.\n'))
+    expect(library.check(), 0)
+
+
 def test_lines_across_headers(library: Library) -> None:
     # clang's dump writes a location's file and line only when they change: a finding in a second
     # header, after declarations of a first, still names its own file and line.
@@ -443,6 +463,7 @@ CASES: list[Callable[[Library], None]] = [
     test_detail_symbol_without_brief,
     test_declarators_have_comments_of_their_own,
     test_brief_is_one_sentence,
+    test_brief_ending_on_an_inline_command_is_one_sentence,
     test_lines_across_headers,
     test_clang_failure_is_reported,
     test_library_namespace_missing,
