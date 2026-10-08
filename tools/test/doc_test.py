@@ -715,10 +715,18 @@ def test_index_lists_every_library(root):
         (other / 'doc/Jamfile').write_text(jamfile)
         harness.expect(harness.run_b2(root, 'doc'), False, 'webcpp.reference other: the library '
                        'has no page, and libs/other/doc/Jamfile declares its reference alone')
+    # The page is the one b2 declares, read from the build, not from the Jamfile's text: one
+    # named through a variable is the library's page.
+    (other / 'doc/Jamfile').write_text(declared.replace(
+        'webcpp.doc other : other.adoc ;',
+        'local page = other.adoc ;\nwebcpp.doc other : $(page) ;'))
+    harness.expect(harness.run_b2(root, 'doc'), True)
     (other / 'doc/Jamfile').write_text(declared)
     (other / 'doc/other.adoc').rename(other / 'doc/moved.adoc')
     listed = subprocess.run([sys.executable, str(root / 'tools/doc/libraries.py'),
-                             '--root', str(root), '--output', str(root / 'libraries.adoc')],
+                             '--root', str(root), '--output', str(root / 'libraries.adoc'),
+                             '--page', f'demo={root / "libs/demo/doc/demo.adoc"}',
+                             '--page', f'other={other / "doc/other.adoc"}'],
                             capture_output=True, text=True, check=False)
     assert listed.returncode == 1, (listed.returncode, listed.stdout, listed.stderr)
     assert (f'{other}/doc/other.adoc: there is no such file; libs/other/doc/Jamfile declares it '

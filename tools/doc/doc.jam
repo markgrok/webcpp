@@ -28,8 +28,8 @@
 # doc-check.py finds the page whole (--complete), and installs it once the
 # converted page passes doc-check.py's check of a rendered page. webcpp.index
 # does the same for the superproject's index page, which includes the table
-# libraries.py writes from every library's meta/libraries.json at
-# {libraries}.
+# libraries.py writes from every library's meta/libraries.json, and from the
+# page its doc Jamfile declares, at {libraries}.
 #
 # Headers that branch by the macro of a version hide the other branch from
 # the reference. The requirements also-checked, those of the other version,
@@ -394,16 +394,44 @@ actions write-reference
     "$(PYTHON)" "$(SCRIPT)" --library "$(LIBRARY)" --root "$(ROOT)" --output "$(<)" --mrdocs "$(MRDOCS)" --clang "$(CLANG)" --std "$(STD)" --include$(_)"$(INCLUDES)" --define$(_)"$(DEFINES)"
 }
 
+# The page each library's doc Jamfile declares with webcpp.doc, as
+# "<library>=<page>", the page as the system writes it: what the build itself
+# knows, which libraries.py is given rather than read a Jamfile's text. Each
+# library's doc Jamfile is loaded, which a build loads only once it reaches
+# it; a library is a directory of libs/ with a build.jam, as the Jamroot
+# registers it.
+local rule declared-pages ( )
+{
+    local names = [ modules.peek project : JAMFILE ] ;
+    local pages ;
+    for local build in [ path.glob [ path.glob $(.root)/libs : * ] : build.jam ]
+    {
+        local library = [ path.basename [ path.parent $(build) ] ] ;
+        local doc = $(.root)/libs/$(library)/doc ;
+        if [ path.glob $(doc) : $(names) ]
+        {
+            project.load $(doc) ;
+        }
+        if $(.source.$(library))
+        {
+            local page = [ path.native $(.source.$(library)) ] ;
+            pages += "$(library)=$(page)" ;
+        }
+    }
+    return $(pages) ;
+}
+
 rule write-libraries ( targets * : sources * : properties * )
 {
     PYTHON on $(targets) = $(.python) ;
     SCRIPT on $(targets) = [ path.native $(.here)/libraries.py ] ;
     ROOT on $(targets) = [ path.native $(.root) ] ;
+    PAGES on $(targets) = [ declared-pages ] ;
 }
 
 actions write-libraries
 {
-    "$(PYTHON)" "$(SCRIPT)" --root "$(ROOT)" --output "$(<)"
+    "$(PYTHON)" "$(SCRIPT)" --root "$(ROOT)" --output "$(<)" --page$(_)"$(PAGES)"
 }
 
 # doc-check.py on a library's page, whole, and on the files of its

@@ -963,9 +963,11 @@ introduces webcpp and includes, at `{libraries}`, the table that
 `tools/doc/libraries.py` writes from every library's `meta/libraries.json`:
 its name, linked to its page, its description, and what it ports, linked to
 the original, or "original" for a library of webcpp's own (`"port-of":
-null`). A library whose `doc/Jamfile` declares no page with `webcpp.doc`,
-outside a comment, or whose page is not beside it, fails the table, named.
-`b2 doc` builds it with every library's page.
+null`). The pages are those the build declares: `tools/doc/doc.jam` loads
+every library's `doc/Jamfile` and gives `libraries.py` the page each
+declares with `webcpp.doc`, so that no Jamfile's text is read a second time.
+A library that declares none, or whose page is not there, fails the table,
+named. `b2 doc` builds it with every library's page.
 
 The table links a page as `{library-pages}<name>/{library-page}`, two
 attributes `tools/doc/doc.jam` converts the index with. By default they point

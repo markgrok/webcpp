@@ -7,19 +7,21 @@
 
 """Writes the table of webcpp's libraries that the index page includes, as AsciiDoc.
 
-Usage: libraries.py --root <superproject> --output <libraries.adoc>
+Usage: libraries.py --root <superproject> --output <libraries.adoc> [--page <library>=<page> ...]
 
 A library is a directory of <root>/libs with a build.jam, as the Jamroot registers it. It has a
-page, which its doc/Jamfile declares, `webcpp.doc <library> : <page>.adoc ;` outside a comment,
-and which is there beside it: a doc Jamfile that declares the reference alone, or nothing, would
-have the index link a page that the build never makes. And it describes itself in
-meta/libraries.json, Boost's file: an object, or a list of them, with
-Boost's fields and webcpp's "port-of", which is null for a library of webcpp's own and otherwise
-names the original it ports: {"name", "language", "version", "url", "licence"}. A row of the
-table is an object: the library's name, linked to its page, {library-pages}<library>/{library-page},
-two attributes the index page is converted with, so that one table links the pages where b2
-builds them and where the site publishes them (tools/doc/doc.jam); its description; and what it
-ports, linked to the original, or "original".
+page, which its doc/Jamfile declares, `webcpp.doc <library> : <page>.adoc ;`, and which is there:
+a doc Jamfile that declares the reference alone, or nothing, would have the index link a page
+that the build never makes. The pages are what the build declares, each given as --page by
+tools/doc/doc.jam, which loads every library's doc Jamfile; no Jamfile is read here. And a
+library describes itself in meta/libraries.json, Boost's file: an object, or a list of them,
+with Boost's fields and webcpp's "port-of", which is null for a library of webcpp's own and
+otherwise names the original it ports: {"name", "language", "version", "url", "licence"}. A row
+of the table is an object: the library's name, linked to its page,
+{library-pages}<library>/{library-page}, two attributes the index page is converted with, so
+that one table links the pages where b2 builds them and where the site publishes them
+(tools/doc/doc.jam); its description; and what it ports, linked to the original, or
+"original".
 
 The text of a cell is written with the character references MrDocs uses in place of each
 character AsciiDoc could read as markup, which postprocess.mjs decodes in the converted page:
@@ -48,10 +50,6 @@ ESCAPES = {'^': '&circ;', '_': '&lowbar;', '*': '&ast;', '`': '&grave;', '#': '&
            "'": '&apos;', '/': '&sol;'}
 
 URL = re.compile(r'https://[^\s\[\]]+')
-
-# A declaration of a library's page in its doc/Jamfile, once its comments are gone:
-# `webcpp.doc <library> : <page>.adoc ;`, its words separated by any white space.
-PAGE = re.compile(r'(?<![\w.-])webcpp\.doc\s+(\S+)\s+:\s+(\S+\.adoc)\s+;')
 
 # An apostrophe in a word, between a letter or a digit and a letter: the one Asciidoctor's
 # replacements make curly in the page's prose, ([[:alnum:]])'(?=[[:alpha:]]).
@@ -103,26 +101,24 @@ def ports(entry: dict[str, Any], origin: Path) -> str:
             f'{escaped(fields["language"])} ({escaped(fields["licence"])})')
 
 
-def page_of(library: Path) -> Path:
-    """The page library's doc/Jamfile declares, which must be there."""
+def page_of(library: Path, pages: dict[str, Path]) -> Path:
+    """The page library's doc/Jamfile declares, as the build gives it in pages, which must be
+    there."""
     jamfile = library / 'doc/Jamfile'
     if not jamfile.is_file():
         raise Invalid(f'{jamfile}: there is no such file; every library of libs/ has a page, '
                       'which the index links to')
-    # A Jam comment runs from # to the end of its line.
-    text = re.sub(r'#[^\n]*', '', jamfile.read_text(encoding='utf-8'))
-    pages = [page for name, page in PAGE.findall(text) if name == library.name]
-    if not pages:
+    page = pages.get(library.name)
+    if page is None:
         raise Invalid(f'{jamfile}: declares no page, webcpp.doc {library.name} : <page>.adoc ;, '
                       'and every library of libs/ has a page, which the index links to')
-    page = library / 'doc' / pages[0]
     if not page.is_file():
         raise Invalid(f'{page}: there is no such file; libs/{library.name}/doc/Jamfile declares it '
                       f'the page of {library.name}, which the index links to')
     return page
 
 
-def rows(root: Path) -> list[str]:
+def rows(root: Path, pages: dict[str, Path]) -> list[str]:
     """The rows of the table, one per entry of each library, by the library's directory."""
     found = []
     for build in sorted((root / 'libs').glob('*/build.jam')):
@@ -131,7 +127,7 @@ def rows(root: Path) -> list[str]:
         if not origin.is_file():
             raise Invalid(f'{origin}: there is no such file; every library of libs/ describes '
                           'itself in meta/libraries.json')
-        page_of(library)
+        page_of(library, pages)
         try:
             described = json.loads(origin.read_text(encoding='utf-8'))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -147,13 +143,22 @@ def rows(root: Path) -> list[str]:
     return found
 
 
+def page_argument(text: str) -> tuple[str, Path]:
+    library, separator, page = text.partition('=')
+    if not separator or not library or not page:
+        raise argparse.ArgumentTypeError(f'{text!r} is not <library>=<page>')
+    return library, Path(page)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description='Writes the index page\'s table of libraries.')
     parser.add_argument('--root', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--page', action='append', default=[], type=page_argument,
+                        metavar='LIBRARY=PAGE', help='the page a library\'s doc Jamfile declares')
     options = parser.parse_args(argv)
     try:
-        found = rows(options.root.resolve())
+        found = rows(options.root.resolve(), dict(options.page))
     except Invalid as invalid:
         print(f'libraries.py: {invalid}')
         return 1
