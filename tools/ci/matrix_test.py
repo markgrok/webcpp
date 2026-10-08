@@ -438,12 +438,25 @@ def test_the_wasm_toolsets_come_from_wasi_sdk_jam(root):
     result = run(root, 'register', 'wasip2', '--user-config', str(config))
     assert result.returncode == 0, (result.returncode, result.stderr)
     assert '<linkflags>-Wl,--probe' in config.read_text(), config.read_text()
-    # A file that does not hold a target's lines stops every command, naming the file and the tag.
+    # A file that does not hold a target's lines fails what registers that target, naming the
+    # file and the tag, and nothing else: the module loads, for an importer too, and the plan,
+    # which registers nothing, is made.
     harness.replace(jam, '# tag::wasip3[]', '# tag::other[]')
-    result = run(root, 'plan', '--library', 'demo')
-    assert result.returncode != 0 and result.stdout == '', (result.returncode, result.stdout)
+    imported = subprocess.run([sys.executable, '-c', 'import matrix'], cwd=root / 'tools/ci',
+                              capture_output=True, text=True, check=False)
+    assert imported.returncode == 0, (imported.returncode, imported.stderr)
+    config = boost_only(root)
+    assert [lane['id'] for lane in planned(root, '--library', 'demo')] == NATIVE + [
+        'wasip2', 'wasip3']
+    result = run(root, 'register', 'wasip2', 'wasip3', '--user-config', str(config))
+    assert result.returncode == 2 and result.stdout == '', (result.returncode, result.stdout)
     assert f'{jam.resolve()} holds no lines tag::wasip3[] to end::wasip3[]' in result.stderr, (
         result.stderr)
+    harness.replace(jam, '# tag::wasi-sdk[]', '# tag::sdk[]')
+    result = run(root, 'register', 'wasip2', '--user-config', str(config))
+    assert result.returncode == 2, (result.returncode, result.stderr)
+    assert f'{jam.resolve()} holds no lines tag::wasi-sdk[] to end::wasi-sdk[]' in (
+        result.stderr), result.stderr
 
 
 def host_lane(root: Path) -> dict:

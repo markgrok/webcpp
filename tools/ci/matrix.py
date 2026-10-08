@@ -59,10 +59,11 @@ register adds the toolsets of the lanes named by id to the user-config.jam, in t
 first being b2's default toolset: what the CI's tools job builds the tests of the tools with. A
 WASI lane's toolset is the region of tools/ci/wasi-sdk.jam between `# tag::<target>[]` and
 `# end::<target>[]`, after its region wasi-sdk, which names wasi-sdk's directory and gives it to
-the build as WASI_SDK, read as this module loads, with wasi-sdk's directory, quoted, in place of
-/path/to/wasi-sdk and of $(wasi-sdk): the lines the documentation shows. Each block of lines, the
-regions apart, is added once. A wasi-sdk.jam without them stops every command, naming the file
-and the tag.
+the build as WASI_SDK, read when the lane registers its toolset, with wasi-sdk's directory,
+quoted, in place of /path/to/wasi-sdk and of $(wasi-sdk): the lines the documentation shows.
+Each block of lines, the regions apart, is added once. A wasi-sdk.jam without them fails what
+registers a WASI toolset, a lane, an own lane on a WASI target or register, naming the file and
+the tag; the plan and the report, which register nothing, never read it.
 
 report merges what the lanes of the matrix MATRIX wrote under DIR, one directory per lane,
 lane-<id>/<lane>.xml (as the CI downloads the lanes' artifacts), with tools/report/report.py into
@@ -74,7 +75,7 @@ The user-config.jam is .local/user-config.jam by default, where tools/ci/actions
 `using boost` line. Exit 0 on success; 1 when b2 or the report fails; 2 on a usage error, a
 --library that names no library, a target with no lane, a line of declared-lanes that is no own
 lane, an own lane on a target the CI cannot set up, a planned lane that wrote no XML, missing from
-the report, or a tools/ci/wasi-sdk.jam that does not hold the WASI toolsets.
+the report, or a tools/ci/wasi-sdk.jam that does not hold the WASI toolset to register.
 """
 
 from __future__ import annotations
@@ -130,7 +131,9 @@ class Lane:
     lane: str
     toolset: str
     # The lines that register the toolset in user-config.jam, in blocks an empty line apart, each
-    # added once. {wasi_sdk} is wasi-sdk's absolute directory, quoted.
+    # added once. {wasi_sdk} is wasi-sdk's absolute directory, quoted, and WASI_TOOLSET, the
+    # whole, stands for the lines of tools/ci/wasi-sdk.jam for the lane's target, read when the
+    # lane is registered.
     using: str
     # The compiler whose major version is {version}, or nothing.
     detect: str = ''
@@ -178,19 +181,15 @@ def toolset_lines(target: str) -> str:
     return f'{sdk}\n\n{toolset}'
 
 
-# Read as the module loads: a wasi-sdk.jam that does not hold them stops it, naming the file and
-# the tag, before any command runs.
-try:
-    WASM_USING = {target: toolset_lines(target) for target in ('wasip2', 'wasip3')}
-except Failure as unreadable:
-    print(f'matrix.py: {unreadable}', file=sys.stderr)
-    sys.exit(unreadable.status)
+# What a WASI lane's using stands for until it is registered: the lines toolset_lines reads, which
+# a wasi-sdk.jam that does not hold them fails then, naming the file and the tag, and only then.
+WASI_TOOLSET = '{wasi-sdk.jam}'
 
 
 def wasm_lane(target: str) -> Lane:
     return Lane(id=target, name=f'wasm32-{target} (wasi-sdk 34, wasmtime 47.0.3)',
                 os='ubuntu-24.04', target=target, lane=target, toolset=f'clang-{target}',
-                using=WASM_USING[target], options=('testing.launcher=wasmtime',), wasm=True)
+                using=WASI_TOOLSET, options=('testing.launcher=wasmtime',), wasm=True)
 
 
 # Every lane the CI knows, by target. GCC and Clang on Linux build with libstdc++, the system's
@@ -430,16 +429,17 @@ def major_version(compiler: str) -> str:
 
 
 def resolved(lane: Lane) -> Lane:
-    """lane with its {version} and {wasi_sdk} filled in."""
+    """lane with its WASI_TOOLSET read, and its {version} and {wasi_sdk} filled in."""
     version = major_version(lane.detect) if lane.detect else ''
     # Quoted, one word of Jam however many spaces the checkout's path holds; the quotes end
     # where the directory does, so that <archiver>"<wasi-sdk>"/bin/llvm-ar stays one word too.
     wasi_sdk = f'"{(ROOT / WASI_SDK).as_posix()}"'
+    using = toolset_lines(lane.target) if lane.using == WASI_TOOLSET else lane.using
 
     def fill(text: str) -> str:
         return text.replace('{version}', version).replace('{wasi_sdk}', wasi_sdk)
 
-    return replace(lane, lane=fill(lane.lane), toolset=fill(lane.toolset), using=fill(lane.using))
+    return replace(lane, lane=fill(lane.lane), toolset=fill(lane.toolset), using=fill(using))
 
 
 def holds(text: str, lines: str) -> bool:
@@ -553,8 +553,9 @@ def register_lanes(ids: list[str], user_config: Path) -> None:
     unknown = [lane_id for lane_id in ids if lane_id not in known]
     if unknown:
         raise Failure(f'no lane {", ".join(unknown)}; the lanes are {", ".join(known)}', 2)
-    for lane_id in ids:
-        register(resolved(known[lane_id]), user_config)
+    # Each read first, so that one that cannot be read leaves user_config as it was.
+    for lane in [resolved(known[lane_id]) for lane_id in ids]:
+        register(lane, user_config)
 
 
 def lane_files(lanes: list[Lane], directory: Path) -> tuple[list[tuple[str, Path]], list[Lane]]:
