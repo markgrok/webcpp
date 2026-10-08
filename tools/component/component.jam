@@ -1,0 +1,309 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The rules of a WebAssembly component, which tools/webcpp.jam offers a
+# library's Jamfiles as webcpp.wit-bindings:
+#
+#     import webcpp ;
+#     webcpp.wit-bindings <name> : <world-file> : <world> : <rename> : <version>
+#       : <wit-bindgen-argument> * ;
+#
+# webcpp.wit-bindings declares the target <name>, the C bindings that
+# wit-bindgen generates for the world <world> of <world-file> (relative to
+# the Jamfile), renamed <rename> (wit-bindgen's --rename-world), for the WASI
+# version <version>, p2 or p3, with the extra arguments given (--async ...).
+# It is an alias whose usage requirements, on the toolset of its version
+# only, clang-wasip2 or clang-wasip3, put the bindings' directory on the
+# include path, which holds <rename>.h, and link <rename>.c, which
+# wit-bindgen wrote and is compiled with its warnings off (and with -pthread
+# on p3, the flags these bindings were first built and served with), and
+# <rename>_component_type.o, the world's type, which wasm-component-ld reads.
+# On any other toolset it adds nothing, so a native build generates no
+# bindings and needs no wit-bindgen. It also declares the explicit target
+# <name>-headers, whose usage requirements put the same directory on the
+# include path on any toolset, for a native build that parses a header of
+# the bindings, such as the API reference: it is built only when named.
+#
+# The bindings are generated while b2 computes the properties of a target
+# that uses them, for its toolset (a conditional requirement), in a dry run
+# (b2 -n) too: a header has to exist before the compiles that include it are
+# scanned. They live in <build-dir>/generated/<library>/<name>/, under the
+# superproject's build directory: wit/ holds a copy of the world file and a
+# link deps to the WIT of the version, since wit-bindgen reads a directory
+# and resolves the world's packages under its deps; the bindings are written
+# beside it. Their freshness is decided by content, never by timestamps: the
+# stamp inputs records the world file's checksum, the WIT directory's listing
+# and checksums, wit-bindgen's version and every argument, and the bindings
+# are written again only when it differs, into a temporary directory that
+# then replaces the old one whole. Unchanged, they keep their timestamps, and
+# nothing that includes them is compiled again.
+#
+# The tools, looked up only when bindings are generated:
+#
+# - wit-bindgen: -sWIT_BINDGEN=<path>, else .local/wit-bindgen/wit-bindgen,
+#   else wit-bindgen on PATH;
+# - the WIT of WASI 0.2.12 and 0.3.0, each the wit/deps directory of its
+#   crate: -sWASI_WIT_P2=<dir> and -sWASI_WIT_P3=<dir>, else
+#   .local/wasi-wit/p2 and .local/wasi-wit/p3.
+#
+# A user-config.jam may set any of them as -s does, with
+# `modules.poke : WIT_BINDGEN : <path> ;`. When one is not there, or the
+# world file is not, the build stops, naming it and every place it was
+# looked for.
+#
+# This file is loaded as the module webcpp-component, beside webcpp-doc and
+# webcpp-oracle. webcpp.wit-bindings receives first where its Jamfile is, as
+# tools/webcpp.jam's `where` finds it (found): the project, its directory
+# absolute in b2's form, that directory relative to the superproject, the
+# Jamfile relative to the superproject, and the superproject's directory,
+# absolute.
+import alias ;
+import common ;
+import errors ;
+import feature ;
+import modules ;
+import path ;
+import project ;
+
+# This directory, and the superproject's, absolute.
+.here = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
+.root = [ path.parent [ path.parent $(.here) ] ] ;
+
+# The bindings a target belongs to, as <library>/<name>. Free, so that it
+# plays no part in a target's build directory.
+feature.feature webcpp-bindings : : free incidental ;
+
+# The WASI versions, and the variable that names the WIT of each.
+.versions = p2 p3 ;
+.wit-variable.p2 = WASI_WIT_P2 ;
+.wit-variable.p3 = WASI_WIT_P3 ;
+
+# The WASI version the toolset of properties builds for, p2 or p3, as
+# tools/webcpp.jam's target-of reads it: only <toolset> and its version.
+# Nothing for any other toolset.
+local rule version-of ( properties * )
+{
+    if [ feature.get-values <toolset> : $(properties) ] = clang
+    {
+        switch [ feature.get-values <toolset-clang:version> : $(properties) ]
+        {
+            case wasip2 : return p2 ;
+            case wasip3 : return p3 ;
+        }
+    }
+}
+
+# The superproject's build directory, absolute: bin, or the directory
+# --build-dir gives it.
+local rule build-dir ( )
+{
+    local jamroot = [ project.target [ project.find /webcpp : $(.root) ] ] ;
+    return [ path.root [ $(jamroot).build-dir ] [ path.pwd ] ] ;
+}
+
+# webcpp.wit-bindings <name> : <world-file> : <world> : <rename> : <version>
+#   : <wit-bindgen-argument> * ;
+rule wit-bindings ( found + : name : world-file : world : rename : version : arguments * )
+{
+    if ! $(version) in $(.versions)
+    {
+        errors.user-error "webcpp.wit-bindings $(name): $(version) is not a WASI version, in"
+            "$(found[4]); the versions are $(.versions:J= )" ;
+    }
+    local library = [ MATCH "^libs/([^/]+)" : $(found[3]) ] ;
+    library ?= $(found[3]) ;
+    local key = $(library)/$(name) ;
+    local build-dir = [ build-dir ] ;
+    local out = $(build-dir)/generated/$(library)/$(name) ;
+    .world-file.$(key) = [ path.native [ path.root [ path.make $(world-file) ] $(found[2]) ] ] ;
+    .world.$(key) = $(world) ;
+    .rename.$(key) = $(rename) ;
+    .version.$(key) = $(version) ;
+    .arguments.$(key) = $(arguments) ;
+    .out.$(key) = [ path.native $(out) ] ;
+    .shown.$(key) = "$(name) in $(found[4])" ;
+
+    # The bindings' C, compiled only for their own toolset.
+    local pthread ;
+    if $(version) = p3
+    {
+        pthread = <cflags>-pthread ;
+    }
+    obj $(name)-c : $(out)/$(rename).c
+      : <warnings>off $(pthread) <webcpp-bindings>$(key)
+        <conditional>@webcpp-component%object ;
+    alias $(name) : : <webcpp-bindings>$(key)
+      : : <conditional>@webcpp-component%usage ;
+    alias $(name)-headers : : <webcpp-bindings>$(key)
+      : : <conditional>@webcpp-component%headers ;
+    $(found[1]).mark-target-as-explicit $(name)-c $(name)-headers ;
+}
+
+# The conditional requirement of the bindings' C: generated for their own
+# toolset, and <build>no for any other.
+rule object ( properties * )
+{
+    local key = [ feature.get-values <webcpp-bindings> : $(properties) ] ;
+    if [ version-of $(properties) ] != $(.version.$(key))
+    {
+        return <build>no ;
+    }
+    generate $(key) ;
+}
+
+# The usage requirements of the target <name>: on its own toolset, the
+# bindings' directory, their C and the world's type.
+rule usage ( properties * )
+{
+    local key = [ feature.get-values <webcpp-bindings> : $(properties) ] ;
+    if [ version-of $(properties) ] = $(.version.$(key))
+    {
+        generate $(key) ;
+        local name = [ MATCH "/([^/]+)$" : $(key) ] ;
+        return <include>$(.out.$(key)) <library>$(name)-c
+            <source>$(.out.$(key))/$(.rename.$(key))_component_type.o ;
+    }
+}
+
+# The usage requirements of the target <name>-headers: the bindings'
+# directory, on any toolset.
+rule headers ( properties * )
+{
+    local key = [ feature.get-values <webcpp-bindings> : $(properties) ] ;
+    generate $(key) ;
+    return <include>$(.out.$(key)) ;
+}
+
+# The path -s<variable>=<path> gives, or a user-config.jam's modules.poke,
+# absolute, and as given; nothing when neither gives one. b2 splits the
+# value of -s at its spaces, which a path may hold: the words are joined
+# again.
+local rule given ( variable )
+{
+    local value = [ modules.peek : $(variable) ] ;
+    if $(value)
+    {
+        value = $(value:J=" ") ;
+        return [ path.native [ path.root [ path.make $(value) ] [ path.pwd ] ] ] $(value) ;
+    }
+}
+
+# wit-bindgen: -sWIT_BINDGEN=<path>, else .local/wit-bindgen/wit-bindgen,
+# else on PATH.
+local rule wit-bindgen ( key )
+{
+    local installed = [ path.native $(.root)/.local/wit-bindgen/wit-bindgen ] ;
+    local what = "wit-bindgen, which generates the bindings of webcpp.wit-bindings"
+        "$(.shown.$(key)), was not found:" ;
+    local given = [ given WIT_BINDGEN ] ;
+    if $(given)
+    {
+        if ! [ CHECK_IF_FILE $(given[1]) ]
+        {
+            errors.user-error $(what) "-sWIT_BINDGEN=$(given[2]) is not a file. It is looked"
+                "for at -sWIT_BINDGEN=<path>, else at $(installed), else on PATH." ;
+        }
+        return $(given[1]) ;
+    }
+    if [ CHECK_IF_FILE $(installed) ]
+    {
+        return $(installed) ;
+    }
+    local tool = [ common.find-tool wit-bindgen ] ;
+    if ! $(tool)
+    {
+        errors.user-error $(what) "no -sWIT_BINDGEN=<path> was given, there is none at"
+            "$(installed), and none on PATH. Install wit-bindgen 0.62.0 there or on PATH, or"
+            "give its path with -sWIT_BINDGEN=<path>." ;
+    }
+    return $(tool) ;
+}
+
+# The WIT of version: -sWASI_WIT_<version>=<dir>, else
+# .local/wasi-wit/<version>.
+local rule wit ( key : version )
+{
+    local variable = $(.wit-variable.$(version)) ;
+    local installed = [ path.native $(.root)/.local/wasi-wit/$(version) ] ;
+    local what = "The WIT of $(version), which webcpp.wit-bindings $(.shown.$(key)) reads,"
+        "was not found:" ;
+    local given = [ given $(variable) ] ;
+    if $(given)
+    {
+        if ! [ path.exists $(given[1]) ] || [ CHECK_IF_FILE $(given[1]) ]
+        {
+            errors.user-error $(what) "-s$(variable)=$(given[2]) is not a directory. It is"
+                "looked for at -s$(variable)=<dir>, else at $(installed)." ;
+        }
+        return $(given[1]) ;
+    }
+    if ! [ path.exists $(installed) ]
+    {
+        errors.user-error $(what) "no -s$(variable)=<dir> was given, and there is none at"
+            "$(installed). Install there the wit/deps directory of the crate of WASI's"
+            "wasi:http for $(version), or give it with -s$(variable)=<dir>." ;
+    }
+    return $(installed) ;
+}
+
+# Writes the bindings of key, once per run, when their stamp differs from the
+# one they were written with.
+local rule generate ( key )
+{
+    if $(.generated.$(key))
+    {
+        return ;
+    }
+    local world-file = $(.world-file.$(key)) ;
+    if ! [ CHECK_IF_FILE $(world-file) ]
+    {
+        errors.user-error "webcpp.wit-bindings $(.shown.$(key)): its world file, $(world-file),"
+            "does not exist" ;
+    }
+    local tool = [ wit-bindgen $(key) ] ;
+    local wit = [ wit $(key) : $(.version.$(key)) ] ;
+    local out = $(.out.$(key)) ;
+    local arguments = --world \"$(.world.$(key))\" --rename-world \"$(.rename.$(key))\"
+        \"$(.arguments.$(key))\" ;
+    local command = "set -e
+out=\"$(out)\"
+work=\"$(out).work\"
+wit=\"$(wit)\"
+world=\"$(world-file)\"
+tool=\"$(tool)\"
+rm -rf \"${work}\"
+mkdir -p \"${work}\"
+{
+    printf 'world %s %s\\n' \"${world}\" \"`cksum < \"${world}\"`\"
+    printf 'wit %s\\n' \"${wit}\"
+    (cd \"${wit}\" && find -L . -type f -exec cksum {} + | LC_ALL=C sort -k 3)
+    printf 'wit-bindgen %s\\n' \"`\"${tool}\" --version`\"
+    printf 'arguments %s\\n' '$(arguments:J= )'
+} > \"${work}/inputs\"
+if [ -f \"${out}/inputs\" ] && cmp -s \"${work}/inputs\" \"${out}/inputs\"
+then
+    rm -rf \"${work}\"
+    exit 0
+fi
+mkdir \"${work}/wit\"
+cp \"${world}\" \"${work}/wit/\"
+ln -s \"${wit}\" \"${work}/wit/deps\"
+\"${tool}\" c $(arguments:J= ) --out-dir \"${work}\" \"${work}/wit\" > \"${work}/log\" 2>&1 || {
+    cat \"${work}/log\"
+    rm -rf \"${work}\"
+    exit 1
+}
+rm -f \"${work}/log\"
+rm -rf \"${out}\"
+mv \"${work}\" \"${out}\"" ;
+    local written = [ SHELL $(command) : exit-status ] ;
+    if $(written[2]) != 0
+    {
+        errors.user-error "webcpp.wit-bindings $(.shown.$(key)): wit-bindgen could not write"
+            "the bindings of $(world-file) into $(out):" $(written[1]) ;
+    }
+    .generated.$(key) = true ;
+}

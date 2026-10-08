@@ -37,6 +37,12 @@
 #     webcpp.twins examples : twins : suffix : extra-words * ;
 #     webcpp.cases name : script : cases : expected ;
 #
+# and the rules of a WebAssembly component, tools/component/component.jam's,
+# with which a library's build.jam declares the C bindings of a world:
+#
+#     webcpp.wit-bindings name : world-file : world : rename : version
+#       : wit-bindgen-argument * ;
+#
 # A target is what a program is built for: emscripten (b2's toolset
 # emscripten), wasip2 and wasip3 (the clang toolsets of user-config.jam
 # whose versions are wasip2 and wasip3), and native (any other toolset). A
@@ -105,6 +111,12 @@ import webcpp-doc ;
 # documentation's are.
 modules.load webcpp-oracle : oracle.jam : [ path.native [ path.join $(.tools) oracle ] ] ;
 import webcpp-oracle ;
+
+# The rules of a WebAssembly component, loaded as the module
+# webcpp-component, as the documentation's are.
+modules.load webcpp-component : component.jam
+  : [ path.native [ path.join $(.tools) component ] ] ;
+import webcpp-component ;
 
 .nl = "\n" ;
 
@@ -514,4 +526,15 @@ rule twins ( examples : twins : suffix : extra * )
 rule cases ( name : script : cases : expected )
 {
     webcpp-oracle.cases [ where ] : $(name) : $(script) : $(cases) : $(expected) ;
+}
+
+# The C bindings that wit-bindgen generates for the world of world-file,
+# for the WASI version version, p2 or p3: the target name, which adds them
+# on that version's toolset only, and the explicit target name-headers,
+# which adds their directory on any toolset
+# (tools/component/component.jam).
+rule wit-bindings ( name : world-file : world : rename : version : arguments * )
+{
+    webcpp-component.wit-bindings [ where ] : $(name) : $(world-file) : $(world) : $(rename)
+        : $(version) : $(arguments) ;
 }

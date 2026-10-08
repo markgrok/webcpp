@@ -1,0 +1,19 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+project : requirements <library>/webcpp/component_demo//component_demo ;
+
+import webcpp ;
+
+webcpp.targets native wasip2 wasip3 ;
+
+# On wasip2 and wasip3, a translation unit that includes the world's
+# bindings compiles, and the bindings' own C is compiled with it.
+webcpp.compile bindings : bindings.cpp : <library>/webcpp/component_demo//demo-bindings
+  : wasip2 wasip3 ;
+# Natively, the same bindings add nothing, and ask for no wit-bindgen.
+webcpp.run native_alone : native_alone.cpp : <library>/webcpp/component_demo//demo-bindings
+  : native ;

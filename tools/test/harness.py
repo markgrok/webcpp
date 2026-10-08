@@ -164,6 +164,23 @@ def scratch_superproject(*fixtures: str) -> Path:
     return root
 
 
+def link_wasi_tools(root: Path) -> None:
+    """Gives the scratch superproject root, in its .local, the wit-bindgen and the WASI WIT that a
+    copy leaves out: links to $WIT_BINDGEN_ROOT, the directory that holds wit-bindgen, else this
+    checkout's .local/wit-bindgen, and to $WASI_WIT_ROOT, the directory that holds p2 and p3,
+    else this checkout's .local/wasi-wit."""
+    for variable, name, inside in (('WIT_BINDGEN_ROOT', 'wit-bindgen', ('wit-bindgen',)),
+                                   ('WASI_WIT_ROOT', 'wasi-wit', ('p2', 'p3'))):
+        configured = os.environ.get(variable)
+        source = Path(configured) if configured else ROOT / '.local' / name
+        missing = [entry for entry in inside if not (source / entry).exists()]
+        if missing:
+            raise RuntimeError(f'no {", ".join(missing)} in {source}: install it there, or set '
+                               f'{variable}')
+        (root / '.local').mkdir(exist_ok=True)
+        (root / '.local' / name).symlink_to(source.resolve())
+
+
 # A line of a user-config.jam that configures Boost.
 USING_BOOST = re.compile(r'^\s*using\s+boost\b.*$', re.MULTILINE)
 
