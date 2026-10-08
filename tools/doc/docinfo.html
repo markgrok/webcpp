@@ -91,6 +91,8 @@ body, td.tableblock > .content, td.hdlist2, .admonitionblock > table td.content 
   table.tableblock code.words > span { white-space: normal; overflow-wrap: break-word; }
 }
 #content code.whole, #content code.words > span.whole { white-space: nowrap; }
+/* The hyphens that open a flag stay with its first character (postprocess.mjs), at any width. */
+#content code .lead { white-space: nowrap; }
 /* A table too wide for the page, for a word of code it does not break, scrolls in its own box
    (postprocess.mjs), as a block of code does, and the page never gets wider than the screen. The
    box takes the table's margin and its white, so a table that fits shows as it did. An edge with

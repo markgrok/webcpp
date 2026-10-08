@@ -42,7 +42,11 @@ the report is the verdict. B2-ARGUMENT is for a local run beside others, such as
 --build-dir=bin/lane-gcc-15; the CI passes none.
 
 register adds the toolsets of the lanes named by id to the user-config.jam, in their order, the
-first being b2's default toolset: what the CI's tools job builds the tests of the tools with.
+first being b2's default toolset: what the CI's tools job builds the tests of the tools with. A
+WASI lane's toolset is the region of tools/ci/wasi-sdk.jam between `# tag::<target>[]` and
+`# end::<target>[]`, read as this module loads, with wasi-sdk's directory in place of
+$(wasi-sdk): the lines the documentation shows. A wasi-sdk.jam without them stops every command,
+naming the file and the tag.
 
 report merges what the lanes of the matrix MATRIX wrote under DIR, one directory per lane,
 lane-<id>/<lane>.xml (as the CI downloads the lanes' artifacts), with tools/report/report.py into
@@ -52,7 +56,8 @@ report by name: the matrix would otherwise be green without it.
 The user-config.jam is .local/user-config.jam by default, where tools/ci/actions/boost writes the
 `using boost` line. Exit 0 on success; 1 when b2 or the report fails; 2 on a usage error, a
 --library that names no library, a target with no lane, a line of declared-lanes that is no own
-lane, or a planned lane that wrote no XML, missing from the report.
+lane, a planned lane that wrote no XML, missing from the report, or a tools/ci/wasi-sdk.jam that
+does not hold the WASI toolsets.
 """
 
 from __future__ import annotations
@@ -75,6 +80,10 @@ COMPILER_PATHS = ('CPATH', 'CPLUS_INCLUDE_PATH', 'C_INCLUDE_PATH')
 
 # Where tools/ci/actions/wasi-sdk installs wasi-sdk, as the README installs it.
 WASI_SDK = '.local/wasi-sdk'
+
+# The lines that register each WASI toolset against $(wasi-sdk), each target's between its tag::
+# and end:: lines.
+WASI_SDK_JAM = ROOT / 'tools/ci/wasi-sdk.jam'
 
 # MSVC's lanes build 64-bit programs, embed their manifest with the linker and abbreviate b2's
 # paths against Windows's MAX_PATH, as xstate-cpp's green Windows jobs did. b2 abbreviates each
@@ -99,7 +108,7 @@ class Lane:
     # major version of the compiler `detect` names.
     lane: str
     toolset: str
-    # The line that registers the toolset in user-config.jam. {wasi_sdk} is wasi-sdk's absolute
+    # The lines that register the toolset in user-config.jam. {wasi_sdk} is wasi-sdk's absolute
     # directory.
     using: str
     # The compiler whose major version is {version}, or nothing.
@@ -111,14 +120,42 @@ class Lane:
     projects: tuple[str, ...] = field(default_factory=tuple)
 
 
+class Failure(Exception):
+    """What stops a command, said to the user, with the exit status it gives."""
+
+    def __init__(self, message: str, status: int = 1) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+def toolset_lines(target: str) -> str:
+    """The lines of WASI_SDK_JAM that register target's toolset, with {wasi_sdk} in place of
+    $(wasi-sdk)."""
+    try:
+        text = WASI_SDK_JAM.read_text()
+    except OSError as error:
+        raise Failure(f'cannot read {WASI_SDK_JAM}: {error.strerror}', 2) from error
+    found = re.search(rf'^# tag::{target}\[\]\n(.*?)^# end::{target}\[\]$', text,
+                      re.MULTILINE | re.DOTALL)
+    if found is None or '$(wasi-sdk)' not in found.group(1):
+        raise Failure(f'{WASI_SDK_JAM} holds no lines tag::{target}[] to end::{target}[] that '
+                      f'register clang-{target} against $(wasi-sdk)', 2)
+    return found.group(1).rstrip('\n').replace('$(wasi-sdk)', '{wasi_sdk}')
+
+
+# Read as the module loads: a wasi-sdk.jam that does not hold them stops it, naming the file and
+# the tag, before any command runs.
+try:
+    WASM_USING = {target: toolset_lines(target) for target in ('wasip2', 'wasip3')}
+except Failure as unreadable:
+    print(f'matrix.py: {unreadable}', file=sys.stderr)
+    sys.exit(unreadable.status)
+
+
 def wasm_lane(target: str) -> Lane:
-    flags = ' '.join(f'<{flag}>--target=wasm32-{target}' for flag in ('cflags', 'cxxflags',
-                                                                        'linkflags'))
     return Lane(id=target, name=f'wasm32-{target} (wasi-sdk 34, wasmtime 47.0.3)',
                 os='ubuntu-24.04', target=target, lane=target, toolset=f'clang-{target}',
-                using=(f'using clang : {target} : {{wasi_sdk}}/bin/clang++ : {flags} '
-                       '<archiver>{wasi_sdk}/bin/llvm-ar <ranlib>{wasi_sdk}/bin/llvm-ranlib ;'),
-                options=('testing.launcher=wasmtime',), wasm=True)
+                using=WASM_USING[target], options=('testing.launcher=wasmtime',), wasm=True)
 
 
 # Every lane the CI knows, by target. GCC and Clang on Linux build with libstdc++, the system's
@@ -147,14 +184,6 @@ LANES = (
 
 # The targets tools/webcpp.jam knows, which a library may declare.
 KNOWN = ('native', 'emscripten', 'wasip2', 'wasip3')
-
-
-class Failure(Exception):
-    """What stops a command, said to the user, with the exit status it gives."""
-
-    def __init__(self, message: str, status: int = 1) -> None:
-        super().__init__(message)
-        self.status = status
 
 
 def environment() -> dict[str, str]:
@@ -292,10 +321,17 @@ def resolved(lane: Lane) -> Lane:
     return replace(lane, lane=fill(lane.lane), toolset=fill(lane.toolset), using=fill(lane.using))
 
 
+def holds(text: str, lines: str) -> bool:
+    """Whether text holds lines, whole lines one after the other."""
+    held, wanted = text.splitlines(), lines.splitlines()
+    return any(held[start:start + len(wanted)] == wanted
+               for start in range(len(held) - len(wanted) + 1))
+
+
 def register(lane: Lane, user_config: Path) -> None:
-    """Adds the lane's using line to user_config, unless it holds that line already."""
+    """Adds the lane's using lines to user_config, unless it holds those lines already."""
     text = user_config.read_text() if user_config.is_file() else ''
-    if lane.using in text.splitlines():
+    if holds(text, lane.using):
         return
     if text and not text.endswith('\n'):
         text += '\n'

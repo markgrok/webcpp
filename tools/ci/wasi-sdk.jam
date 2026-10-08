@@ -1,0 +1,28 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The toolsets of the WASI targets: b2's clang, registered against wasi-sdk
+# 34 under the versions wasip2 and wasip3, as a user-config.jam declares them,
+# where $(wasi-sdk) is wasi-sdk's directory, set before them with
+# `local wasi-sdk = /path/to/wasi-sdk ;`. Each is the region between its
+# tag:: and end:: lines. tools/ci/matrix.py register writes a lane's region
+# into the lane's user-config.jam, with the directory where
+# tools/ci/actions/wasi-sdk installs wasi-sdk in place of $(wasi-sdk), and
+# the documentation shows the regions from here.
+
+# tag::wasip2[]
+using clang : wasip2 : $(wasi-sdk)/bin/clang++
+  : <cflags>--target=wasm32-wasip2 <cxxflags>--target=wasm32-wasip2
+    <linkflags>--target=wasm32-wasip2
+    <archiver>$(wasi-sdk)/bin/llvm-ar <ranlib>$(wasi-sdk)/bin/llvm-ranlib ;
+# end::wasip2[]
+
+# tag::wasip3[]
+using clang : wasip3 : $(wasi-sdk)/bin/clang++
+  : <cflags>--target=wasm32-wasip3 <cxxflags>--target=wasm32-wasip3
+    <linkflags>--target=wasm32-wasip3
+    <archiver>$(wasi-sdk)/bin/llvm-ar <ranlib>$(wasi-sdk)/bin/llvm-ranlib ;
+# end::wasip3[]

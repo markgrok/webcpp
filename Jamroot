@@ -39,11 +39,13 @@ for local variable in CPATH CPLUS_INCLUDE_PATH C_INCLUDE_PATH
 # of user-config.jam have loaded gcc.jam, which computes as it loads the
 # systems that get Unix link options (--start-group, -Bstatic, rpath), which
 # wasm-component-ld rejects.
+# tag::wasi-os[]
 if ! wasi in [ feature.values <target-os> ]
 {
     feature.extend target-os : wasi ;
 }
 type.set-generated-target-suffix EXE : <target-os>wasi : wasm ;
+# end::wasi-os[]
 
 # /boost is the `using boost` of user-config.jam, else the Boost tree that
 # BOOST_ROOT names, else Boost on the compiler's default include path (b2's
@@ -239,21 +241,27 @@ project /webcpp
       <target-os>windows:<define>_WIN32_WINNT=0x0A00
       # The toolsets clang-wasip2 and clang-wasip3 (user-config.jam) build
       # for wasm32-wasip2 and wasm32-wasip3, which have no shared libraries.
+      # tag::wasi-target[]
       <toolset>clang-wasip2:<target-os>wasi
       <toolset>clang-wasip3:<target-os>wasi
       <target-os>wasi:<link>static
+      # end::wasi-target[]
       # A library that declares wasip2 builds there without exceptions, a
       # portability policy: some wasm hosts lack exception handling. Boost
       # then calls boost::throw_exception in place of a throw: webcpp.jam
       # links its definition, tools/throw_exception.cpp, into such a program.
+      # tag::wasip2-exceptions[]
       <toolset>clang-wasip2:<exception-handling>off
       <toolset>clang-wasip2:<define>BOOST_NO_EXCEPTIONS
+      # end::wasip2-exceptions[]
       # One that declares wasip3 may use exceptions, encoded as the standard
       # exception handling of WebAssembly (exnref): the clang of wasi-sdk 34
       # emits the legacy encoding by default, which wasmtime 47 refuses to
       # run ("legacy_exceptions feature required"). The runtime is libunwind.
+      # tag::wasip3-exceptions[]
       <toolset>clang-wasip3:<cxxflags>"-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
       <toolset>clang-wasip3:<linkflags>"-fwasm-exceptions -lunwind"
+      # end::wasip3-exceptions[]
       <conditional>@boost-check
   : default-build <variant>debug
   : build-dir bin

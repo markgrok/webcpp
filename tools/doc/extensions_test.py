@@ -165,6 +165,26 @@ def test_short_inline_code_stays_whole(_: None) -> None:
     assert '<a href="#x"><code class="whole">linked-name</code></a>' in html, html
 
 
+def test_a_flag_keeps_its_leading_hyphen(_: None) -> None:
+    # A word too long for a phone's line may break at one of its hyphens, but never right after
+    # the hyphens that open a flag, which would end a line with them alone, read as a dash: they
+    # stay with the flag's first character, which the style keeps on one line. A hyphen inside a
+    # word, and a word short enough to stay whole, are left as they were.
+    html = body(convert('Link with `<linkflags>-mexec-model=reactor`, compile with '
+                        '`-mllvm -wasm-use-legacy-eh=false`, give `--a-flag-wider-than-a-line`, '
+                        'but `-short` and `a-name-with-hyphens-past-24` stay as they are.\n'))
+    assert '<code>&lt;linkflags&gt;<span class="lead">-m</span>exec-model=reactor</code>' in html, (
+        html)
+    assert ('<code class="words"><span class="whole">-mllvm</span> '
+            '<span><span class="lead">-w</span>asm-use-legacy-eh=false</span></code>' in html), html
+    assert '<code><span class="lead">--a</span>-flag-wider-than-a-line</code>' in html, html
+    assert '<code class="whole">-short</code>' in html, html
+    assert '<code>a-name-with-hyphens-past-24</code>' in html, html
+    lead = [(media, declarations) for media, selectors, declarations in page_style()
+            for selector in selectors if selector.endswith('.lead')]
+    assert lead == [(None, {'white-space': 'nowrap'})], lead
+
+
 def test_wide_table_labels_its_cells(_: None) -> None:
     # A table of three columns or more labels each cell with its column's header, which a phone's
     # style shows above the cell once the header row is hidden; a table of two columns reads
@@ -476,6 +496,7 @@ CASES: list[Callable[[None], None]] = [
     test_plain_listing_shows_what_it_holds,
     test_inline_code_breaks_between_words,
     test_short_inline_code_stays_whole,
+    test_a_flag_keeps_its_leading_hyphen,
     test_wide_table_labels_its_cells,
     test_reference_headings_break_after_scopes,
     test_long_names_break_between_their_parts,

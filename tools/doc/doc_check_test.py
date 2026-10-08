@@ -600,6 +600,71 @@ def check_links(root: Path) -> None:
     expect(check(root, '--complete'), 0, '')
 
 
+def check_superproject(root: Path) -> None:
+    """A page includes a region of a file the superproject's git tracks, by its tag, through
+    {webcpp-root}: the build's own configuration, shown as it is. A file the superproject does not
+    track, one that is not there or lies outside it, a whole file and a region the file does not
+    hold each fail, and so does such an include when the check is not told where the superproject
+    is."""
+    with tempfile.TemporaryDirectory(prefix='superproject ') as scratch:
+        top = Path(scratch)
+        subprocess.run(['git', 'init', '-q'], cwd=top, check=True)
+        regions = ('# tag::wasip2[]\nusing clang : wasip2 ;\n# end::wasip2[]\n\n'
+                   '# tag::wasip3[]\nusing clang : wasip3 ;\n# end::wasip3[]\n')
+        write(top / 'tools/ci/toolsets.jam', regions)
+        write(top / 'tools/ci/gone.jam', regions)
+        write(top / 'untracked.jam', regions)
+        subprocess.run(['git', 'add', 'tools/ci/toolsets.jam', 'tools/ci/gone.jam'], cwd=top,
+                       check=True)
+        (top / 'tools/ci/gone.jam').unlink()
+        given = ('--webcpp-root', str(top))
+        line = NEXT + 2
+        for included in ('tools/ci/toolsets.jam[tag=wasip2]',
+                         'tools/ci/toolsets.jam[tags=wasip2;wasip3,indent=0]'):
+            write(root / 'doc/page.adoc',
+                  PAGE + f'\n[listing]\n----\ninclude::{{webcpp-root}}/{included}\n----\n')
+            expect(check(root, '--complete', *given), 0, '')
+        for included, fault in (
+                ('untracked.jam[tag=wasip2]', 'includes a file the superproject does not track: '
+                                              '{webcpp-root}/untracked.jam'),
+                ('tools/ci/gone.jam[tag=wasip2]', 'includes a file that is not there: '
+                                                  '{webcpp-root}/tools/ci/gone.jam'),
+                ('tools/ci/missing.jam[tag=wasip2]', 'includes a file that is not there: '
+                                                     '{webcpp-root}/tools/ci/missing.jam'),
+                (f'../{root.name}/README.md[tag=wasip2]', 'includes a file outside the '
+                                                          f'superproject: {{webcpp-root}}/../'),
+                ('tools/ci/toolsets.jam[]', 'includes a file of the superproject whole; name its '
+                                            'region with tag=<name>: {webcpp-root}/tools/ci/'
+                                            'toolsets.jam'),
+                ('tools/ci/toolsets.jam[lines=1..2]', 'includes lines of a file of the '
+                                                      'superproject by number, which drift'),
+                ('tools/ci/toolsets.jam[tag=*]', 'names a region of the superproject\'s file by *'),
+                ('tools/ci/toolsets.jam[tag=wasip4]', 'includes a region the file does not hold, '
+                                                      'tag::wasip4[] to end::wasip4[]: '
+                                                      '{webcpp-root}/tools/ci/toolsets.jam'),
+                ('tools/ci/toolsets.jam[tags=wasip2;wasip4]', 'includes a region the file does '
+                                                              'not hold, tag::wasip4[] to '
+                                                              'end::wasip4[]')):
+            write(root / 'doc/page.adoc',
+                  PAGE + f'\n[listing]\n----\ninclude::{{webcpp-root}}/{included}\n----\n')
+            expect(check(root, *given), 1, f'page.adoc:{line}: {fault}')
+        # The region is shown as it is, never as C++: a listing with no style is one.
+        write(root / 'doc/page.adoc',
+              PAGE + '\n----\ninclude::{webcpp-root}/tools/ci/toolsets.jam[tag=wasip2]\n----\n')
+        expect(check(root, '--complete', *given), 1,
+               f'page.adoc:{NEXT}: C++ that is not included from an example')
+        # Without --webcpp-root, which only a library's page is given.
+        write(root / 'doc/page.adoc',
+              PAGE + '\n[listing]\n----\ninclude::{webcpp-root}/tools/ci/toolsets.jam'
+              '[tag=wasip2]\n----\n')
+        expect(check(root), 1, f'page.adoc:{line}: includes a file of the superproject, and '
+                               'the check was not given --webcpp-root')
+        # And a rendered page is no page's source.
+        rendered = run('--rendered', str(root / 'doc/page.adoc'), *given)
+        assert rendered.returncode == 2, (rendered.returncode, rendered.stderr)
+    write(root / 'doc/page.adoc', PAGE)
+
+
 def check_without_git(root: Path) -> None:
     """Outside a git checkout, or without git, the libraries a page links are none, which the build
     reads as a Jamfile loads; the page's own check names what it cannot read."""
@@ -632,7 +697,7 @@ def main() -> int:
         write(root / 'doc/page.adoc', PAGE)
         for part in (check_page, check_reference, check_examples, check_graph, check_references,
                      check_see_titles, check_readme, check_rendered, check_links,
-                     check_without_git):
+                     check_superproject, check_without_git):
             part(root)
             print(f'{part.__name__}: ok')
     print('doc-check.py: ok')

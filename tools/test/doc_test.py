@@ -21,7 +21,8 @@ undocumented function of it, and without those requirements fails naming the hea
 Comments of the header's wasip3 branch, which that reference does not parse, are checked with
 the other requirements the doc Jamfile gives, and an undocumented function, a detail symbol
 without a brief and an undocumented macro there each fail it, the first the page too; and
-MrDocs and clang++ given at paths that hold a space are found.
+MrDocs and clang++ given at paths that hold a space are found; and a page shows a tagged region
+of a file the superproject's git tracks, at {webcpp-root}, and fails on one it does not track.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is; the cases of
@@ -402,6 +403,27 @@ def test_doc_check_and_rendered_check_run(root):
     assert not (root / PAGE).exists()
 
 
+def test_page_includes_a_file_of_the_superproject(root):
+    # A page shows a tagged region of a file the superproject's git tracks, through
+    # {webcpp-root}. The scratch copy is no git checkout, so it becomes one here, which tracks
+    # that file once the page has failed on it untracked.
+    prepare(root)
+    (root / 'tools/region.jam').write_text('# tag::shown[]\nusing clang : shown ;\n'
+                                           '# end::shown[]\n')
+    subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=root, check=True)
+    edit(root, 'libs/demo/doc/demo.adoc', '[#holds]\n',
+         '[listing]\n----\ninclude::{webcpp-root}/tools/region.jam[tag=shown]\n----\n\n'
+         '[#holds]\n')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
+                   'includes a file the superproject does not track: '
+                   '{webcpp-root}/tools/region.jam')
+    assert not (root / PAGE).exists()
+    subprocess.run(['git', 'add', 'tools/region.jam'], cwd=root, check=True)
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
+    html = (root / PAGE).read_text()
+    assert 'using clang : shown ;' in html and 'tag::shown' not in html, html
+
+
 def test_page_shows_the_counts_of_its_programs(root):
     # Counted from what demo's test and example Jamfiles declare, as b2 recorded it: each program
     # once, and each header compiled alone one.
@@ -718,6 +740,7 @@ CASES = [
     test_clang_is_given,
     test_library_settings_only_present_the_reference,
     test_doc_check_and_rendered_check_run,
+    test_page_includes_a_file_of_the_superproject,
     test_page_shows_the_counts_of_its_programs,
     test_page_shows_twins_and_their_counts,
     test_links_between_pages,

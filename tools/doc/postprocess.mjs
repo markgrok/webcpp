@@ -118,8 +118,16 @@ const BREAKS = [
 
 // Code breaks at these too, and between the words of a name written in camel
 // case, `resolveHistory` and `DefaultTransition`: never prose, whose JavaScript
-// is one word.
-const CODE_BREAKS = [...BREAKS, [/(?<=[a-z])(?=[A-Z])/g, () => PART]];
+// is one word. And the hyphens that open a flag, `-mexec-model=reactor` or
+// `--target`, at the start of a word or after a space, a `=`, a `(`, a `,` or
+// the `;` of a reference such as `&gt;`, stay with the flag's first character
+// in a span the style keeps on one line: a break right after them would end a
+// line with a hyphen alone, which reads as a dash.
+const CODE_BREAKS = [
+  ...BREAKS,
+  [/(?<=[a-z])(?=[A-Z])/g, () => PART],
+  [/(?<=^|[\s=(,;])-+[A-Za-z0-9]/g, (flag) => `<span class="lead">${flag}</span>`]
+];
 
 // A character reference, which no break goes inside: `&#xAB;` and `&rArr;`
 // hold a lower case letter before an upper case one.

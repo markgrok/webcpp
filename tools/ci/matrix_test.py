@@ -9,7 +9,8 @@
 declare, with the libraries that declare it, and fails on a target the CI has no lane for or a
 library that does not exist; the own lanes the libraries declare are listed, of every library or of
 one, and a library that does not exist or a line of b2's that is no own lane fails; a lane is named
-and registered by the compiler's version when the image decides it; a lane runs the lane command and
+and registered by the compiler's version when the image decides it, and a WASI lane by the lines
+of tools/ci/wasi-sdk.jam; a lane runs the lane command and
 writes its XML, and fails when b2 cannot build; the report merges the lanes and fails, by name, a
 planned lane that wrote nothing. Each case runs the scratch superproject's own copy of matrix.py,
 with the fixture library demo. Run with the names of some cases to run only those."""
@@ -184,7 +185,7 @@ def test_a_lane_is_named_by_the_compiler_version(root):
     assert (lane.lane, lane.toolset) == ('clang-darwin-17', 'clang-17'), lane
     assert lane.using == 'using clang : 17 : clang++ ;', lane.using
     wasip2 = matrix.resolved(next(lane for lane in matrix.LANES if lane.id == 'wasip2'))
-    assert f'using clang : wasip2 : {matrix.ROOT.as_posix()}/.local/wasi-sdk/bin/clang++ :' in (
+    assert f'using clang : wasip2 : {matrix.ROOT.as_posix()}/.local/wasi-sdk/bin/clang++\n' in (
         wasip2.using), wasip2.using
     # Registered once, after what the file holds.
     config = root / 'config.jam'
@@ -247,12 +248,45 @@ def test_register_writes_the_lanes_toolsets_in_order(root):
     assert result.returncode == 0, (result.returncode, result.stderr)
     lines = config.read_text().splitlines()
     assert lines[1] == 'using clang : 18 : clang++-18 ;', lines
-    assert lines[2].startswith(f'using clang : wasip2 : {root.resolve().as_posix()}/'
-                               '.local/wasi-sdk/bin/clang++ :'), lines
-    assert len(lines) == 3, lines
+    assert lines[2] == (f'using clang : wasip2 : {root.resolve().as_posix()}/'
+                        '.local/wasi-sdk/bin/clang++'), lines
+    assert lines[-1].endswith(' ;') and not any(line.endswith(' ;') for line in lines[2:-1]), lines
     unknown = run(root, 'register', 'clang-99', '--user-config', str(config))
     assert unknown.returncode == 2, (unknown.returncode, unknown.stderr)
     assert 'no lane clang-99; the lanes are gcc-14, gcc-15' in unknown.stderr, unknown.stderr
+
+
+def test_the_wasm_toolsets_come_from_wasi_sdk_jam(root):
+    # tools/ci/wasi-sdk.jam holds the lines that register each WASI toolset against $(wasi-sdk),
+    # each between `# tag::<target>[]` and `# end::<target>[]`, and the documentation shows them
+    # from there; register writes them with wasi-sdk's directory in place of $(wasi-sdk).
+    jam = root / 'tools/ci/wasi-sdk.jam'
+    wasi_sdk = f'{root.resolve().as_posix()}/.local/wasi-sdk'
+    for target in ('wasip2', 'wasip3'):
+        region = jam.read_text().split(f'# tag::{target}[]\n')[1].split(f'# end::{target}[]')[0]
+        assert region.startswith(f'using clang : {target} : $(wasi-sdk)/bin/clang++\n'), region
+        assert f'<cxxflags>--target=wasm32-{target}' in region, region
+        config = boost_only(root)
+        before = config.read_text()
+        for _ in range(2):
+            result = run(root, 'register', target, '--user-config', str(config))
+            assert result.returncode == 0, (result.returncode, result.stderr)
+        # Once, after what the file held.
+        assert config.read_text() == before + region.replace('$(wasi-sdk)', wasi_sdk), (
+            config.read_text())
+    # The file is read, not a copy of it: a flag added there is registered.
+    harness.replace(jam, '<linkflags>--target=wasm32-wasip2',
+                    '<linkflags>--target=wasm32-wasip2 <linkflags>-Wl,--probe')
+    config = boost_only(root)
+    result = run(root, 'register', 'wasip2', '--user-config', str(config))
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert '<linkflags>-Wl,--probe' in config.read_text(), config.read_text()
+    # A file that does not hold a target's lines stops every command, naming the file and the tag.
+    harness.replace(jam, '# tag::wasip3[]', '# tag::other[]')
+    result = run(root, 'plan', '--library', 'demo')
+    assert result.returncode != 0 and result.stdout == '', (result.returncode, result.stdout)
+    assert f'{jam.resolve()} holds no lines tag::wasip3[] to end::wasip3[]' in result.stderr, (
+        result.stderr)
 
 
 def host_lane(root: Path) -> dict:
@@ -345,6 +379,7 @@ CASES = [
     test_a_lane_is_named_by_the_compiler_version,
     test_abbreviated_paths_keep_the_lane_name,
     test_register_writes_the_lanes_toolsets_in_order,
+    test_the_wasm_toolsets_come_from_wasi_sdk_jam,
     test_a_lane_writes_its_xml_and_the_report_merges_it,
     test_a_lane_that_cannot_build_fails,
     test_the_report_names_a_planned_lane_that_wrote_nothing,

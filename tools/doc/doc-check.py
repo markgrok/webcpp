@@ -15,7 +15,14 @@ program that is not there: an example or a twin removed or renamed left the incl
 the page would show what no program printed. Any other `include::`, one of a section or of an
 example's or a twin's own source, names a file that is not there, or one that exists but strays
 outside `doc/`, `{examples}` and `{twins}` - Asciidoctor resolves it (with `-S unsafe`) wherever
-it points. And a `++` in prose, outside a block, inline code and an explicit passthrough
+it points. The one other place an include may reach is the superproject, `--webcpp-root`, which
+webcpp.doc gives a library's page as `{webcpp-root}`, so that the page shows the build's own
+configuration as it is: `include::{webcpp-root}/<path>[tag=<name>]`, or `tags=` with several
+names, includes a region of a file the superproject's git tracks, which holds each region it
+names, `tag::<name>[]` to `end::<name>[]`. A file it does not track, one that is not there or
+lies outside it, a whole file, lines chosen by number, which drift, and a region the file does not
+hold are each a fault, and so is such an include when the check is not given `--webcpp-root`.
+And a `++` in prose, outside a block, inline code and an explicit passthrough
 (`pass:[...]`, `+++...+++`): two of them in one paragraph make Asciidoctor read what lies between
 them as a passthrough, which drops both and swallows a cross-reference with no warning; `{cpp}`
 writes the language's name without the risk.
@@ -71,7 +78,8 @@ libraries whose pages the library's files refer to, one per line: the pages the 
 first; none outside a git checkout, or without git.
 
 Usage: doc-check.py --page <page.adoc> [--examples <dir>] [--twins <dir>] [--repository <dir>]
-[--library <name>] [--readme <README.md>] [--complete] <section.adoc>...; doc-check.py
+[--library <name>] [--readme <README.md>] [--webcpp-root <dir>] [--complete] <section.adoc>...;
+doc-check.py
 --rendered <page.html> [--repository <dir> --library <name>] [--webcpp-libs <path> --webcpp-page
 <path>] [--linked-page <page.html>]...; or doc-check.py
 --linked-libraries --repository <dir> [--library <name>]. Prints each fault and exits 1 when there
@@ -102,6 +110,8 @@ TWIN_OUTPUT = re.compile(rf'^\{{twins\}}/{NESTED}\.expected$')
 TWIN_SOURCE = re.compile(rf'^include::\{{twins\}}/{NESTED}\.mjs\[[^\]]*\]$')
 EXAMPLE_SOURCE = re.compile(rf'^include::\{{examples\}}/{NESTED}\.(cpp|hpp)\[[^\]]*\]$')
 SHOWN = re.compile(rf'^include::\{{(examples|twins)\}}/{NESTED}\.(cpp|expected)\[')
+# An include of a file of the superproject, by its path there.
+SUPERPROJECT = re.compile(r'^\{webcpp-root\}/(.+)$')
 REFERENCE = '{reference}'
 ANCHOR = re.compile(r'^\[#([\w-]+)[\],.]|\[\[([\w-]+)\]\]')
 # A library's name, the directory of libs/ that holds it.
@@ -281,11 +291,14 @@ def indented(lines: list[str], indent: int) -> list[str]:
 
 class Library:
     """Where a page's includes resolve: its examples and its twins, each a directory or None
-    when the library has none."""
+    when the library has none, and the superproject, or None when the check is not given it."""
 
-    def __init__(self, examples: Path | None, twins: Path | None) -> None:
+    def __init__(self, examples: Path | None, twins: Path | None,
+                 webcpp_root: Path | None = None) -> None:
         self.examples = examples
         self.twins = twins
+        self.webcpp_root = webcpp_root
+        self.listed: set[str] | None = None
 
     def defined(self) -> dict[str, str]:
         """The attributes webcpp.doc gives the page, as Asciidoctor seeds an attribute given on
@@ -295,7 +308,23 @@ class Library:
             found['examples'] = str(self.examples)
         if self.twins is not None:
             found['twins'] = str(self.twins)
+        if self.webcpp_root is not None:
+            found['webcpp-root'] = str(self.webcpp_root)
         return found
+
+    def tracked(self) -> set[str] | None:
+        """The files the superproject's git tracks, by their path in it, read once; None when it
+        is not a git checkout, or git is not there to list them."""
+        if self.listed is None and self.webcpp_root is not None:
+            try:
+                listed = subprocess.run(['git', '-C', str(self.webcpp_root), 'ls-files', '-z'],
+                                        capture_output=True, check=False)
+            except OSError:
+                return None
+            if listed.returncode != 0:
+                return None
+            self.listed = set(listed.stdout.decode('utf-8').split('\0')) - {''}
+        return self.listed
 
     def example_output(self, target: str) -> tuple[Path | None, Path | None]:
         """For an include of an example's output, the output and the program that prints it."""
@@ -337,6 +366,39 @@ def within(path: Path, roots: Iterable[Path]) -> bool:
     return any(target.is_relative_to(root.resolve()) for root in roots)
 
 
+def superproject_fault(relative: str, given: dict[str, str], library: Library) -> str | None:
+    """What is wrong with an include of the superproject's file `relative`, with the attributes
+    `given`, or None: a region, by its tag, of a file the superproject's git tracks."""
+    top = library.webcpp_root
+    if top is None:
+        return 'includes a file of the superproject, and the check was not given --webcpp-root'
+    path = top / relative
+    if not within(path, [top]):
+        return 'includes a file outside the superproject'
+    if not path.is_file():
+        return 'includes a file that is not there'
+    tracked = library.tracked()
+    if tracked is None:
+        return (f'includes a file of the superproject, and {top} is not a git checkout, or git '
+                'is not on PATH: the check reads the files git tracks')
+    if path.resolve().relative_to(top.resolve()).as_posix() not in tracked:
+        return 'includes a file the superproject does not track'
+    if 'lines' in given:
+        return ('includes lines of a file of the superproject by number, which drift; name its '
+                'region with tag=<name>')
+    names = [name.strip() for name in re.split(r'[;,]', given.get('tags', given.get('tag', '')))]
+    names = [name for name in names if name]
+    if not names:
+        return 'includes a file of the superproject whole; name its region with tag=<name>'
+    held = path.read_text(encoding='utf-8')
+    for name in names:
+        if name.startswith('!') or '*' in name:
+            return f'names a region of the superproject\'s file by {name}; name each with its tag'
+        if f'tag::{name}[]' not in held or f'end::{name}[]' not in held:
+            return f'includes a region the file does not hold, tag::{name}[] to end::{name}[]'
+    return None
+
+
 def faults(section: Path, library: Library, doc_root: Path) -> list[Fault]:
     """Each fault of `section`, as (line number, text)."""
     found: list[Fault] = []
@@ -368,10 +430,17 @@ def faults(section: Path, library: Library, doc_root: Path) -> list[Fault]:
         if twin is not None and not twin.is_file():
             found.append((number, f'includes the output of no twin: {target}'))
             continue
+        superproject = SUPERPROJECT.match(target)
+        if superproject is not None:
+            fault = superproject_fault(superproject.group(1), attributes(match.group(2)),
+                                       library)
+            if fault is not None:
+                found.append((number, f'{fault}: {target}'))
+                continue
         path = resolved(section, target, library, defined)
         # Any other include answers for itself: an output already did, above, against the
-        # program that would print it.
-        if program is None and twin is None and path is not None:
+        # program that would print it, and a file of the superproject just now.
+        if program is None and twin is None and superproject is None and path is not None:
             if not path.is_file():
                 found.append((number, f'includes a file that is not there: {target}'))
                 continue
@@ -1012,7 +1081,7 @@ def rendered_check(arguments: argparse.Namespace) -> list[str]:
 
 def page_check(arguments: argparse.Namespace) -> list[str]:
     """The faults of the page's sources, and of the files of its library."""
-    library = Library(arguments.examples, arguments.twins)
+    library = Library(arguments.examples, arguments.twins, arguments.webcpp_root)
     page: Path = arguments.page
     sections: list[Path] = arguments.sections
     doc_root = page.parent
@@ -1047,6 +1116,7 @@ def main() -> int:
     parser.add_argument('--repository', type=Path)
     parser.add_argument('--library')
     parser.add_argument('--readme', type=Path)
+    parser.add_argument('--webcpp-root', type=Path)
     parser.add_argument('--complete', action='store_true')
     parser.add_argument('--rendered', type=Path)
     parser.add_argument('--webcpp-libs')
@@ -1056,7 +1126,8 @@ def main() -> int:
     parser.add_argument('sections', type=Path, nargs='*')
     arguments = parser.parse_args()
     of_the_page = (arguments.sections or arguments.page or arguments.examples or
-                   arguments.twins or arguments.readme or arguments.complete)
+                   arguments.twins or arguments.readme or arguments.complete or
+                   arguments.webcpp_root is not None)
     of_the_rendered = (arguments.webcpp_libs is not None or arguments.webcpp_page is not None or
                        arguments.linked_page)
     if arguments.linked_libraries:

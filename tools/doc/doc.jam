@@ -33,8 +33,8 @@
 # Headers that branch by the macro of a version hide the other branch from
 # the reference. The requirements also-checked, those of the other version,
 # have reference.py check the Doc Comments again with them, MrDocs and
-# doc_comments.py both, before the reference is written; no page shows what
-# that check writes.
+# doc_comments.py both, beside the reference; no page shows what that check
+# writes.
 #
 # Every page is converted with highlighter.mjs and postprocess.mjs, the
 # style of docinfo.html, and these attributes, which a page need not set:
@@ -60,7 +60,11 @@
 #   page, link:{webcpp-libs}/<library>/{webcpp-page}#<anchor>[...], in the
 #   layout -sWEBCPP_INDEX names (below). The check of the rendered page reads
 #   the linked page, which the build makes first, for each anchor such a
-#   link or a doc: <library>#<anchor> of the library's files names.
+#   link or a doc: <library>#<anchor> of the library's files names;
+# - {webcpp-root}, the superproject, whose files the page shows as they are,
+#   include::{webcpp-root}/<path>[tag=<name>]: doc-check.py, given it too
+#   (--webcpp-root), accepts only a tagged region of a file the
+#   superproject's git tracks, such as the Jamroot's flags.
 #
 # MrDocs is -sMRDOCS=<path>, else .local/mrdocs/bin/mrdocs, else mrdocs on
 # PATH; clang++, which reads the headers for doc_comments.py, is
@@ -402,6 +406,7 @@ rule doc-check ( targets * : sources * : properties * )
     REPOSITORY on $(targets) = ;
     LIBRARY on $(targets) = ;
     README on $(targets) = ;
+    WEBCPP_ROOT on $(targets) = ;
     if $(id) != index
     {
         local library = $(.root)/libs/$(id) ;
@@ -412,12 +417,13 @@ rule doc-check ( targets * : sources * : properties * )
         REPOSITORY on $(targets) = [ path.native $(library) ] ;
         LIBRARY on $(targets) = $(id) ;
         README on $(targets) = [ path.native $(library)/README.md ] ;
+        WEBCPP_ROOT on $(targets) = [ path.native $(.root) ] ;
     }
 }
 
 actions doc-check
 {
-    "$(PYTHON)" "$(SCRIPT)" --page "$(PAGE)" $(COMPLETE) --examples$(_)"$(EXAMPLES)" --twins$(_)"$(TWINS)" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --readme$(_)"$(README)" "$(SECTIONS)"
+    "$(PYTHON)" "$(SCRIPT)" --page "$(PAGE)" $(COMPLETE) --examples$(_)"$(EXAMPLES)" --twins$(_)"$(TWINS)" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --readme$(_)"$(README)" --webcpp-root$(_)"$(WEBCPP_ROOT)" "$(SECTIONS)"
 }
 
 # What the oracle of library declares with webcpp.twins, its examples and
@@ -485,7 +491,8 @@ rule convert ( targets * : sources * : properties * )
         local examples = [ path.native $(.root)/libs/$(id)/example ] ;
         local twins = [ twins-of $(id) ] ;
         local layout = [ layout ] ;
-        attributes += examples=$(examples) twins=$(twins[2])
+        local root = [ path.native $(.root) ] ;
+        attributes += examples=$(examples) twins=$(twins[2]) webcpp-root=$(root)
             webcpp-libs=$(.webcpp-libs.$(layout)) webcpp-page=$(.webcpp-page.$(layout))
             [ counts $(id) : $(twins) ] ;
     }
