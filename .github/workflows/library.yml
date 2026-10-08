@@ -411,7 +411,7 @@ jobs:
       # own lane, which writes no XML, whose job is its verdict: skipped only when the plan found
       # none.
       - name: Every lane's job succeeded
-        if: always()
+        if: ${{ !cancelled() }}
         env:
           LANES: ${{ needs.lanes.result }}
           OWN_LANES: ${{ needs.own-lanes.result }}

@@ -14,8 +14,10 @@ A sample is what `b2 -a --dump-tests --out-xml=FILE` writes, run with the argume
 whatever SAMPLES plants beside it. It is then trimmed of what report.py never reads, and of what
 would only describe the machine that recorded it: the <os> element (uname, which names the
 host), every <properties> and <sources> element, and the actions b2 runs for itself, which have
-no <name>, when they succeeded (creating a directory, for one). report_test.py records every
-sample afresh, untrimmed, and checks that the report reads it as it reads the committed one.
+no <name>, when they succeeded (creating a directory, for one). The temporary directory, under
+which the scratch superproject is and whose path names the machine too, is written as $TMPDIR.
+report_test.py records every sample afresh, untrimmed, and checks that the report reads it as it
+reads the committed one.
 
 b2 records the compilers' paths, which user-config.jam can place under the home directory: the
 scratch superproject reaches .local/ through a link outside it, and a sample that still names the
@@ -188,6 +190,23 @@ def trim(data: bytes) -> bytes:
     return data
 
 
+# What a sample says in place of the temporary directory, under which the scratch superproject
+# is: its path names the machine (macOS's /var/folders/<hash>/T).
+TEMPORARY = b'$TMPDIR'
+
+
+def scrub(data: bytes) -> bytes:
+    """The file b2 wrote, with the temporary directory written as TEMPORARY wherever it is a
+    whole directory of a path: as Python names it, and resolved, which is how b2 names the
+    scratch superproject's directory on macOS (/private/var/folders/...)."""
+    temporary = Path(tempfile.gettempdir())
+    forms = {str(temporary).encode(), str(temporary.resolve()).encode()}
+    # The longer first: the one may hold the other, as /private/var/folders/... does.
+    for form in sorted(forms, key=len, reverse=True):
+        data = re.sub(re.escape(form) + rb'(?=/)', TEMPORARY, data)
+    return data
+
+
 def reroute_local(root: Path) -> Path:
     """Points the scratch superproject root's user-config.jam at a link to the superproject's
     .local/ outside the home directory, and returns the directory that holds the link."""
@@ -212,7 +231,7 @@ def main(names: list[str]) -> int:
         root = harness.scratch_superproject('demo')
         holder = reroute_local(root)
         try:
-            data = trim(record(name, root).read_bytes())
+            data = scrub(trim(record(name, root).read_bytes()))
         finally:
             shutil.rmtree(root)
             shutil.rmtree(holder)

@@ -17,9 +17,9 @@ model: this repository is the superproject, the equivalent of
 | [xstate](https://github.com/webcpporg/xstate) | A header-only port of XState's state machines and actors: machines read from XState's JSON config, stepped by XState's pure functions or run as actors on xactor. Ports XState 5.33.2, and is proven against it. | native, wasip2, wasip3 |
 
 trystero (a port of Trystero's serverless WebRTC rooms) and wasi (a helper
-for building C++ as WASI components) are being moved here. Each library's page, with its API
-reference, and the test matrix of every library on every target are
-published at <https://webcpporg.github.io/webcpp/>.
+for building C++ as WASI components) are being moved here. Each library's
+page, with its API reference, and the test matrix of every library on every
+target are published at <https://webcpporg.github.io/webcpp/>.
 
 ## Prerequisites
 
@@ -66,18 +66,12 @@ clang:
     using clang ;
     using boost : 1.92 : <include>/opt/homebrew/opt/boost/include <library>/opt/homebrew/opt/boost/lib ;
 
-and run `b2 test` again. It checks the Boost it found, then builds and runs
-every library's tests:
+and run `b2 test` again. It checks the Boost it found, which it reports on a
+line of its configuration checks,
 
-    Performing configuration checks
+    - Boost 1.92 or newer in /opt/homebrew/opt/boost/include (1.92.0) : yes [1]
 
-        - Boost 1.92 or newer in /opt/homebrew/opt/boost/include (1.92.0) : yes [1]
-
-    [1] clang-darwin-21/debug/cxxstd-20-iso
-    ...
-    **passed** bin/libs/xactor/test/scheduler.test/clang-darwin-21/debug/cxxstd-20-iso/scheduler.test
-
-    ...updated 105 targets...
+then builds and runs every library's tests.
 
 The other aggregates work the same way:
 

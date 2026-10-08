@@ -437,6 +437,39 @@ def test_style_scrolls_a_wide_table_in_its_box(_: None) -> None:
     assert table == {'margin-bottom': '0', 'background': 'none'}, table
 
 
+def ems(value: str) -> float:
+    """A length in em, as a float: 14em is 14.0."""
+    found = re.fullmatch(r'(\d+(?:\.\d+)?)em', value)
+    assert found, value
+    return float(found.group(1))
+
+
+def test_style_gives_the_content_a_right_gutter_from_the_toc(_: None) -> None:
+    # Wherever Asciidoctor sets the table of contents at the left of the content, the page gives
+    # the content a gutter at its right, an em or more, taken from the table's width: the
+    # content keeps the width Asciidoctor gives it, so every line breaks where it did, and the
+    # table and its padding still meet.
+    default = (HERE / 'node_modules/@asciidoctor/core/data/asciidoctor-default.css').read_text()
+    beside = {}
+    for media, selectors, declarations in css_rules(default):
+        if media and 'body.toc2' in selectors:
+            pixels = re.fullmatch(r'screen and \(min-width:(\d+)px\)', media)
+            assert pixels, media
+            beside[f'screen and (min-width: {int(pixels.group(1)) / 16:g}em)'] = (
+                ems(declarations['padding-left']))
+    assert sorted(beside.values()) == [15.0, 20.0], beside
+    page = {(media, selector): declarations for media, selectors, declarations in page_style()
+            for selector in selectors}
+    for media, width in beside.items():
+        body = page.get((media, 'body.toc2.toc-left'), {})
+        toc = page.get((media, 'body.toc2.toc-left #toc.toc2'), {})
+        assert body and toc, (media, body, toc)
+        gutter = ems(body['padding-right'])
+        assert gutter >= 1, (media, body)
+        assert ems(body['padding-left']) + gutter == width, (media, body, width)
+        assert ems(toc['width']) == ems(body['padding-left']), (media, toc, body)
+
+
 CASES: list[Callable[[None], None]] = [
     test_prose_shows_what_mrdocs_read,
     test_synopsis_keeps_its_links,
@@ -455,6 +488,7 @@ CASES: list[Callable[[None], None]] = [
     test_style_breaks_a_word_only_when_it_must,
     test_style_keeps_part_breaks_to_a_phone,
     test_style_scrolls_a_wide_table_in_its_box,
+    test_style_gives_the_content_a_right_gutter_from_the_toc,
 ]
 
 

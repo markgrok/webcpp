@@ -35,6 +35,19 @@ pre.highlight > code.hljs { background: none; padding: 0; }
   word-wrap: normal;
   overflow-x: auto;
 }
+/* Where the table of contents stands at the left of the content, from 768px, Asciidoctor leaves
+   the content 15px of room at its right, against the table's 240px, 320px from 1280px. The
+   content gets a gutter there taken from the table's width, whose entries keep their lines: the
+   content keeps its width, so that every line of it, a line of 100 columns among them, breaks
+   where it did. */
+@media screen and (min-width: 48em) {
+  body.toc2.toc-left { padding-left: 14em; padding-right: 1em; }
+  body.toc2.toc-left #toc.toc2 { width: 14em; }
+}
+@media screen and (min-width: 80em) {
+  body.toc2.toc-left { padding-left: 18em; padding-right: 2em; }
+  body.toc2.toc-left #toc.toc2 { width: 18em; }
+}
 /* From 1280px, Asciidoctor sets a listing in 1em while a table of contents at the side takes
    20em of the width, so a line of 100 columns would scroll in a window narrower than 1345px. On a
    page with that table, its size from 768px, .90625em, keeps such a line whole from 1280px on. */

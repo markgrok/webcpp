@@ -7,14 +7,15 @@ in a scratch superproject that holds the fixture library demo
 `python3 tools/report/record_samples.py [NAME ...]`, and trims each of the
 `<os>` element (uname, which names the host), every `<properties>` and
 `<sources>` element, and the actions b2 runs for itself that succeeded: what
-`report.py` never reads. Never edit a sample by hand; record it again.
+`report.py` never reads. It writes the temporary directory, which names the
+machine too, as `$TMPDIR`. Never edit a sample by hand; record it again.
 `report_test.py` records every sample afresh, untrimmed, and checks that the
 report reads it as it reads the committed one.
 
-They were recorded on 2026-10-07, and `wasip2-skipped-library.xml` on
-2026-10-08, on macOS arm64 with B2 5.5.3, Apple clang 21 and wasi-sdk 34. The paths b2 recorded are those of the scratch superproject
-under `$TMPDIR`, and the wasi-sdk is reached through a link outside the home
-directory, which the script checks no sample names.
+They were recorded on 2026-10-08, on macOS arm64 with B2 5.5.3, Apple clang
+21 and wasi-sdk 34. The paths b2 recorded are those of the scratch
+superproject under `$TMPDIR`, and the wasi-sdk is reached through a link
+outside the home directory, which the script checks no sample names.
 
 | Sample | Lane | Built | What it shows |
 | --- | --- | --- | --- |

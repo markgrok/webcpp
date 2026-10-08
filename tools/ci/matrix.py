@@ -21,10 +21,11 @@ library declares would build nothing. A target the CI has no lane for (emscripte
 is pinned: AGENTS.md, Roadmap) is a failure, never a lane left out.
 
 own-lanes runs `b2 -d0 declared-lanes` and prints the JSON matrix of the libraries' own lanes,
-{"include": [{"library": L, "lane": N, "directory": D}, ...]}, of the library --library names,
-else of every library; empty, {"include":[]}, when none declares one. An own lane is one a
-library declares with webcpp.lane, such as its oracle, and the CI runs it as `b2 -a D//N`, whose
-exit status is its verdict: it writes no XML, so it is no column of the report.
+{"include": [{"library": L, "lane": N, "directory": D}, ...]}, of the library --library names, else
+of every library; empty, {"include":[]}, when none declares one, and a failure when --library names
+no library of libs/, as plan's does. An own lane is one a library declares with webcpp.lane, such as
+its oracle, and the CI runs it as `b2 -a D//N`, whose exit status is its verdict: it writes no XML,
+so it is no column of the report.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -49,9 +50,9 @@ lane-<id>/<lane>.xml (as the CI downloads the lanes' artifacts), with tools/repo
 report by name: the matrix would otherwise be green without it.
 
 The user-config.jam is .local/user-config.jam by default, where tools/ci/actions/boost writes the
-`using boost` line. Exit 0 on success; 1 when b2 or the report fails, or when a lane wrote no
-XML; 2 on a usage error, a target with no lane, a line of declared-lanes that is no own lane, or a
-planned lane missing from the report.
+`using boost` line. Exit 0 on success; 1 when b2 or the report fails; 2 on a usage error, a
+--library that names no library, a target with no lane, a line of declared-lanes that is no own
+lane, or a planned lane that wrote no XML, missing from the report.
 """
 
 from __future__ import annotations
@@ -242,7 +243,10 @@ def parsed_own_lanes(text: str) -> list[dict[str, str]]:
 
 
 def own_lanes(user_config: Path, library: str | None) -> list[dict[str, str]]:
-    """The own lanes the libraries declare, of library alone when it is given."""
+    """The own lanes the libraries declare, of library alone when it is given, which must be a
+    library of libs/: one that declares no own lane has none, one that does not exist fails."""
+    if library is not None and not (ROOT / 'libs' / library / 'build.jam').is_file():
+        raise Failure(f'libs/{library} is no library of libs/ (a directory with a build.jam)', 2)
     lanes = parsed_own_lanes('\n'.join(printed('declared-lanes', user_config)))
     return [lane for lane in lanes if library is None or lane['library'] == library]
 

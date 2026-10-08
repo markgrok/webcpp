@@ -11,10 +11,12 @@ tests and examples, and one aggregate translation unit per library.
 Usage: compile_commands.py <root> <out>
 
 b2 5.5.3's --command-database writes nothing, so its dry run (b2 -n -a) is read instead, from
-root, with the host's default toolset: `test example`, every library's programs, then
-`exception-handling=off /webcpp//throw_exception`, the superproject's handler as a program built
-without exceptions links it. Every line that compiles a .cpp file of the source tree becomes an
-entry of <out>, once per distinct command. Three kinds of line are left out:
+root, with the host's default toolset: `test example`, every library's programs, then, with
+`exception-handling=off`, `/webcpp//throw_exception`, the superproject's handler as a program
+built without exceptions links it, and one translation unit of each library's
+webcpp.headers-alone, whose command the library's aggregate takes a second time (below). Every
+line that compiles a .cpp file of the source tree becomes an entry of <out>, once per distinct
+command. Three kinds of line are left out:
 
 - a source b2 generates under bin/, the Jamroot's build directory, which is not ours to analyse;
 - a source b2 expects not to compile (webcpp.compile-fail): the dry run prints its object as a
@@ -25,10 +27,13 @@ entry of <out>, once per distinct command. Three kinds of line are left out:
 The aggregate translation unit of a library includes every public header, webcpp/<name>.hpp and
 each .hpp under webcpp/<name>/, the headers webcpp.headers-alone checks. It is compiled with the
 command of the library's headers-alone translation units, which are exactly a public header's:
-a header that no test includes is still analysed. It is written as bin/aggregate/<name>.cpp,
-inside the tree, since clang-tidy takes its configuration from the .clang-tidy nearest a source
-file. The reference of tools/doc/reference.py writes the same translation unit, with
-write_aggregate, for MrDocs to read the library's interface through.
+a header that no test includes is still analysed. It has two entries: that command as the tests
+are built, and the one b2 gives the same translation unit with exception-handling=off, under
+which Boost.Config defines BOOST_NO_EXCEPTIONS, so that what a header holds for a program built
+without exceptions alone is analysed too, though no native test is built so. It is written as
+bin/aggregate/<name>.cpp, inside the tree, since clang-tidy takes its configuration from the
+.clang-tidy nearest a source file. The reference of tools/doc/reference.py writes the same
+translation unit, with write_aggregate, for MrDocs to read the library's interface through.
 
 b2 runs with root/.local/user-config.jam when it exists, else with $WEBCPP_USER_CONFIG when it
 is set, else with its own search; and without CPATH, CPLUS_INCLUDE_PATH and C_INCLUDE_PATH,
@@ -48,8 +53,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-# The b2 requests whose compile lines the database holds.
-REQUESTS = (['test', 'example'], ['exception-handling=off', '/webcpp//throw_exception'])
+# The b2 request whose compile lines the database holds first: every library's programs.
+PROGRAMS = ['test', 'example']
+
+# The property of the second request, a program built without exceptions as a user asks b2 for
+# one, and what that request builds besides each library's headers-alone translation unit: the
+# handler such a program links.
+WITHOUT_EXCEPTIONS = 'exception-handling=off'
+HANDLER = '/webcpp//throw_exception'
 
 # The Jamroot's build-dir, where b2 writes what it generates.
 BUILD_DIR = 'bin'
@@ -136,15 +147,21 @@ def write_aggregate(root: str, library: str, source: str) -> None:
     os.replace(written, source)
 
 
-def aggregate(root: str, library: str, alone: list[str]) -> dict[str, object]:
-    """The entry of the library's aggregate translation unit, after writing it."""
+def aggregate(root: str, library: str, commands: list[list[str]]) -> list[dict[str, object]]:
+    """The entries of the library's aggregate translation unit, one per command of a
+    headers-alone translation unit of it, after writing it. Each command's object is named after
+    the aggregate, in a directory of its own past the first."""
     directory = os.path.join(root, BUILD_DIR, 'aggregate')
     os.makedirs(directory, exist_ok=True)
     source = os.path.join(directory, f'{library}.cpp')
     write_aggregate(root, library, source)
-    arguments = alone[:-1] + [source]
-    arguments[arguments.index('-o') + 1] = source.removesuffix('.cpp') + '.o'
-    return {'directory': root, 'file': source, 'arguments': arguments}
+    entries: list[dict[str, object]] = []
+    for index, command in enumerate(commands):
+        arguments = command[:-1] + [source]
+        variant = os.path.join(directory, WITHOUT_EXCEPTIONS) if index else directory
+        arguments[arguments.index('-o') + 1] = os.path.join(variant, f'{library}.o')
+        entries.append({'directory': root, 'file': source, 'arguments': arguments})
+    return entries
 
 
 def libraries(root: str) -> list[str]:
@@ -152,32 +169,47 @@ def libraries(root: str) -> list[str]:
     return sorted(build.parent.name for build in Path(root, 'libs').glob('*/build.jam'))
 
 
+def read(root: str, request: list[str], entries: list[dict[str, object]],
+         seen: set[tuple[str, ...]]) -> dict[str, list[str]]:
+    """Adds to entries each command of the dry run of request that compiles a .cpp file of the
+    source tree and is not in seen, and returns, by library, the first command it printed for a
+    headers-alone translation unit."""
+    alone: dict[str, list[str]] = {}
+    for words in compiles(dry_run(root, request)):
+        source = words[-1]
+        generated = ALONE.match(source)
+        if generated:
+            alone.setdefault(generated.group(1), words)
+        key = tuple(without_output(words))
+        if source.startswith(f'{BUILD_DIR}/') or key in seen:
+            continue
+        seen.add(key)
+        entries.append({'directory': root, 'file': os.path.join(root, source),
+                        'arguments': words})
+    return alone
+
+
 def database(root: str) -> list[dict[str, object]]:
     """The entries of the database of root, after writing the aggregates."""
     entries: list[dict[str, object]] = []
     seen: set[tuple[str, ...]] = set()
-    alone: dict[str, list[str]] = {}
-    for request in REQUESTS:
-        for words in compiles(dry_run(root, request)):
-            source = words[-1]
-            generated = ALONE.match(source)
-            if generated:
-                alone.setdefault(generated.group(1), words)
-            key = tuple(without_output(words))
-            if source.startswith(f'{BUILD_DIR}/') or key in seen:
-                continue
-            seen.add(key)
-            entries.append({'directory': root, 'file': os.path.join(root, source),
-                            'arguments': words})
-    for library in libraries(root):
-        if not public_headers(root, library):
-            continue
+    alone = read(root, PROGRAMS, entries, seen)
+    published = [library for library in libraries(root) if public_headers(root, library)]
+    for library in published:
         if library not in alone:
             raise Failure(f'libs/{library}: b2 compiles no translation unit of '
                           f'webcpp.headers-alone for it natively, whose command its aggregate '
                           f'translation unit takes; declare `webcpp.headers-alone {library} : '
                           f'../include ;` in libs/{library}/test/Jamfile')
-        entries.append(aggregate(root, library, alone[library]))
+    # The same headers-alone translation unit of each library, by its target, alone-<path>, in
+    # the project of libs/<library>/test that declares it.
+    targets = [f'libs/{library}/test//{Path(alone[library][-1]).stem}' for library in published]
+    alone_without = read(root, [WITHOUT_EXCEPTIONS, HANDLER, *targets], entries, seen)
+    for library in published:
+        if library not in alone_without:
+            raise Failure(f'libs/{library}: b2 compiles no translation unit of '
+                          f'webcpp.headers-alone for it with {WITHOUT_EXCEPTIONS}')
+        entries.extend(aggregate(root, library, [alone[library], alone_without[library]]))
     if not entries:
         raise Failure('b2 compiled no .cpp file, not even tools/throw_exception.cpp; is its '
                       'dry run printed another way?')

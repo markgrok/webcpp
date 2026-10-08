@@ -20,7 +20,9 @@ ports, linked to the original, or "original".
 
 The text of a cell is written with the character references MrDocs uses in place of each
 character AsciiDoc could read as markup, which postprocess.mjs decodes in the converted page:
-a description may say C++, or hold a |.
+a description may say C++, or hold a |. An apostrophe in a word of prose is the one exception:
+it is written as it is, so that Asciidoctor makes it curly, as it does every other apostrophe of
+the page's prose. One in what reads as code, between backticks, or in a URL stays straight.
 
 Exit 0 with the table written; 1 when a library has no meta/libraries.json, no page, or a field
 that is missing or not what it should be, each named; 2 on a usage error.
@@ -44,6 +46,13 @@ ESCAPES = {'^': '&circ;', '_': '&lowbar;', '*': '&ast;', '`': '&grave;', '#': '&
 
 URL = re.compile(r'https://[^\s\[\]]+')
 
+# An apostrophe in a word, between a letter or a digit and a letter: the one Asciidoctor's
+# replacements make curly in the page's prose, ([[:alnum:]])'(?=[[:alpha:]]).
+APOSTROPHE = re.compile(r"(?<=[^\W_])'(?=[^\W\d_])")
+
+# What of a text is no prose, whose apostrophes stay straight: code between backticks, and a URL.
+UNREAD = re.compile(r'`[^`]*`|\b[a-z][a-z0-9+.-]*://\S*')
+
 PORT_FIELDS = ('name', 'language', 'version', 'url', 'licence')
 
 
@@ -52,8 +61,14 @@ class Invalid(Exception):
 
 
 def escaped(text: str) -> str:
-    """The text with each character AsciiDoc could read as markup written as MrDocs writes it."""
-    return ''.join(ESCAPES.get(character, character) for character in text)
+    """The text with each character AsciiDoc could read as markup written as MrDocs writes it,
+    except an apostrophe in a word of its prose, which Asciidoctor then makes curly."""
+    prose = [True] * len(text)
+    for unread in UNREAD.finditer(text):
+        prose[unread.start():unread.end()] = [False] * (unread.end() - unread.start())
+    curled = {match.start() for match in APOSTROPHE.finditer(text) if prose[match.start()]}
+    return ''.join(character if index in curled else ESCAPES.get(character, character)
+                   for index, character in enumerate(text))
 
 
 def text_field(entry: dict[str, Any], name: str, origin: Path) -> str:

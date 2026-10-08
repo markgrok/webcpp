@@ -5,18 +5,18 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks tools/report/report.py on the samples b2 wrote for lanes over the fixture library demo
-and the libraries record_samples.py plants beside it: a lane that passes, its failures named by
-kind with their output a click away, an expected failure told from a real one, an empty lane
-failed by name, and so a library a lane built nothing of, two lanes merged into one matrix, input
-it cannot read or report truthfully refused before anything is written (a lane whose name says
-another target than its toolset builds for, among them), a failure outside every test, and
-output that b2's XML cannot hold. One case uses lanes.py and pages.py alone; a last one records
-every sample afresh, untrimmed, and checks that the report reads it as it reads the committed
-one. Every page written is checked to be self-contained, to link only to the report's own pages,
-to the site it is served in (its index and each library's page) and to github.com/webcpporg, and
-to name its lane on every lane cell, which a phone shows as a chip. Run with the names of some
-cases to run only those."""
+"""Checks tools/report/report.py on the samples b2 wrote for lanes over the fixture library demo and
+the libraries record_samples.py plants beside it: a lane that passes, its failures named by kind
+with their output a click away, an expected failure told from a real one, an empty lane failed by
+name, and so a library a lane built nothing of, two lanes merged into one matrix, input it cannot
+read or report truthfully refused before anything is written (a lane whose name says another target
+than its toolset builds for, among them), a failure outside every test, and output that b2's XML
+cannot hold. One case uses lanes.py and pages.py alone; one checks that no sample names the
+machine's temporary directory; a last one records every sample afresh, untrimmed, and checks that
+the report reads it as it reads the committed one. Every page written is checked to be
+self-contained, to link only to the report's own pages, to the site it is served in (its index and
+each library's page) and to github.com/webcpporg, and to name its lane on every lane cell, which a
+phone shows as a chip. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
@@ -637,6 +638,26 @@ def tables(out: Path) -> dict[str, list[list[list[tuple[str, frozenset[str], str
             for page in sorted(out.glob('*.html'))}
 
 
+def test_samples_name_no_temporary_directory(root: Path) -> None:
+    # A sample is recorded in a scratch superproject under the temporary directory, whose path
+    # names the machine (macOS's /var/folders/<hash>/T, which b2 also prints resolved, under
+    # /private): the recording writes it as a placeholder, in each form, and only where it is a
+    # whole directory of a path. No committed sample names it.
+    temporary = Path(tempfile.gettempdir())
+    forms = sorted({str(temporary), str(temporary.resolve())})
+    written = ''.join(f'"{form}/webcpp scratch x/tools" "{form}//jam1.000" {form}more\n'
+                      for form in forms).encode()
+    scrubbed = record_samples.scrub(written).decode()
+    placeholder = record_samples.TEMPORARY.decode()
+    assert scrubbed == ''.join(f'"{placeholder}/webcpp scratch x/tools" "{placeholder}//jam1.000" '
+                               f'{form}more\n' for form in forms), scrubbed
+    for name in sorted(SAMPLES.glob('*.xml')):
+        text = name.read_text(encoding='utf-8', errors='replace')
+        for machine in ['/private/var/', '/var/folders/', *(f'{form}/' for form in forms)]:
+            assert machine not in text, (name, machine)
+        assert placeholder in text, name
+
+
 def test_samples_read_as_b2_writes_them_today(root: Path) -> None:
     # A sample is trimmed, and recorded once: a lane recorded now, untrimmed, gives the same
     # matrix, so the trimming changed nothing the report reads, and the b2 installed still
@@ -671,6 +692,7 @@ CASES = [
     test_a_failure_outside_every_test_fails_the_lane,
     test_output_cdata_cannot_hold_is_shown,
     test_lanes_and_pages_work_alone,
+    test_samples_name_no_temporary_directory,
     test_samples_read_as_b2_writes_them_today,
 ]
 

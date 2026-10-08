@@ -7,12 +7,12 @@
 
 """Checks tools/ci/matrix.py: the plan has a lane per compiler for each target the libraries
 declare, with the libraries that declare it, and fails on a target the CI has no lane for or a
-library that does not exist; the own lanes the libraries declare are listed, of every library or
-of one, and a line of b2's that is no own lane fails; a lane is named and registered by the
-compiler's version when the image decides it; a lane runs the lane command and writes its XML,
-and fails when b2 cannot build; the report merges the lanes and fails, by name, a planned lane
-that wrote nothing. Each case runs the scratch superproject's own copy of matrix.py, with the
-fixture library demo. Run with the names of some cases to run only those."""
+library that does not exist; the own lanes the libraries declare are listed, of every library or of
+one, and a library that does not exist or a line of b2's that is no own lane fails; a lane is named
+and registered by the compiler's version when the image decides it; a lane runs the lane command and
+writes its XML, and fails when b2 cannot build; the report merges the lanes and fails, by name, a
+planned lane that wrote nothing. Each case runs the scratch superproject's own copy of matrix.py,
+with the fixture library demo. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -156,6 +156,12 @@ def test_own_lanes_of_every_library_and_of_one(root):
     assert own_lanes(root) == alpha + beta
     assert own_lanes(root, '--library', 'beta') == beta
     assert own_lanes(root, '--library', 'demo') == []
+    # A library that does not exist is no library without own lanes: it fails as the plan's
+    # --library does, by name, and prints no matrix.
+    result = run(root, 'own-lanes', '--library', 'nothing')
+    assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
+    assert 'libs/nothing is no library of libs/' in result.stderr, result.stderr
+    assert result.stdout == '', result.stdout
     # What the job runs, b2 -a <directory>//<lane>, is built from these words alone: a line that
     # is not three of them, or whose directory is not the library's, fails the listing.
     for printed, named in (('alpha http', 'not "<library> <lane> <directory>"'),

@@ -227,12 +227,22 @@ def test_compile_database_lists_what_b2_builds(root):
     assert len(handler) == 1 and '-fno-exceptions' in handler[0], handler
     for entry in entries:
         assert '-fno-rtti' not in entry['arguments'], entry
-    # The aggregate includes every public header, and is compiled as headers-alone compiles one.
+    # The aggregate includes every public header, and is compiled as headers-alone compiles one,
+    # twice: as the tests are built, and as a program built without exceptions is, so that what a
+    # header holds for that build alone (#ifdef BOOST_NO_EXCEPTIONS) is analysed too.
     assert aggregate.read_text().splitlines()[-2:] == ['#include <webcpp/demo.hpp>',
                                                        '#include <webcpp/demo/answer.hpp>'], (
         aggregate.read_text())
-    command = next(entry['arguments'] for entry in entries if Path(entry['file']) == aggregate)
-    assert '-Ilibs/demo/include' in command and command[-1] == str(aggregate), command
+    aggregates = [entry['arguments'] for entry in entries if Path(entry['file']) == aggregate]
+    assert len(aggregates) == 2, aggregates
+    for command in aggregates:
+        assert '-Ilibs/demo/include' in command and command[-1] == str(aggregate), command
+    assert ['-fno-exceptions' in command for command in aggregates] == [False, True], aggregates
+    # Each command without exceptions is b2's own, which defines no macro for it: Boost.Config
+    # reads -fno-exceptions as BOOST_NO_EXCEPTIONS, as it does in a user's build.
+    for command in (handler[0], aggregates[1]):
+        assert boost_sees_no_exceptions(root, command), command
+    assert not boost_sees_no_exceptions(root, aggregates[0]), aggregates[0]
     # A library whose public headers headers-alone does not compile has no command to give its
     # aggregate, and is named.
     harness.replace(root / 'libs/demo/test/Jamfile', 'webcpp.headers-alone demo : ../include ;\n',
@@ -243,6 +253,19 @@ def test_compile_database_lists_what_b2_builds(root):
     assert completed.returncode == 1, completed.stdout[-6000:]
     assert 'libs/demo' in completed.stdout and 'headers-alone' in completed.stdout, (
         completed.stdout[-6000:])
+
+
+def boost_sees_no_exceptions(root: Path, command: list[str]) -> bool:
+    """Whether Boost.Config defines BOOST_NO_EXCEPTIONS under the options of the compile command,
+    run in root, as the database's commands are."""
+    output = command.index('-o')
+    options = [word for word in command[:output] + command[output + 2:-1] if word != '-c']
+    completed = subprocess.run([*options, '-E', '-dM', '-x', 'c++', '-'],
+                               input='#include <boost/config.hpp>\n', cwd=root,
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                               check=False, timeout=harness.TIMEOUT)
+    assert completed.returncode == 0, (options, completed.stdout[-6000:])
+    return re.search(r'^#define BOOST_NO_EXCEPTIONS\b', completed.stdout, re.MULTILINE) is not None
 
 
 def test_clang_format(root):
@@ -323,6 +346,50 @@ def test_clang_tidy_reads_what_b2_expects_to_build(root):
                  [at(root, test, 'int value;'), at(root, helper, 'int helped_value;'),
                   at(root, header, 'int value;'), at(root, run_fail, 'int status;')],
                  spared=('also_rejects', 'rejects.cpp'))
+
+
+def test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles(root):
+    prepare(root)
+    # Code that only a program built without exceptions compiles: the body of the handler, and a
+    # public header's #ifdef BOOST_NO_EXCEPTIONS block, which no test reaches with exceptions on.
+    header = 'libs/demo/include/webcpp/demo/without_exceptions.hpp'
+    write(root, header, CPP + '\n'
+          '#ifndef WEBCPP_DEMO_WITHOUT_EXCEPTIONS_HPP\n'
+          '#define WEBCPP_DEMO_WITHOUT_EXCEPTIONS_HPP\n'
+          '\n'
+          '#include <boost/config.hpp>\n'
+          '\n'
+          'namespace webcpp::demo {\n'
+          '\n'
+          '#ifdef BOOST_NO_EXCEPTIONS\n'
+          '\n'
+          '/** Returns the value it leaves uninitialized at first.\n'
+          '\n'
+          '    @return 3.\n'
+          '*/\n'
+          'inline int unexceptional() {\n'
+          '    int value;\n'
+          '    value = 3;\n'
+          '    return value;\n'
+          '}\n'
+          '\n'
+          '#endif\n'
+          '\n'
+          '}  // namespace webcpp::demo\n'
+          '\n'
+          '#endif\n')
+    handler = 'tools/throw_exception.cpp'
+    harness.replace(root / handler, 'namespace boost {\n\n',
+                    'namespace boost {\n'
+                    '\n'
+                    'int planted_status() {\n'
+                    '    int status;\n'
+                    '    status = 4;\n'
+                    '    return status;\n'
+                    '}\n'
+                    '\n')
+    expect_alone(lint(root), 'clang-tidy',
+                 [at(root, header, 'int value;'), at(root, handler, 'int status;')])
 
 
 def test_blocking_io_context_call(root):
@@ -839,6 +906,7 @@ CASES = [
     test_compile_database_lists_what_b2_builds,
     test_clang_format,
     test_clang_tidy_reads_what_b2_expects_to_build,
+    test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles,
     test_blocking_io_context_call,
     test_fluent_chain,
     test_returns_this,

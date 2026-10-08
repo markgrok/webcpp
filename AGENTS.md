@@ -446,8 +446,8 @@ than leave it green on the rest.
   #include <boost/asio/io_context.hpp>  // lint-world: posts handlers only
   ```
 
-- **Allocation.** Every library avoids dynamic allocation as far as its job
-  allows, and lets its user customize the allocator of what it does
+- **Allocation.** A library is to avoid dynamic allocation as far as its job
+  allows, and to let its user customize the allocator of what it does
   allocate. A library ported or written from now on is born with this rule.
   Pending: the mechanism, which a milestone of its own on allocators settles
   and first applies to xactor and xstate (chapter 13).
@@ -503,7 +503,7 @@ rule that failed.
 | Rule | What fails |
 | --- | --- |
 | clang-format | a C++ file not formatted as `.clang-format` says (Google-based, 4 spaces, 100 columns); `clang-format -i` fixes it |
-| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry run: every test and example natively, plus one aggregate translation unit per library that includes every public header (`bin/aggregate/<name>.cpp`). Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
+| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry run: every test and example natively, plus one aggregate translation unit per library that includes every public header (`bin/aggregate/<name>.cpp`); and, as b2 compiles them with `exception-handling=off`, the handler `tools/throw_exception.cpp` and each aggregate again, so that what only a build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
 | io_context::run | a call of Boost.Asio's `run`, `run_one` or `run_for`, which block; a driver drains with `poll` and `poll_one` |
 | fluent chains | three calls chained in one expression |
 | returns `*this` | a function other than an assignment operator returning `*this` |

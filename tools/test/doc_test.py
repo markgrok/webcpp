@@ -510,7 +510,8 @@ def test_index_lists_every_library(root):
         '    "key": "other",\n'
         '    "name": "Other",\n'
         '    "authors": ["WebCpp.org"],\n'
-        '    "description": "A port, whose description holds C++, a_b, a | and {braces}.",\n'
+        '    "description": "A port, whose description holds C++, a_b, a | and {braces}. It\'s '
+        'the original\'s, but `it\'s` and https://example.org/it\'s stay \'straight\'.",\n'
         '    "category": ["Testing"],\n'
         '    "cxxstd": "20",\n'
         '    "port-of": {\n'
@@ -532,7 +533,8 @@ def test_index_lists_every_library(root):
         ['Library', 'Description', 'Ports'],
         ['demo', 'The smallest library the superproject builds, which the tests of its build '
                  'place in libs/demo.', 'original'],
-        ['Other', 'A port, whose description holds C++, a_b, a | and {braces}.',
+        ['Other', 'A port, whose description holds C++, a_b, a | and {braces}. It\u2019s the '
+                  "original\u2019s, but `it's` and https://example.org/it's stay 'straight'.",
          'original.js 1.2.3, in JavaScript (MIT)'],
     ], cells
     assert '<a href="../../libs/demo/doc/html/index.html">demo</a>' in html, html

@@ -25,7 +25,9 @@
 #
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
 # for the libraries' tests and examples, natively and with the host's default toolset, plus one
-# aggregate translation unit per library, through which every public header is analysed. That
+# aggregate translation unit per library, through which every public header is analysed; and, as
+# b2 compiles them with exception-handling=off, the handler tools/throw_exception.cpp and each
+# aggregate again, so that what only a build without exceptions compiles is analysed too. That
 # database leaves out a source b2 expects not to compile (webcpp.compile-fail): an analysis
 # would stop at the error the test exists to show. It is left out of clang-tidy only, the one
 # rule that compiles: clang-format and the rules that read text read it like any other C++
