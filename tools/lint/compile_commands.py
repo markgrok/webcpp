@@ -19,9 +19,13 @@ webcpp.wit-bindings, as a build does). A target that some library declares and w
 not configured fails the database, naming the target: its programs would otherwise go unanalysed
 without a word. Every line that compiles a .cpp file of the source tree becomes an entry of
 <out>, once per distinct command: every native command, and, from the dry run of each other
-target, the commands of the sources that no earlier target compiles, the programs that declare
-no native target, which are analysed as that target compiles them, with its own --target. Three
-kinds of line are left out:
+target, the commands of the sources that no earlier target compiles, which are analysed as the
+first target that compiles them does, with its own --target. A command of wasip2, wasip3 or
+emscripten, a program's or an aggregate's, must name wasi-sdk's clang++, which has its
+wasi-sysroot beside it: clang-tidy reads a WebAssembly command only with the --target and the
+sysroot of wasi-sdk, and the lint would give any other compiler's, emscripten's em++ for one, the
+host's --target, as to a native command. Such a command fails the database, naming its file and
+its compiler. Three kinds of line are left out:
 
 - a source b2 generates under bin/, the Jamroot's build directory, which is not ours to analyse;
 - a source b2 expects not to compile (webcpp.compile-fail): the dry run prints its object as a
@@ -55,8 +59,9 @@ is set, else with its own search; and without CPATH, CPLUS_INCLUDE_PATH and C_IN
 which the Jamroot refuses.
 
 Exit 0 with the database written; 1 when b2 fails, when a target's toolset is not configured,
-when a public header has no headers-alone translation unit, when no target compiles every public
-header of a library alone, or when nothing at all is compiled; 2 on a usage error.
+when a WebAssembly command's compiler is not wasi-sdk's clang++, when a public header has no
+headers-alone translation unit, when no target compiles every public header of a library alone,
+or when nothing at all is compiled; 2 on a usage error.
 """
 
 from __future__ import annotations
@@ -65,6 +70,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -184,6 +190,26 @@ def compiles(lines: list[str]) -> list[list[str]]:
     return [words for words in commands if output_of(words) not in failing]
 
 
+def wasi_sdk(compiler: str) -> bool:
+    """Whether compiler, a path or a name on PATH, is a wasi-sdk's clang++: <sdk>/bin/clang++, with
+    its sysroot in <sdk>/share/wasi-sysroot."""
+    real = os.path.realpath(shutil.which(compiler) or compiler)
+    return os.path.isdir(os.path.join(os.path.dirname(os.path.dirname(real)), 'share',
+                                      'wasi-sysroot'))
+
+
+def check_compiler(target: str, source: str, words: list[str]) -> None:
+    """Refuses the command words that compiles source for target when target is a WebAssembly one
+    and its compiler is not wasi-sdk's clang++, which the lint would analyse as a native one."""
+    if target == 'native' or wasi_sdk(words[0]):
+        return
+    raise Failure(f'{source} is compiled for {target} by {words[0]}, which is not wasi-sdk\'s '
+                  'clang++. clang-tidy reads a WebAssembly command only with the --target and the '
+                  'sysroot of wasi-sdk, and the lint would analyse this one as a native command, '
+                  f'with the host\'s --target; configure the toolset of {target} with wasi-sdk\'s '
+                  'clang++')
+
+
 def output_of(words: list[str]) -> str:
     """The object file a compile command writes."""
     return words[words.index('-o') + 1] if '-o' in words else ''
@@ -270,6 +296,8 @@ def aggregate_entries(root: str, library: str,
     source = os.path.join(directory, f'{library}.cpp')
     entries: list[dict[str, object]] = []
     for index, (variant, command) in enumerate(commands):
+        check_compiler(variant if variant in TARGETS else 'native',
+                       os.path.relpath(source, root), command)
         arguments = command[:-1] + [source]
         place = os.path.join(directory, variant) if index else directory
         arguments[arguments.index('-o') + 1] = os.path.join(place, f'{library}.o')
@@ -285,12 +313,13 @@ def libraries(root: str) -> list[str]:
 Units = dict[str, dict[str, list[list[str]]]]
 
 
-def read(root: str, commands: list[list[str]], entries: list[dict[str, object]],
+def read(root: str, target: str, commands: list[list[str]], entries: list[dict[str, object]],
          seen: set[tuple[str, ...]], analysed: set[str]) -> tuple[Units, set[str]]:
-    """Adds to entries each command of commands that compiles a .cpp file of the source tree that
-    is not in analysed, a source an earlier target compiles, and that is not in seen. Returns the
-    commands of the headers-alone translation units, by library and by unit, and the sources of
-    the tree that commands compile."""
+    """Adds to entries each command of commands, compiled for target, that compiles a .cpp file of
+    the source tree that is not in analysed, a source an earlier target compiles, and that is not
+    in seen; a WebAssembly command of a compiler other than wasi-sdk's fails. Returns the commands
+    of the headers-alone translation units, by library and by unit, and the sources of the tree
+    that commands compile."""
     units: Units = {}
     sources: set[str] = set()
     for words in commands:
@@ -305,6 +334,7 @@ def read(root: str, commands: list[list[str]], entries: list[dict[str, object]],
         if source in analysed or key in seen:
             continue
         seen.add(key)
+        check_compiler(target, source, words)
         entries.append({'directory': root, 'file': os.path.join(root, source),
                         'arguments': words})
     return units, sources
@@ -352,11 +382,13 @@ def database(root: str) -> list[dict[str, object]]:
     # Natively: every library's programs, then, built without exceptions, the handler and the
     # headers-alone translation unit of each library whose aggregate builds natively.
     units: dict[str, Units] = {}
-    units['native'], analysed = read(root, target_run(root, 'native', []), entries, seen, set())
+    units['native'], analysed = read(root, 'native', target_run(root, 'native', []), entries,
+                                     seen, set())
     chosen = {library: pick(root, library, ['native'], units) for library in published
               if whole_targets(headers[library], units, library)}
     twins = [target_of_unit(commands[0][1]) for commands in chosen.values()]
-    without, sources = read(root, compiles(dry_run(root, [WITHOUT_EXCEPTIONS, HANDLER, *twins])),
+    without, sources = read(root, 'native',
+                            compiles(dry_run(root, [WITHOUT_EXCEPTIONS, HANDLER, *twins])),
                             entries, seen, set())
     analysed |= sources
     for library, commands in chosen.items():
@@ -373,8 +405,8 @@ def database(root: str) -> list[dict[str, object]]:
         declaring = sorted(library for library, theirs in declared.items() if target in theirs)
         if target == 'native' or not declaring:
             continue
-        units[target], sources = read(root, target_run(root, target, declaring), entries, seen,
-                                      analysed)
+        units[target], sources = read(root, target, target_run(root, target, declaring), entries,
+                                      seen, analysed)
         analysed |= sources
 
     for library in published:

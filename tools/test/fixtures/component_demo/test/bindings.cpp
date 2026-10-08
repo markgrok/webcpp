@@ -8,7 +8,8 @@
 
 #include <demo_world.h>
 
-// A world-level name of the bindings, renamed demo_world.
+// A program that names a type of the bindings at the world level, where wit-bindgen
+// writes the world renamed demo_world: it compiles only with the bindings of its target.
 int main() {
     const demo_world_string_t text{};
     return static_cast<int>(text.len);

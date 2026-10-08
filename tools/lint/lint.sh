@@ -25,15 +25,16 @@
 #
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
 # for the libraries' tests and examples, natively and with the host's default toolset, and, for
-# a program that declares no native target, as its first WASI target compiles it (wasip2, else
-# wasip3); plus each library's aggregate translation unit, through which every public header is
-# analysed: natively, and again as b2 compiles it with exception-handling=off, with the handler
-# tools/throw_exception.cpp, so that what only a build without exceptions compiles is analysed
-# too; or, for a library whose headers build only for WASI, on wasip2 and on wasip3. That
-# database leaves out a source b2 expects not to compile (webcpp.compile-fail): an analysis
-# would stop at the error the test exists to show. It is left out of clang-tidy only, the one
-# rule that compiles: clang-format and the rules that read text read it like any other C++
-# file. A run-fail test's sources compile, and are analysed. A source that only some targets
+# a source that no native program compiles, as the first WASI target that compiles it does
+# (wasip2, else wasip3), with wasi-sdk's clang++, the one compiler of a WebAssembly command the
+# database accepts; plus each library's aggregate translation unit, through which every public
+# header is analysed: natively, and again as b2 compiles it with exception-handling=off, with
+# the handler tools/throw_exception.cpp, so that what only a build without exceptions compiles
+# is analysed too; or, for a library whose headers build only for WASI, on wasip2 and on
+# wasip3. That database leaves out a source b2 expects not to compile (webcpp.compile-fail): an
+# analysis would stop at the error the test exists to show. It is left out of clang-tidy only,
+# the one rule that compiles: clang-format and the rules that read text read it like any other
+# C++ file. A run-fail test's sources compile, and are analysed. A source that only some targets
 # build (a native_only.cpp that stops with #error for WASI) is analysed as the first of them
 # builds it.
 #
@@ -171,22 +172,19 @@ rule 'clang-tidy'
 if python3 tools/lint/compile_commands.py "${repository_root}" \
         "${work_directory}/database/compile_commands.json"; then
     # The files to analyse, each with whether its commands name wasi-sdk's clang++ (wasi) or
-    # another compiler (host), and a compiler of the host's, when one is named.
-    python3 - "${work_directory}/database/compile_commands.json" "${work_directory}/analysed" \
-        > "${work_directory}/compiler" <<'PYTHON'
+    # another compiler (host), and a compiler of the host's, when one is named. compile_commands.py
+    # refuses a WebAssembly command of any compiler but wasi-sdk's clang++, so a host command is
+    # a native one; both read wasi-sdk's clang++ with its function wasi_sdk.
+    python3 - tools/lint "${work_directory}/database/compile_commands.json" \
+        "${work_directory}/analysed" > "${work_directory}/compiler" <<'PYTHON'
 import json
-import os
 import sys
 
+sys.path.insert(0, sys.argv[1])
 
-def wasi_sdk(compiler):
-    """Whether compiler is a wasi-sdk's clang++, which has its sysroot beside it."""
-    real = os.path.realpath(compiler)
-    return os.path.isdir(os.path.join(os.path.dirname(os.path.dirname(real)), 'share',
-                                      'wasi-sysroot'))
+from compile_commands import wasi_sdk
 
-
-with open(sys.argv[1]) as opened:
+with open(sys.argv[2]) as opened:
     entries = json.load(opened)
 kinds = {}
 for entry in entries:
@@ -194,7 +192,7 @@ for entry in entries:
     if kinds.setdefault(entry['file'], kind) != kind:
         sys.exit(f'lint: {entry["file"]} is compiled both by wasi-sdk\'s clang++ and by '
                  'another compiler; clang-tidy reads one --target for it')
-with open(sys.argv[2], 'w') as analysed:
+with open(sys.argv[3], 'w') as analysed:
     for file in sorted(kinds):
         print(f'{kinds[file]} {file}', file=analysed)
 hosts = [entry['arguments'][0] for entry in entries if kinds[entry['file']] == 'host']

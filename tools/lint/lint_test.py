@@ -11,10 +11,11 @@ tools/lint/compile_commands.py lists what b2 builds, without what b2 expects to 
 aggregate translation units of each library: what builds only for WASI, the header of the fixture
 library component_demo's world and its programs that declare no native target, is analysed as
 wasi-sdk's clang++ builds it, with no host target, the header on wasip2 and on wasip3; a public
-header that no target compiles alone, and a target whose toolset is not configured, fail the
-database by name. Each case lints a scratch superproject whose libs/demo is the fixture library
-demo, a repository of its own as a library's submodule is, and libs/component_demo too in the cases
-of WASI. Run with the names of some cases to run only those."""
+header that no target compiles alone, a target whose toolset is not configured, and a WebAssembly
+command whose compiler is not wasi-sdk's clang++, fail the database by name. Each case lints a
+scratch superproject whose libs/demo is the fixture library demo, a repository of its own as a
+library's submodule is, and libs/component_demo too in the cases of WASI. Run with the names of
+some cases to run only those."""
 
 from __future__ import annotations
 
@@ -353,6 +354,33 @@ def test_compile_database_reads_what_only_wasi_builds(root):
                  'libs/demo declare, with toolset=clang-wasip3',
                  'is that toolset configured'):
         assert text in completed.stdout, (text, completed.stdout[-6000:])
+
+
+def test_wasm_compiler_not_from_wasi_sdk_fails_by_name(root):
+    prepare(root)
+    add_component_demo(root)
+    # A toolset of wasip2 whose compiler is not wasi-sdk's clang++, as emscripten's em++ is not:
+    # a script that runs wasi-sdk's, so that it compiles as it does, from a directory with no
+    # wasi-sysroot beside it. clang-tidy would read its commands as native ones and give them the
+    # host's --target, so the database refuses them, naming the file and the compiler.
+    config = root / '.local/user-config.jam'
+    configured = config.read_text()
+    using = re.search(r'^using clang : wasip2 : (\S+)', configured, re.MULTILINE)
+    assert using is not None, configured
+    compiler = root / 'other sdk/bin/em++'
+    compiler.parent.mkdir(parents=True)
+    compiler.write_text(f'#!/bin/sh\nexec "{wasi_sdk_tool("clang++")}" "$@"\n')
+    compiler.chmod(0o755)
+    harness.configure(root, configured.replace(using.group(0),
+                                               f'using clang : wasip2 : "{compiler}"', 1))
+    named = ('libs/component_demo/', f'is compiled for wasip2 by {compiler}',
+             "which is not wasi-sdk's clang++")
+    completed = compile_database(root)
+    assert completed.returncode == 1, completed.stdout[-6000:]
+    for text in named:
+        assert text in completed.stdout, (text, completed.stdout[-6000:])
+    expect_alone(lint(root), 'clang-tidy', [*named, 'compile_commands.py wrote no compilation '
+                                            'database'])
 
 
 def test_clang_tidy_reads_what_only_wasi_builds(root):
@@ -1033,6 +1061,7 @@ CASES = [
     test_no_library_passes,
     test_compile_database_lists_what_b2_builds,
     test_compile_database_reads_what_only_wasi_builds,
+    test_wasm_compiler_not_from_wasi_sdk_fails_by_name,
     test_clang_format,
     test_clang_tidy_reads_what_b2_expects_to_build,
     test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles,
