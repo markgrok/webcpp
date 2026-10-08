@@ -557,8 +557,11 @@ through the aggregate translation unit. A check that applies to a library
 header is never switched off for a directory, since a header's templates are
 analysed only where a test or an example instantiates them: the header states
 its exemption on the line clang-tidy reports, `NOLINT(<check>)` (or
-`NOLINTNEXTLINE(<check>)` on the line above, when that line has no room), with
-its reason in the comment above.
+`NOLINTNEXTLINE(<check>)` on the line above, when that line has no room; a tag
+comment between it and its function cancels the suppression), or, when a
+page's listing must hide the exemption, with `NOLINTBEGIN(<check>)` and
+`NOLINTEND(<check>)` around the exempt function or functions alone. The
+reason still goes in the comment above, in every form.
 
 **Sharding.** `--shard K/N` analyses the K-th of N interleaved slices with
 clang-tidy, and runs every other rule; the N shards together analyse every
