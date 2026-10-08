@@ -26,9 +26,13 @@
 // stacks the table's rows; a table of two columns, a name and what it is,
 // reads stacked without them.
 //
-// The heading of a name of the reference, `webcpp::xactor::scheduler::run_one`,
-// may break after each `::`, so that a phone breaks it between scopes and not
-// inside an identifier.
+// A name too long for a phone's line, in inline code, in a heading of the
+// reference, `webcpp::xactor::scheduler::run_one`, or in a bare URL, may break
+// between its parts, which a `<wbr>` marks: after a `::`, a `_`, a `/`, or a
+// `.` between letters, before the `(` or the `<` that ends a name, and in code
+// between the words of a name in camel case. So a phone breaks it there and
+// never between two letters of a word, which the style allows only to a part
+// still wider than the line.
 
 import { Extensions, Postprocessor } from '@asciidoctor/core';
 
@@ -77,28 +81,77 @@ export function decodeEntities(text, { markup = false } = {}) {
 }
 
 // Inline code is the one `<code>` Asciidoctor writes with no attribute, a
-// block's having its language; that of a page holds no markup.
-const INLINE_CODE = /<code>([^<]*)<\/code>/g;
+// block's having its language; it holds text, and the link MrDocs gives the
+// name of a header, `<webcpp/xactor/scheduler.hpp>`.
+const INLINE_CODE = /<code>((?:[^<]|<a\b[^>]*>|<\/a>)*)<\/code>/g;
 
 // The longest word of inline code that a phone's line holds whole: at 320px,
 // 24 characters of the code font take about 240px of a column of 290px, which
 // a list item or a stacked table cell narrows to about 260px.
 const WHOLE = 24;
 
-// The class of a word of inline code, as a reader reads it: `whole` when it is
-// short enough to stay on one line.
-function classOf(word) {
-  return decodeEntities(word, { markup: true }).length <= WHOLE ? ' class="whole"' : '';
+// The points a name breaks at, in text that holds no markup and its
+// references: after each `::`; after a run of `_` and after a `/` or a run of
+// them, each inside a name; after a `.` between letters, not that of `3.5`;
+// and before a `(` or a `<` that follows a name, not the second `<` of `<<`.
+const BREAKS = [
+  [/::/g, '::<wbr>'],
+  [/(?<=[A-Za-z0-9])(_+)(?=[A-Za-z0-9])/g, '$1<wbr>'],
+  [/(?<=[^\s/])(\/+)(?=[^\s/])/g, '$1<wbr>'],
+  [/(?<=[A-Za-z])\.(?=[A-Za-z])/g, '.<wbr>'],
+  [/(?<=\w)(?=\(|&lt;)/g, '<wbr>']
+];
+
+// Code breaks at these too, and between the words of a name written in camel
+// case, `resolveHistory` and `DefaultTransition`: never prose, whose JavaScript
+// is one word.
+const CODE_BREAKS = [...BREAKS, [/(?<=[a-z])(?=[A-Z])/g, '<wbr>']];
+
+function breakable(text, points = BREAKS) {
+  return points.reduce((broken, [point, marked]) => broken.replace(point, marked), text);
+}
+
+// The html of inline code with each run of its text between two tags made
+// breakable: never an attribute.
+function breakableCode(html) {
+  return html.replace(/(^|>)([^<]+)/g, (_text, end, text) => end + breakable(text, CODE_BREAKS));
+}
+
+// Whether a word of inline code, its markup aside, is short enough to stay on
+// one line, as a reader reads it.
+function isWhole(word) {
+  return decodeEntities(word.replace(/<[^>]+>/g, ''), { markup: true }).length <= WHOLE;
+}
+
+// A word of inline code, as an element: `whole`, or breakable between its
+// parts.
+function wordOf(element, word) {
+  return isWhole(word)
+    ? `<${element} class="whole">${word}</${element}>`
+    : `<${element}>${breakableCode(word)}</${element}>`;
 }
 
 function wordsOfCode(html) {
   return html.replace(INLINE_CODE, (_code, text) => {
     if (!/\s/.test(text)) {
-      return `<code${classOf(text)}>${text}</code>`;
+      return wordOf('code', text);
     }
-    const words = text.replace(/\S+/g, (word) => `<span${classOf(word)}>${word}</span>`);
+    if (text.includes('<')) {
+      // A link in code that holds a space, which MrDocs does not write, cannot be cut into
+      // words: the code breaks between its parts.
+      return `<code>${breakableCode(text)}</code>`;
+    }
+    const words = text.replace(/\S+/g, (word) => wordOf('span', word));
     return `<code class="words">${words}</code>`;
   });
+}
+
+// A bare URL, which Asciidoctor writes as the text of its link, and which holds
+// no break yet: one in a heading has its breaks already.
+const BARE_URL = /(<a href="[^"]*" class="bare">)([^<]*)(<\/a>)/g;
+
+function partsOfURLs(html) {
+  return html.replace(BARE_URL, (_link, open, text, close) => open + breakable(text) + close);
 }
 
 // A table of Asciidoctor's, which holds no other table.
@@ -139,19 +192,32 @@ function labelledTables(html) {
 // A heading, with what it holds.
 const HEADING = /(<h([1-6])\b[^>]*>)([\s\S]*?)(<\/h\2>)/g;
 
-function scopesOfHeadings(html) {
+// The parts of a heading, its tags and the text between them.
+const TAG = /(<[^>]+>)/;
+
+function partsOfHeadings(html) {
   return html.replace(HEADING, (_heading, open, _level, inner, close) => {
-    // Only the text between the heading's tags: never an attribute.
-    const broken = inner.replace(/(^|>)([^<]*)/g, (_text, end, text) =>
-      end + text.replace(/::/g, '::<wbr>')
-    );
+    // Only the text between the heading's tags, and outside its inline code, whose breaks
+    // wordsOfCode marked: never an attribute.
+    let code = false;
+    const broken = inner
+      .split(TAG)
+      .map((part, index) => {
+        if (index % 2 === 1) {
+          code = /^<code\b/.test(part) || (code && !/^<\/code>/.test(part));
+          return part;
+        }
+        return code ? part : breakable(part);
+      })
+      .join('');
     return open + broken + close;
   });
 }
 
 class Page extends Postprocessor {
   process(_document, output) {
-    return scopesOfHeadings(labelledTables(wordsOfCode(decodeEntities(output))));
+    const page = labelledTables(wordsOfCode(decodeEntities(output)));
+    return partsOfURLs(partsOfHeadings(page));
   }
 }
 

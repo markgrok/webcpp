@@ -30,7 +30,9 @@ the sections of the global namespace and of webcpp, which hold a table of one ro
 of the library's macros, which the first holds, becomes a section of its own), and with the
 first row of each table, which names its columns, marked as the table's header. The character
 references MrDocs writes in place of the characters AsciiDoc could read as markup stay:
-postprocess.mjs decodes them in the converted page, where nothing reads them as markup.
+postprocess.mjs decodes them in the converted page, where nothing reads them as markup. One
+goes before: an apostrophe of prose in a word, which AsciiDoc reads as no markup, is written
+back as ', so that Asciidoctor makes it the curly one of the guide's prose.
 
 MrDocs reads CPATH, CPLUS_INCLUDE_PATH and C_INCLUDE_PATH as a compiler does, so neither tool
 sees them.
@@ -107,11 +109,48 @@ DROPPED_LINK = re.compile(r'link:#(?:index|webcpp)\[([^\]]*)\]')
 MACROS = re.compile(r'^=== Macros\n(.*?)(?=^=== |\Z)', re.MULTILINE | re.DOTALL)
 
 
+# An apostrophe MrDocs wrote as a reference in a word, between a letter or a digit and a letter:
+# the one Asciidoctor's replacements make curly in the guide, ([[:alnum:]])'(?=[[:alpha:]]).
+APOSTROPHE = re.compile(r'(?<=[^\W_])&apos;(?=[^\W\d_])')
+
+# The line that opens or closes a block AsciiDoc shows as written: a listing, a literal, a
+# passthrough or a comment.
+VERBATIM = re.compile(r'(-{4,}|\.{4,}|\+{4,}|/{4,})')
+
+
+def apostrophes(text: str) -> str:
+    """MrDocs's text with each apostrophe of prose in a word written as ', which Asciidoctor then
+    makes curly as it does the guide's; code, a span between backticks or a verbatim block, keeps
+    its &apos;, which shows straight. MrDocs writes a literal backtick as &grave;, so each one
+    of its text opens or closes a span, which ends with its paragraph at the latest."""
+    lines = []
+    delimiter: Optional[str] = None
+    code = False
+    for line in text.split('\n'):
+        if delimiter is not None:
+            delimiter = None if line == delimiter else delimiter
+        elif VERBATIM.fullmatch(line):
+            delimiter, code = line, False
+        elif not line.strip():
+            code = False
+        else:
+            parts = line.split('`')
+            for index, part in enumerate(parts):
+                if not code:
+                    parts[index] = APOSTROPHE.sub("'", part)
+                if index < len(parts) - 1:
+                    code = not code
+            line = '`'.join(parts)
+        lines.append(line)
+    return '\n'.join(lines)
+
+
 def finished(text: str, library: str) -> str:
     """MrDocs's reference as the page shows it: from the library's namespace, the sections of the
     global namespace and of webcpp left out, but for the table of the library's macros, which
     becomes a section of its own; each link to them their text; and the first row of each table,
-    which names its columns, the table's header."""
+    which names its columns, the table's header; and each apostrophe of its prose in a word as
+    Asciidoctor reads the guide's."""
     starts = [match.start() for match in SECTION.finditer(text)]
     kept = [text[:starts[0]] if starts else text]
     for start, end in zip(starts, [*starts[1:], len(text)]):
@@ -124,8 +163,8 @@ def finished(text: str, library: str) -> str:
         if macros is not None:
             kept.append(f'[#webcpp-{library}-macros]\n== Macros\n\n{macros.group(1).strip()}\n\n')
     shown = DROPPED_LINK.sub(lambda link: link.group(1), ''.join(kept))
-    return NAMED_COLUMNS.sub(lambda table: f'[%header,cols="{table.group(1)}"]\n|===\n| Name',
-                             shown)
+    return apostrophes(NAMED_COLUMNS.sub(
+        lambda table: f'[%header,cols="{table.group(1)}"]\n|===\n| Name', shown))
 
 
 class Failure(Exception):

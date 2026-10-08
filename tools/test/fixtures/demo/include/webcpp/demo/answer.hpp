@@ -19,12 +19,20 @@ constexpr T sum(T left, T right) noexcept {
 
 }  // namespace detail
 
-/** Returns the number the fixture's test expects.
+/** Returns the number the fixture's test expects, the value of `L'*'` and never of `L'x'`.
 
     @return 42.
 */
 constexpr int answer() noexcept {
     return 42;
+}
+
+/** Returns the answer, under a name longer than a phone's line holds whole.
+
+    @return 42, as answer returns it.
+*/
+constexpr int a_very_long_snake_case_name() noexcept {
+    return answer();
 }
 
 /** Returns a value added to itself.

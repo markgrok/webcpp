@@ -45,16 +45,31 @@ pre.highlight > code.hljs { background: none; padding: 0; }
    the same box in a table cell, alone in the cell or not. */
 :not(pre):not([class^=L]) > code { padding: .1em .2ex; }
 #content p.tableblock > code:only-child { background: #f7f7f8; padding: .1em .2ex; }
+/* A word breaks between two letters only when it is wider than its line: Asciidoctor's style
+   lets the text of the page, of a cell and of a note break anywhere (overflow-wrap: anywhere),
+   which a phone's narrow line does inside a name. A name of code breaks between its parts, where
+   postprocess.mjs marks them, and a part still wider than the line breaks where it must, so that
+   the page never scrolls sideways. */
+body, td.tableblock > .content, td.hdlist2, .admonitionblock > table td.content {
+  overflow-wrap: break-word;
+}
 /* Inline code breaks between its words (postprocess.mjs), never inside one, at a hyphen as
    `--recursive` would or elsewhere, on a screen wide enough for its longest word. In a table on
    a narrower screen it breaks inside a word only where the word alone is wider than its column
    can be, so a column keeps room for a name of the reference, `answer`, whole. A word short enough
    for a phone's line, which postprocess.mjs marks whole, stays on one line at any width: without
-   it, a phone would break `#xactor-invariant-13` at a hyphen though the word fits the line. */
+   it, a phone would break `#xactor-invariant-13` at a hyphen though the word fits the line. On a
+   phone, a longer word breaks between its parts, at the <wbr> postprocess.mjs marks. From 600px,
+   whose line holds such a word whole, the <wbr> is no box: the word moves whole to the next line
+   rather than break at the end of one, a table's column keeps room for it, and WebKit, which
+   breaks at a <wbr> even in a word that does not wrap, keeps it whole from 900px. */
 @media screen and (min-width: 56.25em) {
   :not(pre):not([class^=L]) > code { white-space: nowrap; }
   :not(pre):not([class^=L]) > code.words { white-space: normal; }
   code.words > span { white-space: nowrap; }
+}
+@media screen and (min-width: 37.5em) {
+  #content :not(pre):not([class^=L]) > code wbr { display: none; }
 }
 @media screen and (max-width: 74.9375em) {
   table.tableblock :not(pre):not([class^=L]) > code,

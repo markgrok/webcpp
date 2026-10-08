@@ -27,6 +27,9 @@ from html import unescape
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+import reference  # noqa: E402
 ASCIIDOCTOR = HERE / 'node_modules/asciidoctor/bin/asciidoctor'
 
 # U+2010, which &hyphen; stands for, written as an escape.
@@ -177,13 +180,77 @@ def test_wide_table_labels_its_cells(_: None) -> None:
 
 
 def test_reference_headings_break_after_scopes(_: None) -> None:
-    # A name of the reference breaks after a ::, never inside an identifier; the anchor and the
-    # links of the heading are left as they are.
+    # A name of the reference breaks after a :: and a _, never between two letters; the anchor
+    # and the links of the heading are left as they are.
     html = body(convert('[#webcpp-box-make]\n== webcpp::link:#webcpp-box[box]::make&lowbar;box\n'))
     heading = re.search(r'<h2 id="webcpp-box-make">(.*?)</h2>', html, flags=re.S)
     assert heading is not None, html
     assert heading.group(1).endswith(
-        'webcpp::<wbr><a href="#webcpp-box">box</a>::<wbr>make_box'), heading.group(1)
+        'webcpp::<wbr><a href="#webcpp-box">box</a>::<wbr>make_<wbr>box'), heading.group(1)
+
+
+def test_long_names_break_between_their_parts(_: None) -> None:
+    # A name of code too long for a phone's line may break after a ::, a _, a / or a . between
+    # letters, before the ( or the < that ends a name, and between the words of a name in camel
+    # case, never between two letters of a word; prose, a listing, an attribute and a word short
+    # enough to stay whole are left as they are.
+    name = 'a_very_long_snake_case_name'
+    broken = 'a_<wbr>very_<wbr>long_<wbr>snake_<wbr>case_<wbr>name'
+    header = 'webcpp/demo/long&lowbar;header&lowbar;name.hpp'
+    page = convert(f'[#webcpp-demo-{name}]\n== webcpp::link:#x[demo]::{name}\n\n'
+                   f'Call `{name}(value)`, `webcpp::demo::{name}`,\n'
+                   '`std::optional&lt;boost::json::value&gt;`,\n'
+                   '`libs/xstate/test/oracle//update-expected`,\n'
+                   '`xstate.done.state.coffee.preparation`, `short_name`,\n'
+                   '`get_initial_microsteps(machine, options)`,\n'
+                   '`resolveHistoryDefaultTransition` (JavaScript),\n'
+                   f'link:#webcpp-demo-{name}[`{name}`] and\n'
+                   f'`&lt;link:https://example.org/include/{header}[{header}]&gt;`,\n'
+                   'as https://webcpporg.github.io/webcpp/report/ shows.\n\n'
+                   f'[source,cpp]\n----\nint {name}(int value);\n----\n')
+    html = body(page)
+    heading = re.search(rf'<h2 id="webcpp-demo-{name}">(.*?)</h2>', html, flags=re.S)
+    assert heading is not None, html
+    assert heading.group(1).endswith(f'webcpp::<wbr><a href="#x">demo</a>::<wbr>{broken}'), \
+        heading.group(1)
+    for code in (f'<code>{broken}<wbr>(value)</code>',
+                 f'<code>webcpp::<wbr>demo::<wbr>{broken}</code>',
+                 '<code>std::<wbr>optional<wbr>&lt;boost::<wbr>json::<wbr>value&gt;</code>',
+                 '<code>libs/<wbr>xstate/<wbr>test/<wbr>oracle//<wbr>update-expected</code>',
+                 '<code>xstate.<wbr>done.<wbr>state.<wbr>coffee.<wbr>preparation</code>',
+                 '<code class="whole">short_name</code>',
+                 '<code class="words"><span>get_<wbr>initial_<wbr>microsteps<wbr>(machine,</span> '
+                 '<span class="whole">options)</span></code>',
+                 '<code>resolve<wbr>History<wbr>Default<wbr>Transition</code> (JavaScript)',
+                 f'<a href="#webcpp-demo-{name}"><code>{broken}</code></a>',
+                 '<code>&lt;<a href="https://example.org/include/webcpp/demo/long_header_name.hpp">'
+                 'webcpp/<wbr>demo/<wbr>long_<wbr>header_<wbr>name.<wbr>hpp</a>&gt;</code>',
+                 '<a href="https://webcpporg.github.io/webcpp/report/" class="bare">'
+                 'https://<wbr>webcpporg.<wbr>github.<wbr>io/<wbr>webcpp/<wbr>report/</a>'):
+        assert code in html, (code, html)
+    blocks = re.findall(r'<pre\b[^>]*>.*?</pre>', html, flags=re.S)
+    assert blocks and all('<wbr>' not in block for block in blocks), blocks
+    assert code_text(html) == [f'int {name}(int value);'], code_text(html)
+    assert rendered_check(page).returncode == 0, rendered_check(page).stdout
+
+
+def test_reference_apostrophes_read_as_the_guide_s(_: None) -> None:
+    # MrDocs writes each ' as &apos;, which Asciidoctor's replacements, which make the guide's
+    # apostrophe curly, never see. Its reference, as reference.py finishes it, shows the same
+    # apostrophes as the guide: curly in a word, and straight in code and where the guide keeps
+    # one straight.
+    prose = 'The fixture{0}s test, the actors{0} queue and the {0}90s'
+    mrdocs = (prose.format('&apos;') + ', with `L&apos;x&apos;` and '
+              'link:#x[`x`]&apos;s brief&period;\n\n'
+              '[source,cpp,subs="verbatim,replacements,macros,-callouts"]\n----\n'
+              'auto it&apos;s = L&apos;x&apos;;\n----\n')
+    reference_html = body(convert(reference.finished(mrdocs, 'sample')))
+    guide_html = body(convert(prose.format("'") + '.\n'))
+    shown = ('The fixture&#8217;s test, the actors\' queue and the \'90s')
+    assert f'<p>{shown}.</p>' in guide_html, guide_html
+    assert (f'<p>{shown}, with <code class="whole">L\'x\'</code> and <a href="#x"><code '
+            'class="whole">x</code></a>\'s brief.</p>') in reference_html, reference_html
+    assert code_text(reference_html) == ["auto it's = L'x';"], code_text(reference_html)
 
 
 CASES: list[Callable[[None], None]] = [
@@ -194,6 +261,8 @@ CASES: list[Callable[[None], None]] = [
     test_short_inline_code_stays_whole,
     test_wide_table_labels_its_cells,
     test_reference_headings_break_after_scopes,
+    test_long_names_break_between_their_parts,
+    test_reference_apostrophes_read_as_the_guide_s,
 ]
 
 

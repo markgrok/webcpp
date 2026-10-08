@@ -147,7 +147,20 @@ def test_page_builds_with_its_reference(root):
     assert 'id="footer"' not in html, html
     # MrDocs's escapes are decoded: what MrDocs read as _ and - shows as _ and -.
     assert 'fixture&apos;s' not in html and '&hyphen;' not in html and HYPHEN not in html, html
-    assert "the fixture's test expects" in text, text
+    # An apostrophe of a brief reads as the guide's, curly, and one in code stays straight.
+    assert 'the fixture&#8217;s test expects, the value of <code class="whole">L\'*\'</code> and ' \
+        'never of <code class="whole">L\'x\'</code>.' in html, html
+    # A name too long for a phone's line breaks after each _, in its heading and in the table
+    # that links it, and never inside a listing or an attribute.
+    broken = 'a_<wbr>very_<wbr>long_<wbr>snake_<wbr>case_<wbr>name'
+    assert re.search(r'<h3 id="webcpp-demo-a_very_long_snake_case_name">(<a class="anchor"[^>]*>'
+                     rf'</a>)?webcpp::<wbr><a href="#webcpp-demo">demo</a>::<wbr>{broken}</h3>',
+                     html), html
+    assert (f'<a href="#webcpp-demo-a_very_long_snake_case_name"><code>{broken}</code></a>'
+            in html), html
+    listings = re.findall(r'<pre\b[^>]*>.*?</pre>', html, flags=re.S)
+    assert any('a_very_long_snake_case_name' in block for block in listings), listings
+    assert all('<wbr>' not in block for block in listings), listings
     # The page lives in the library, and is built again from scratch the same.
     assert (root / 'libs/demo/doc/html/index.html').is_file()
     again = harness.run_b2(root, '-a', 'libs/demo/doc')
