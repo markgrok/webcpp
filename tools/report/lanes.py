@@ -56,6 +56,9 @@ TARGETS = ('native', 'emscripten', 'wasip2', 'wasip3')
 
 EMPTY = 'the lane built no test and no example'
 
+# What a lane that built something says of a library none of whose programs it built.
+UNBUILT = 'the lane built none of its tests and examples'
+
 # A CDATA section that is an element's whole text, the way b2 writes every text. b2 writes it as
 # it is, so a ]]> or a byte that is not UTF-8 in a program's output makes the file unreadable as
 # XML: a section is read up to the first ]]> that its element's end tag follows.
@@ -154,6 +157,18 @@ class Lane:
         """Whether the lane built a test or an example. An example counts: a library may declare
         a target for its examples alone, and the lane then tests what it declares."""
         return any(row.builds for row in self.rows.values())
+
+    def unbuilt(self) -> list[str]:
+        """The libraries whose tests and examples the lane lists and none of which it built,
+        sorted; none when the lane built nothing at all, which is a failure of its own. The CI
+        puts in a lane only the libraries that declare its target, so such a library is a fault
+        that a grey column would hide: a plan gone wrong, or a local lane that names a library
+        which does not declare the lane's target."""
+        if not self.built():
+            return []
+        listed = {row.library for row in self.rows.values()}
+        built = {row.library for row in self.rows.values() if row.builds}
+        return sorted(listed - built)
 
 
 def step(action: str) -> str:
@@ -378,6 +393,8 @@ def problems(lane: Lane) -> list[str]:
     found = []
     if not lane.built():
         found.append(f'{lane.name}: {EMPTY}')
+    for library in lane.unbuilt():
+        found.append(f'{lane.name}: {library}: {UNBUILT}')
     for row in sorted(lane.rows.values(), key=lambda row: (row.library, row.order())):
         verdict = row.verdict()
         if verdict not in (None, PASS):
@@ -389,5 +406,6 @@ def problems(lane: Lane) -> list[str]:
 
 
 def exit_status(lanes: list[Lane]) -> int:
-    """0 when every lane built something and everything it built passed, else 1."""
+    """0 when every lane built something of every library it lists and everything it built
+    passed, else 1."""
     return 1 if any(problems(lane) for lane in lanes) else 0

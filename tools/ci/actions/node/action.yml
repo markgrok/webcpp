@@ -7,7 +7,8 @@
 name: Node
 description: >-
   Installs Node 26.7.0, the version webcpp is developed with, with npm's cache keyed on the
-  lock files of tools/doc (Asciidoctor.js, highlight.js) and tools/lint (Pyright).
+  lock files of tools/doc (Asciidoctor.js, highlight.js), tools/lint (Pyright) and every
+  library's oracle (libs/<name>/test/oracle, the original it pins).
 
 runs:
   using: composite
@@ -19,3 +20,4 @@ runs:
         cache-dependency-path: |
           tools/doc/package-lock.json
           tools/lint/package-lock.json
+          libs/*/test/oracle/package-lock.json

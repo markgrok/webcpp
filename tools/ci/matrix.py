@@ -8,6 +8,7 @@
 """The CI's lanes: which ones run, each lane's b2 command, and the report that merges them.
 
 Usage: matrix.py plan [--library NAME] [--user-config FILE]
+       matrix.py own-lanes [--library NAME] [--user-config FILE]
        matrix.py lane LANE [--user-config FILE] [--out-dir DIR] [-- B2-ARGUMENT ...]
        matrix.py register ID [ID ...] [--user-config FILE]
        matrix.py report --plan MATRIX --lanes DIR --out DIR
@@ -18,6 +19,12 @@ library declares, of the library --library names, else of every library. A lane 
 and examples of the libraries that declare its target, and no other: a lane of a target no
 library declares would build nothing. A target the CI has no lane for (emscripten, until emsdk
 is pinned: AGENTS.md, Roadmap) is a failure, never a lane left out.
+
+own-lanes runs `b2 -d0 declared-lanes` and prints the JSON matrix of the libraries' own lanes,
+{"include": [{"library": L, "lane": N, "directory": D}, ...]}, of the library --library names,
+else of every library; empty, {"include":[]}, when none declares one. An own lane is one a
+library declares with webcpp.lane, such as its oracle, and the CI runs it as `b2 -a D//N`, whose
+exit status is its verdict: it writes no XML, so it is no column of the report.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -43,7 +50,8 @@ report by name: the matrix would otherwise be green without it.
 
 The user-config.jam is .local/user-config.jam by default, where tools/ci/actions/boost writes the
 `using boost` line. Exit 0 on success; 1 when b2 or the report fails, or when a lane wrote no
-XML; 2 on a usage error, a target with no lane, or a planned lane missing from the report.
+XML; 2 on a usage error, a target with no lane, a line of declared-lanes that is no own lane, or a
+planned lane missing from the report.
 """
 
 from __future__ import annotations
@@ -51,6 +59,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -152,9 +161,9 @@ def environment() -> dict[str, str]:
     return {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
 
 
-def declared(user_config: Path) -> list[tuple[str, str]]:
-    """The pairs (library, target) `b2 declared-targets` prints."""
-    command = ['b2', f'--user-config={user_config}', '-d0', 'declared-targets']
+def printed(target: str, user_config: Path) -> list[str]:
+    """The lines `b2 -d0 <target>` prints, without b2's own warnings."""
+    command = ['b2', f'--user-config={user_config}', '-d0', target]
     try:
         completed = subprocess.run(command, cwd=ROOT, env=environment(), capture_output=True,
                                    text=True, check=False)
@@ -163,12 +172,15 @@ def declared(user_config: Path) -> list[tuple[str, str]]:
     if completed.returncode != 0:
         raise Failure(f'{completed.stdout}{completed.stderr}{shlex.join(command)} exited '
                       f'{completed.returncode}')
+    # b2's own warnings, such as the default toolset it configures when user-config.jam
+    # registers none, as the plan job's does; -d0 does not hide them.
+    return [line for line in completed.stdout.splitlines() if not line.startswith('warning: ')]
+
+
+def declared(user_config: Path) -> list[tuple[str, str]]:
+    """The pairs (library, target) `b2 declared-targets` prints."""
     pairs = []
-    for line in completed.stdout.splitlines():
-        # b2's own warnings, such as the default toolset it configures when user-config.jam
-        # registers none, as the plan job's does; -d0 does not hide them.
-        if line.startswith('warning: '):
-            continue
+    for line in printed('declared-targets', user_config):
         words = line.split()
         if len(words) != 2:
             raise Failure(f'b2 declared-targets printed {line!r}, not "<library> <target>"')
@@ -204,6 +216,35 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
                              for part in ('test', 'example'))
             lanes.append(replace(lane, projects=projects))
     return lanes
+
+
+# A line of `b2 declared-lanes`: a library, the name of one of its lanes, and the directory of the
+# Jamfile that declares it, under the library's test or example directory. The job runs
+# `b2 -a <directory>//<lane>` from these words, so each is checked whole.
+OWN_LANE = re.compile(r'([a-z][a-z0-9_]*) ([A-Za-z0-9][A-Za-z0-9_.-]*) (libs/[^ ]+)')
+
+
+def parsed_own_lanes(text: str) -> list[dict[str, str]]:
+    """The own lanes of the lines text holds, as `b2 declared-lanes` prints them."""
+    lanes = []
+    for line in text.splitlines():
+        found = OWN_LANE.fullmatch(line)
+        if found is None:
+            raise Failure(f'b2 declared-lanes printed {line!r}, not "<library> <lane> '
+                          '<directory>"', 2)
+        library, lane, directory = found.groups()
+        under = re.fullmatch(rf'libs/{library}/(test|example)(/[A-Za-z0-9_.-]+)*', directory)
+        if under is None or '/..' in directory or '/./' in f'{directory}/':
+            raise Failure(f'b2 declared-lanes printed {line!r}, whose directory is not in '
+                          f'libs/{library}/test or libs/{library}/example', 2)
+        lanes.append({'library': library, 'lane': lane, 'directory': directory})
+    return lanes
+
+
+def own_lanes(user_config: Path, library: str | None) -> list[dict[str, str]]:
+    """The own lanes the libraries declare, of library alone when it is given."""
+    lanes = parsed_own_lanes('\n'.join(printed('declared-lanes', user_config)))
+    return [lane for lane in lanes if library is None or lane['library'] == library]
 
 
 def matrix(lanes: list[Lane]) -> str:
@@ -345,6 +386,11 @@ def main(arguments: list[str]) -> int:
     planning.add_argument('--library', help='plan the lanes of this library alone')
     planning.add_argument('--user-config', type=Path, default=default_config)
 
+    owning = commands.add_parser('own-lanes',
+                                 help="print the JSON matrix of the libraries' own lanes")
+    owning.add_argument('--library', help='list the own lanes of this library alone')
+    owning.add_argument('--user-config', type=Path, default=default_config)
+
     running = commands.add_parser(
         'lane', help='run one lane of the matrix',
         epilog='After --, more arguments for b2, such as --build-dir=bin/lane-gcc-15.')
@@ -373,6 +419,10 @@ def main(arguments: list[str]) -> int:
     try:
         if options.command == 'plan':
             print(matrix(plan(declared(options.user_config.resolve()), options.library)))
+            return 0
+        if options.command == 'own-lanes':
+            listed = own_lanes(options.user_config.resolve(), options.library)
+            print(json.dumps({'include': listed}, separators=(',', ':')))
             return 0
         if options.command == 'lane':
             out_dir = options.out_dir if options.out_dir.is_absolute() else ROOT / options.out_dir

@@ -44,7 +44,7 @@ repository of its own, checked out here as a submodule under `libs/<name>`.
 | Library | What it is | Targets | State |
 | --- | --- | --- | --- |
 | xactor | a deterministic actor system, webcpp's own | native, wasip2, wasip3 (`xactor_asio` native only) | a submodule at `libs/xactor`; the model for every port |
-| xstate | a port of XState 5.33.2's state machines and actors; depends on xactor and Boost.JSON | native, wasip2, wasip3 | to come (chapter 13) |
+| xstate | a port of XState 5.33.2's state machines and actors; depends on xactor and Boost.JSON | native, wasip2, wasip3; its oracle lane | a submodule at `libs/xstate`; the first user of the shared oracle (chapter 5) |
 | wasi | a helper for building C++ as WASI HTTP components | wasip2, wasip3 (`response.hpp` also natively) | to come (chapter 13) |
 | trystero | a port of Trystero, serverless WebRTC rooms | native, emscripten | to come (chapter 13) |
 
@@ -65,22 +65,24 @@ webcpp/
   tools/
     webcpp.jam        the Jamfile API (chapter 9): webcpp.targets, webcpp.run, ...
     throw_exception.cpp  what Boost calls in place of a throw, built without exceptions
+    boost_json.cpp    Boost.JSON's definitions, built as /webcpp//boost_json (chapter 2)
+    boost_test_runner.cpp  Boost.Test's header-only framework, for webcpp.boost-test (chapter 9)
+    oracle/           the shared oracle (chapter 5): oracle.jam, twins.py, compare.py and their
+                      tests
     lint/             lint.sh, rules.py, compile_commands.py and their test
     doc/              the documentation toolchain: doc.jam, reference.py, doc_comments.py,
-                      doc-check.py, libraries.py, the Asciidoctor.js extensions, the style
+                      doc-check.py, libraries.py, counts.py, the Asciidoctor.js extensions, the
+                      style
     example/          run_example.py, which runs an example and compares its output
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
-    test/             the tests of the Jamroot, webcpp.jam and the doc build, their
-                      harness, and the fixture library demo
+    test/             the tests of the Jamroot, webcpp.jam, the oracle's rules and the doc build,
+                      their harness, and the fixture libraries demo and oracle_demo
     ci/               matrix.py (the lanes), assemble.py (the site), download.sh, and
                       actions/{boost,wasi-sdk,wasmtime,mrdocs,node}/ (chapter 9)
   .github/            workflows/library.yml, workflows/ci.yml, actionlint.yaml (chapter 9)
   .local/             machine-local, git-ignored (below)
   bin/                b2's build directory, git-ignored
 ```
-
-The shared oracle, `tools/oracle/`, is to come with xstate (chapters 5 and
-13).
 
 A library's layout:
 
@@ -90,14 +92,19 @@ libs/<name>/
   include/webcpp/<name>.hpp  the convenience header, which includes every public header
   include/webcpp/<name>/...  one header per responsibility
   test/                      Jamfile, the tests, and .clang-tidy when the tests need one
+  test/oracle/               a port's oracle (chapter 5): its Jamfile, the pinned original,
+                             the scripts that drive it, and the twins
   example/                   Jamfile, the programs and their .expected outputs
-  doc/                       Jamfile, the page (<name>.adoc and its sections), mrdocs.yml
+  doc/                       Jamfile, the page (<name>.adoc and its sections), mrdocs.yml,
+                             and counts.py when the page counts what only it holds (chapter 8)
   meta/libraries.json        Boost's fields, plus "port-of"
+  meta/include-boundaries.json
+                             the include boundaries the lint checks, when it has any (chapter 6)
   README.md
   AGENTS.md                  only what is specific to this library
   LICENSE_1_0.txt
   LICENSE-<ORIGIN>.txt       the original's notice, for a port that derives from its code
-  .gitignore                 doc/html/ at least
+  .gitignore                 doc/html/ at least, and node_modules/ with an oracle
   .gitattributes
   .github/workflows/ci.yml   calls the superproject's library.yml (chapter 9)
 ```
@@ -114,6 +121,7 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
 - Python 3.9 or newer;
 - for WebAssembly: wasi-sdk 34 and wasmtime 47 (47.0.3 measured);
 - for the documentation: Node, MrDocs 2026.9.29 and clang++;
+- for a library's oracle lane: Node and npm, with Boost and a C++ toolset;
 - for the lint: wasi-sdk 34's clang-format and clang-tidy, and Node;
 - later: Emscripten, wit-bindgen and the `wasi:http` WIT for wasi and
   trystero; OpenSSL for trystero natively.
@@ -165,10 +173,13 @@ finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
 | `b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test libs/<name>/example` | the same for wasm32-wasip2; `clang-wasip3` for wasm32-wasip3; one toolset per command |
 | `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/` |
 | `b2 declared-targets -d0` | prints each `<library> <target>` pair the libraries declare: the CI's lanes |
+| `b2 declared-lanes -d0` | prints each `<library> <lane> <directory>` line of a library's own lanes, such as its oracle's (chapter 5) |
+| `b2 libs/<name>/test/oracle//oracle` | a port's oracle lane: the original runs the cases and the twins, and the results are compared (chapter 5) |
+| `b2 libs/<name>/test/oracle//update-expected` | writes the original's results again, the only writer of an expected result (chapter 5) |
 | `b2 -a ...` | any of these from scratch; the only build that counts as evidence |
 | `tools/lint/lint.sh --clang-format <wasi-sdk>/bin/clang-format --clang-tidy <wasi-sdk>/bin/clang-tidy` | the lint, of the superproject and every library (chapter 6) |
 | `python3 tools/<dir>/<name>_test.py` | a test of the build or of a tool (chapter 10) |
-| `python3 tools/ci/matrix.py plan`, `lane`, `register`, `report` | the CI's lanes, run the way the CI runs them (chapter 9) |
+| `python3 tools/ci/matrix.py plan`, `own-lanes`, `lane`, `register`, `report` | the CI's lanes, run the way the CI runs them (chapter 9) |
 | `python3 tools/ci/assemble.py --docs . --report <dir> --out <site>` | the site GitHub Pages serves, every link checked (chapter 9) |
 
 ## 2. Choosing and registering a port
@@ -253,10 +264,14 @@ owner's:
    A dependency on another library is written as its target,
    `<library>/webcpp/xactor//xactor`. Only Boost's header-only libraries are
    available: the CI installs Boost's headers alone, and no rule links a
-   compiled Boost library. A library that needs Boost.JSON uses it header-only,
-   through `<boost/json/src.hpp>`, included in one translation unit of each
-   program, as Boost.JSON documents; compiled Boost libraries are on the
-   roadmap (chapter 13). Nothing else registers a library: the
+   compiled Boost library. A library that needs Boost.JSON adds
+   `<library>/webcpp//boost_json` to its target's usage requirements, as
+   xstate's `build.jam` does: the Jamroot's `boost_json`, `tools/boost_json.cpp`,
+   compiles Boost.JSON's definitions (`<boost/json/src.hpp>`, as Boost.JSON
+   documents for a header-only build) into a static library, once per variant,
+   so a program built without exceptions gets them built without exceptions
+   too. Compiled Boost libraries are on the roadmap (chapter 13). Nothing else
+   registers a library: the
    test, example and doc directories join the aggregates `test`, `example` and
    `doc` by themselves, and `include/webcpp/**` joins `install`.
 5. **`test/Jamfile`, `example/Jamfile` and `doc/Jamfile`**, with the rules of
@@ -265,8 +280,9 @@ owner's:
    library is, how to build and test it inside the superproject, where its
    page is published, its licence), `AGENTS.md` (only what is specific to it,
    with a link to this file as `../../AGENTS.md`), `.gitattributes`, and a
-   `.gitignore` that holds at least `doc/html/`: the superproject's own
-   `.gitignore` names only its top-level `doc/html/`.
+   `.gitignore` that holds at least `doc/html/`, and `node_modules/` for a
+   library with an oracle: the superproject's own `.gitignore` names only its
+   top-level `doc/html/`.
 7. **CI.** `.github/workflows/ci.yml`, which calls the superproject's
    reusable workflow (chapter 9), as `libs/xactor/.github/workflows/ci.yml`
    does:
@@ -316,28 +332,28 @@ A test's helpers that are shared between tests go in `webcpp::test`
 - Each difference has an example `example/diff_<topic>.cpp`, with its
   `.expected`, and its twin in the original's language (chapter 5), which
   shows the original's behaviour; the page shows both outputs side by side.
-  xstate, to come, will be the model, with its `diff_spawn_id`: XState keys
-  a child spawned without an id as `"undefined"`, the port as an empty
-  string, and the page shows the two outputs, each printed by its program.
+  xstate is the model, with its `diff_spawn_id`: XState keys a child spawned
+  without an id as `"undefined"`, the port as an empty string, and the page
+  shows the two outputs, each printed by its program.
 - No divergence goes unrecorded. A difference found later, in a test, a
   review or a user's report, is either fixed or recorded in the same change
   that finds it.
 
 ## 5. Evidence: oracle and twins
 
-`tools/oracle/` is to come with xstate, its first user (chapter 13), and
-these are the rules it implements. Until then, a port's evidence is its
-tests, and its page records what it does.
+A port's evidence is the original itself. The port's tests do not state by
+hand what the original does: the pinned original runs the same cases and the
+twins of the examples, and the port must produce what it produced. The
+oracle that does it is shared by every port, in `tools/oracle/`; xstate is
+its first user, and the model:
 
-The oracle is shared by every port:
-
-| Shared, in `tools/oracle/` | Per library |
+| Shared, in `tools/oracle/` | Per library, in `libs/<name>/test/oracle/` |
 | --- | --- |
-| the twin runner, with its agreeing, divergent and without-twin bookkeeping | the pinned original (`package.json` and `package-lock.json`, for JavaScript) |
-| output and tree comparison | the oracle script that drives the original over the cases |
-| `update-expected`, with its refusals | the cases, and their C++ runner |
-| a `.jam` module of rules that the library's test Jamfile calls | the twins |
-| the CI action that installs the language's runtime | |
+| the twin runner, `twins.py`, with its agreeing, divergent and without-twin bookkeeping | the pinned original (`package.json` and `package-lock.json`, for JavaScript) |
+| output and tree comparison, `twins.py` and `compare.py` | the oracle scripts that drive the original over the cases (xstate's `oracle.mjs` and `actors.mjs`) |
+| `update-expected`, with its refusals | the cases, and their C++ runner, under the library's `test/` |
+| the `.jam` module of rules, `oracle.jam`, that the library's `test/oracle/Jamfile` calls | the twins, `twins/`, with `without-twin.txt` |
+| the CI action that installs the language's runtime, `tools/ci/actions/node` | |
 
 - **Cases.** The original's tests are ported as data-driven cases, which the
   C++ runner runs against the port.
@@ -348,12 +364,64 @@ The oracle is shared by every port:
   the page includes through `{twins}`. A twin either agrees (prints exactly
   what the C++ example prints), or diverges, with the original's output
   recorded as its own `.expected` and the difference in the appendix
-  (chapter 4), or is listed as without a twin, with the reason.
+  (chapter 4), or is listed as without a twin, with the reason, as a line
+  `<path>: <reason>` of the twin directory's `without-twin.txt`.
 - **Nothing expected is written by hand.** Only `update-expected` writes an
   expected result, and it refuses to write a twin's output for a twin that
   agrees, since that output must be the C++ example's.
 - **How the original runs.** Each library declares it: for JavaScript and
   TypeScript, `node --conditions=development`.
+
+### The rules (`tools/oracle/oracle.jam`)
+
+A library's `test/oracle/Jamfile` declares its oracle with four rules of
+`tools/webcpp.jam`. xstate's, whole after its licence notice and its first
+comment:
+
+```
+import webcpp ;
+
+webcpp.original node --conditions=development ;
+webcpp.twins ../../example : twins : .mjs
+  : --test-reporter=spec --test-reporter-destination=stderr ;
+webcpp.cases machines : oracle.mjs : ../fixtures/cases : ../fixtures/expected ;
+webcpp.cases actors : actors.mjs : ../fixtures/actors/cases : ../fixtures/actors/expected ;
+webcpp.lane oracle : twins cases-machines cases-actors ;
+```
+
+| Rule | What it declares |
+| --- | --- |
+| `webcpp.original <word> + ;` | how a program of the original's language runs, once and first; and the target `node-modules`, which installs what `package-lock.json` beside the Jamfile pins with `npm ci`, again when the lockfile changes |
+| `webcpp.twins <examples> : <twins> : <suffix> : <extra-word> * ;` | the target `twins`: `twins.py` runs the twin `<twins>/<path><suffix>` of every program `<examples>/<path>.cpp`, at any depth, with the original's words and the extra words, and compares what it prints with the program's `.expected`, or with the twin's own `.expected` for a difference, which must then differ from the program's. Declared once per library: the page shows and counts its twins (chapter 8) |
+| `webcpp.cases <name> : <script> : <cases> : <expected> ;` | the target `cases-<name>`: the original runs `<script> <cases> <output>` into the build directory, and `compare.py` finds the output equal to `<expected>`, file by file and byte by byte. The Jamfile stops loading at a cases directory that does not exist, and at an expected directory whose removal would take the oracle's directory or the cases |
+| `webcpp.lane <name> : <target> + ;` | an own lane of the library, the alias `<name>` over the targets, which `b2 declared-lanes` lists and the CI runs (chapter 9). Only a Jamfile under the library's `test/` or `example/` declares one |
+
+The first `webcpp.twins` or `webcpp.cases` also declares the target
+`update-expected`, which writes every expected directory again from the
+original, and each divergent twin's own output (`twins.py --update`, which
+refuses one that agrees). Directories are relative to the Jamfile.
+
+Every target is explicit: only a request by name, or a lane that names it,
+runs Node, and `b2 test` never does. Node and npm are looked for on `PATH`
+when an oracle target runs, and the build stops, naming the one that is
+missing. The targets compile nothing, but they sit in the library's test
+project and inherit its requirements, with the Jamroot's check of Boost, so
+an oracle lane needs Boost and a toolset beside Node and npm.
+
+| Command | What it does |
+| --- | --- |
+| `b2 -a libs/<name>/test/oracle//oracle` | the oracle lane, from scratch: every case and every twin on the original, compared |
+| `b2 libs/<name>/test/oracle//twins`, `//cases-<name>` | one part of it, while working on it |
+| `b2 libs/<name>/test/oracle//update-expected` | the original's results written again, over the committed ones; never a check |
+| `python3 tools/oracle/twins.py --list --suffix .mjs --examples libs/<name>/example --twins libs/<name>/test/oracle/twins` | each program as agreeing, divergent or without twin, and their total, running nothing |
+
+**What a port proves.** Its cases pass natively and on every target it
+declares, against expected results the original wrote; its oracle lane is
+green, so the original still writes every committed expected result and
+every twin agrees, or diverges as recorded; and its page shows each twin's
+code and each difference's two outputs. The runner accounts for every
+program by name, so a twin that is no longer compared fails the lane rather
+than leave it green on the rest.
 
 ## 6. C++ rules
 
@@ -378,6 +446,11 @@ The oracle is shared by every port:
   #include <boost/asio/io_context.hpp>  // lint-world: posts handlers only
   ```
 
+- **Allocation.** Every library avoids dynamic allocation as far as its job
+  allows, and lets its user customize the allocator of what it does
+  allocate. A library ported or written from now on is born with this rule.
+  Pending: the mechanism, which a milestone of its own on allocators settles
+  and first applies to xactor and xstate (chapter 13).
 - **Text** is passed and held as `std::string_view` where nothing must own
   it; `std::string` only where something does.
 - **A function starts with its guards:** every condition it needs is checked
@@ -443,9 +516,31 @@ rule that failed.
 | Doc Comments | a command webcpp does not allow, a bare `@`, or a colon after a reference (chapter 7) |
 | Pyright | an error or a warning in any Python file, with `pyrightconfig.json` (unused imports and variables are errors) |
 | Python line length | a Python line over 100 columns |
+| include boundaries | an `#include` that crosses a boundary the library declares in its `meta/include-boundaries.json` (below), at its line, with the boundary's reason; and a malformed file, or a glob that matches no file of the library |
 
 A source b2 expects not to compile (`webcpp.compile-fail`) is left out of
 clang-tidy only; every other rule reads it.
+
+**A library's include boundaries.** Every header compiles alone, so only a
+boundary check sees a part of a library start to depend on another. A
+library declares its boundaries in `meta/include-boundaries.json`, each a set
+of headers (a `headers` glob, less an `except` glob, each matched against the
+whole path under `libs/<name>/`, a `*` within one path segment) that must not
+include a path starting with one of its `must-not-include` prefixes, and
+`why`. xstate's keeps its machine core free of xactor and of the actor layer:
+
+```json
+{
+    "boundaries": [
+        {
+            "headers": ["include/webcpp/xstate.hpp", "include/webcpp/xstate/*.hpp"],
+            "except": ["include/webcpp/xstate/actors.hpp"],
+            "must-not-include": ["webcpp/xactor", "webcpp/xstate/actors"],
+            "why": "the machine core runs without xactor and the actor layer"
+        }
+    ]
+}
+```
 
 **A directory's own `.clang-tidy`.** A library's tests or examples may need
 one that inherits the root's (`InheritParentConfig: true`) and switches off
@@ -627,10 +722,13 @@ sets its own title and attributes, as xactor's does:
 :attribute-missing: warn
 ```
 
-The doc build provides `{examples}` (the library's `example/` directory) and
-`{reference}`, and sets the highlighter, the shared style
-(`tools/doc/docinfo.html`, the system's fonts, no web fonts), no date and no
-footer: a page sets none of these.
+The doc build provides `{examples}` (the library's `example/` directory),
+`{reference}`, `{twins}` (the twin directory, for a library whose oracle
+declares twins, chapter 5), the counts and the links to other pages (below),
+and sets the highlighter, the shared style (`tools/doc/docinfo.html`, the
+system's fonts, no web fonts), no date and no footer: a page sets none of
+these. In that style a table too wide for the page scrolls in its own box,
+and an identifier breaks only between its parts.
 
 **What a page holds:**
 
@@ -686,6 +784,9 @@ build:
   `{twins}`; an output's include names a program that exists;
 - every `(doc: #anchor)` and `index.html#anchor` of the library's files
   names an anchor the page defines, and every `@see "<title>"` a section;
+- every `(doc: <library>#<anchor>)` of the library's files, and every link
+  of the rendered page into another library's page, names an anchor that
+  page defines, as the build made it first (below);
 - every C++ block of the library's README is opened by a comment
   `<!-- include::<file>[<attributes>] -->` and equals that region of the
   file, as an include would give it;
@@ -695,6 +796,41 @@ build:
 - the rendered page has no cross-reference left as text, no stray `++` or
   backtick, no undecoded escape of MrDocs's, no U+2010, and no link to the
   dropped `#index` or `#webcpp` sections.
+
+### Counts
+
+A page never types how many examples, tests, headers or twins its library
+has: `webcpp.doc` gives it attributes that `tools/doc/counts.py` computes at
+every build, so that no count drifts from the tree:
+
+- from the programs b2 records as it loads the library's test and example
+  Jamfiles: `{n-examples}` and `{n-examples-<target>}`, `{n-tests}` and
+  `{n-tests-<target>}` (each header compiled alone is one test),
+  `{n-boost-test-suites}` and `{n-headers}`;
+- for a library whose oracle declares twins, from `twins.py --list`:
+  `{n-twins-agreeing}`, `{n-twins-divergent}`, `{n-examples-without-twin}`
+  and `{n-examples-with-original}`;
+- from the library's own `doc/counts.py`, when it has one, run with the
+  library's directory as its one argument: each line `<name>=<number>` it
+  prints, a count of what only that library holds (xstate's counts the cases
+  of its fixtures, `{n-machine-cases}` among them).
+
+A count that finds nothing fails the build rather than put a zero on the
+page, and so does a name of a library's own that is also a generic one.
+
+### Links between pages
+
+A page links another library's page as
+`link:{webcpp-libs}/<library>/{webcpp-page}#<anchor>[...]`, with two
+attributes `webcpp.doc` sets by the layout: where b2 builds the pages, by
+default, or where the site serves them, with `-sWEBCPP_INDEX=site`
+(chapter 9). Such a link written any other way after `{webcpp-libs}/` is a
+fault. A `//` comment of the library's files sends its reader to another
+library's page with `(doc: <library>#<anchor>)`, or a list or a range of
+them, as with its own page; a Doc Comment still uses `@see` (chapter 7). The
+build makes every linked page first, and the check of the rendered page fails
+on an anchor that page does not define, and on an overload's anchor, which
+ends in `-0<digit>` and which MrDocs may renumber.
 
 ### The index page
 
@@ -765,7 +901,9 @@ webcpp.headers-alone <library> : <include-root> ;
 
 The rules of the doc Jamfiles are in chapter 8: `webcpp.doc <library> :
 <page>.adoc ;`, `webcpp.reference <library> ;` and, for the superproject's
-index, `webcpp.index <page>.adoc ;`.
+index, `webcpp.index <page>.adoc ;`. Those of an oracle's Jamfile,
+`libs/<name>/test/oracle/Jamfile`, are in chapter 5: `webcpp.original`,
+`webcpp.twins`, `webcpp.cases` and `webcpp.lane`.
 
 A library's Jamfiles, as xactor's, each whole after its licence notice.
 `libs/xactor/test/Jamfile`:
@@ -871,6 +1009,13 @@ b2 -a --dump-tests --build-dir=bin/lane-wasip2 --out-xml=wasip2.xml toolset=clan
 Two concurrent b2 runs never share a build directory, and at most one of
 them builds the documentation (chapter 8).
 
+**Own lanes.** A library may also declare lanes of its own with
+`webcpp.lane` (chapter 5), such as xstate's oracle lane, which needs Node
+where a toolset lane does not. `b2 declared-lanes -d0` lists them, one line
+`<library> <lane> <directory>` each, and one runs as
+`b2 -a <directory>//<lane>`, whose exit status is its verdict. An own lane
+writes no XML, and is no column of the report.
+
 ### The report (`tools/report/`)
 
 ```
@@ -888,13 +1033,18 @@ as the site's `report/` (below): each page's `webcpp` links the site's index,
 footer links `github.com/webcpporg`.
 
 **Its exit status is the verdict:** 0 when every lane built something (a test
-or an example: an example counts as something that ran) and everything
-passed; 1 when a test or an example failed, an action outside every test
-failed, or a lane built nothing, each named; 2, with nothing written, when a
-file cannot be read, a lane spans more than one toolset, a lane named after a
-target was built for another, a lane named after no target is not named after
-its toolset directory, a test lies outside `libs/<name>/`, or a library is
-named `index`.
+or an example: an example counts as something that ran) of every library it
+lists, and everything passed; 1 when a test or an example failed, an action
+outside every test failed, a lane built nothing, or a lane that built
+something built none of the tests and examples of a library it lists, each
+named (`wasip2: nativeonly: the lane built none of its tests and examples`).
+The CI puts in a lane only the libraries that declare its target, so such a
+library is a fault that a grey column would hide, as when a lane run by hand
+names a library that does not declare its target. It exits 2, with nothing
+written, when a file cannot be read, a lane spans more than one toolset, a
+lane named after a target was built for another, a lane named after no target
+is not named after its toolset directory, a test lies outside `libs/<name>/`,
+or a library is named `index`.
 
 ### CI
 
@@ -919,7 +1069,9 @@ jobs:
   compiler for each target a library declares, building the libraries that
   declare it. The CI never lists a library's targets by hand. A target with
   no lane fails the plan by name: the CI gets an emscripten lane when emsdk
-  is pinned (chapter 13).
+  is pinned (chapter 13). Then `matrix.py own-lanes [--library <name>]`
+  runs `b2 declared-lanes -d0` and prints the JSON matrix of the own lanes
+  of that library, or of every library.
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
@@ -940,6 +1092,11 @@ jobs:
   embed-manifest-via=linker --abbreviate-paths`; b2 abbreviates each word of
   a toolset directory, and `msvc-14.3` and `msvc-14.5` are their own
   abbreviations, which `tools/ci/matrix_test.py` checks with b2's own rule.
+- **own lanes,** one job each, `Own lane (<library>, <lane>, <directory>)`,
+  on Linux x86-64 (ubuntu-24.04): the Boost action, `matrix.py register
+  clang-18` (an oracle lane checks Boost, chapter 5), the Node action, and
+  `b2 -a <directory>//<lane>`, whose exit status is the lane's verdict. A
+  library that declares no own lane, as xactor, has no such job.
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
   Intel macOS) and `clang++-18`, `b2 -a libs/<library>/doc`, or for the
   superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's.
@@ -956,7 +1113,7 @@ jobs:
 - **report:** `matrix.py report` merges every lane's XML with
   `tools/report/report.py` into the test matrix, uploaded as an artifact. Its
   exit status is the verdict; a planned lane that wrote no XML fails it by
-  name, and so does a lane's job that failed.
+  name, and so does a lane's job that failed, or an own lane's.
 
 `matrix.py lane` takes, after `--`, more arguments for b2, so that a lane is
 run locally exactly as the CI runs it, beside others:
@@ -980,7 +1137,9 @@ run locally exactly as the CI runs it, beside others:
   or relative prefix: b2 given an empty `--prefix` installs into `/usr/local`.
 - `wasi-sdk` installs wasi-sdk 34 into `.local/wasi-sdk`, `wasmtime`
   installs wasmtime 47.0.3 on `PATH`, `mrdocs` installs MrDocs 2026.9.29 into
-  `.local/mrdocs`, and `node` sets up Node 26.7.0.
+  `.local/mrdocs`, and `node` sets up Node 26.7.0, with npm's cache keyed on
+  the lock files of `tools/doc`, `tools/lint` and every library's
+  `test/oracle`.
 - `tools/ci/download.sh <url> <sha256> <file>` downloads each pinned file,
   and leaves no file and exits 1 when the download fails or the digest
   differs.
@@ -1023,14 +1182,17 @@ only branch.
   - every declared lane from scratch: `b2 -a libs/<name>/test
     libs/<name>/example` natively, and with `toolset=clang-wasip2
     testing.launcher=wasmtime` and `toolset=clang-wasip3
-    testing.launcher=wasmtime` where declared;
+    testing.launcher=wasmtime` where declared, and every own lane the
+    library declares, `b2 -a libs/<name>/test/oracle//oracle` for an oracle;
   - `b2 -a doc`;
   - the lint: `lint: clean`;
   - the tests of the build and of the tools, when they or what they test
     changed: `tools/test/jamroot_test.py`, `tools/test/webcpp_jam_test.py`,
-    `tools/test/doc_test.py`, `tools/lint/lint_test.py`,
-    `tools/report/report_test.py`, `tools/doc/doc_check_test.py`,
-    `tools/doc/doc_comments_test.py`, `tools/doc/extensions_test.py`,
+    `tools/test/oracle_jam_test.py`, `tools/test/doc_test.py`,
+    `tools/lint/lint_test.py`, `tools/report/report_test.py`,
+    `tools/doc/doc_check_test.py`, `tools/doc/doc_comments_test.py`,
+    `tools/doc/extensions_test.py`, `tools/doc/counts_test.py`,
+    `tools/oracle/twins_test.py`, `tools/oracle/compare_test.py`,
     `tools/example/run_example_test.py`, `tools/ci/matrix_test.py`,
     `tools/ci/assemble_test.py` and `tools/ci/actions_test.py`, each run as
     `python3 <path>`. They build in scratch copies under `$TMPDIR`, whose
@@ -1153,13 +1315,13 @@ Each of these was measured; each has cost time.
 
 What webcpp does not have yet, and the chapters that mention it:
 
-- **More libraries:** xstate, a port of XState 5.33.2's state machines and
-  actors, which builds its actor layer on xactor; wasi, a helper for building
-  C++ as WASI HTTP components; trystero, a port of Trystero, serverless
-  WebRTC rooms (chapter 1). Each joins `libs/` as a submodule, with its page
-  and its lanes.
-- **The shared oracle,** `tools/oracle/`, generalised from xstate's, its
-  first user (chapter 5).
+- **More libraries:** wasi, a helper for building C++ as WASI HTTP
+  components; trystero, a port of Trystero, serverless WebRTC rooms
+  (chapter 1). Each joins `libs/` as a submodule, with its page and its
+  lanes.
+- **Allocators.** The mechanism by which a library lets its user customize
+  the allocator of what it allocates, settled in a milestone of its own,
+  which first applies it to xactor and xstate (chapter 6).
 - **The emscripten lane.** b2's `emscripten` is a target already, and the CI
   gets a lane for it when emsdk is pinned, as wasi-sdk and wasmtime are;
   until then, a library that declares it fails the CI's plan (chapter 9).

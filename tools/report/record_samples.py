@@ -143,6 +143,10 @@ SAMPLES_BY_NAME = {
                               plant_failures),
     # A library that declares native only, on wasip2: every program is skipped.
     'wasip2-empty': Sample(WASIP2, ('libs/nativeonly/test',), plant_native_only),
+    # Two libraries on wasip2, one of which declares native only: demo's programs pass, and
+    # every program of nativeonly is skipped.
+    'wasip2-skipped-library': Sample(WASIP2, ('libs/demo/test', 'libs/demo/example',
+                                              'libs/nativeonly/test'), plant_native_only),
     # A program whose dependency outside every test, the exception handler, does not compile: on
     # wasip2, where every program is built without exceptions and links it.
     'wasip2-dependency': Sample(WASIP2, ('libs/demo/test//pass',), plant_broken_handler),

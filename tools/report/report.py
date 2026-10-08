@@ -23,9 +23,11 @@ significant failure, and grey (n/a) when the lane did not build it, as when it d
 the lane's target. A library's cell sums its tests and examples up the same way. lanes.py reads
 and judges the lanes; pages.py writes the pages.
 
-Exit 0 when every lane built something (a test or an example) and everything it built passed; 1
-when a test or an example failed, an action outside every test and example failed, or a lane
-built nothing, each named on the standard error; 2, each named and with nothing written, when an
+Exit 0 when every lane built something (a test or an example) of every library it lists, and
+everything it built passed; 1 when a test or an example failed, an action outside every test and
+example failed, a lane built nothing, or a lane that built something built none of the tests and
+examples of a library it lists (the CI puts in a lane only the libraries that declare its
+target), each named on the standard error; 2, each named and with nothing written, when an
 input cannot be read, when a lane is built with more than one toolset, when a lane named after
 a target (native, emscripten, wasip2, wasip3) is built for another, or when a lane named after no
 target is not named after the directory b2 built its toolset in (clang-darwin-21, gcc-15); 2

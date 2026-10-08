@@ -21,22 +21,27 @@
 #
 #   plan        runs b2 declared-targets and writes the matrix of lanes (tools/ci/matrix.py):
 #               a lane per compiler for each target the library declares. The CI never lists a
-#               library's targets by hand, and a target without a lane fails the plan.
+#               library's targets by hand, and a target without a lane fails the plan. It also
+#               runs b2 declared-lanes and writes the matrix of own lanes, those a library
+#               declares with webcpp.lane, such as its oracle's.
 #   lanes       one job per lane, which runs the lane command, b2 -a --dump-tests
 #               --out-xml=<lane>.xml for one toolset, and uploads the XML. With --out-xml, b2
 #               exits 0 even when a test fails: the report gives the verdict.
+#   own-lanes   one job per own lane, on Linux x86-64 with Node and Clang 18, which runs
+#               b2 -a <directory>//<lane>; its exit status is the lane's verdict. A library that
+#               declares none, as xactor, has no such job.
 #   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64;
 #               the index is built with -sWEBCPP_INDEX=site, its links where the site serves
 #               each page (libs/<name>/), and the pages are the artifact ci.yml publishes.
 #   tools       for the superproject only: every tools/**/*_test.py, the tests of the build,
-#               the lint, the report, the documentation and the CI's own scripts.
+#               the oracle, the lint, the report, the documentation and the CI's own scripts.
 #   lint        tools/lint/lint.sh in four shards, each analysing a quarter of the files with
 #               clang-tidy and running every other rule; with the full history, which the
 #               banned-word rule reads.
 #   actionlint  every workflow of the superproject and of the libraries.
 #   report      merges every lane's XML with tools/report/report.py into the test matrix. Its
 #               exit status is the verdict, and it fails too when a lane's job failed or wrote
-#               no XML.
+#               no XML, or when an own lane's job failed.
 #
 # No b2 call passes -j: b2 runs as many jobs as the runner has processors.
 name: Library
@@ -68,6 +73,8 @@ jobs:
     timeout-minutes: 30
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      own-lanes: ${{ steps.plan.outputs.own-lanes }}
+      has-own-lanes: ${{ steps.plan.outputs.has-own-lanes }}
     steps:
       # The superproject is the caller's commit when it calls this workflow itself, and main
       # when a library does, the branch this workflow is called at.
@@ -119,6 +126,15 @@ jobs:
           matrix="$(python3 tools/ci/matrix.py plan "${arguments[@]}")"
           python3 -m json.tool <<< "$matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          own_lanes="$(python3 tools/ci/matrix.py own-lanes "${arguments[@]}")"
+          python3 -m json.tool <<< "$own_lanes"
+          echo "own-lanes=$own_lanes" >> "$GITHUB_OUTPUT"
+          # A matrix with no entry fails its job, so the own-lanes job runs only when there is one.
+          if [ "$own_lanes" = '{"include":[]}' ]; then
+            echo "has-own-lanes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-own-lanes=true" >> "$GITHUB_OUTPUT"
+          fi
 
   lanes:
     name: ${{ matrix.name }}
@@ -158,6 +174,38 @@ jobs:
           path: ${{ steps.lane.outputs.xml }}
           if-no-files-found: error
           retention-days: 7
+
+  # A library's own lane, such as its oracle: it compiles nothing, but its targets inherit the
+  # requirements of the library's test project, the library's target among them, and with it the
+  # Jamroot's check of Boost, so the job has Boost and a toolset, Clang 18, as the docs job does;
+  # and Node, whose npm cache the action keys on every oracle's lock file. The job is named by
+  # its matrix entry: Own lane (xstate, oracle, libs/xstate/test/oracle).
+  own-lanes:
+    name: Own lane
+    needs: plan
+    if: needs.plan.outputs.has-own-lanes == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.own-lanes) }}
+    steps:
+      - *superproject
+      - *superproject-for-library
+      - *make-room
+      - *library
+      - *boost
+
+      - uses: ./tools/ci/actions/node
+
+      - name: Own lane
+        env:
+          LANE: ${{ matrix.lane }}
+          DIRECTORY: ${{ matrix.directory }}
+        run: |
+          python3 tools/ci/matrix.py register clang-18
+          env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH \
+            b2 --user-config=.local/user-config.jam -a toolset=clang-18 "$DIRECTORY//$LANE"
 
   docs:
     name: Documentation
@@ -329,7 +377,7 @@ jobs:
 
   report:
     name: Report
-    needs: [plan, lanes]
+    needs: [plan, lanes, own-lanes]
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -359,12 +407,27 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # A lane whose job failed after b2 wrote its XML, which the report may read as whole.
+      # A lane whose job failed after b2 wrote its XML, which the report may read as whole; and an
+      # own lane, which writes no XML, whose job is its verdict: skipped only when the plan found
+      # none.
       - name: Every lane's job succeeded
+        if: always()
         env:
           LANES: ${{ needs.lanes.result }}
+          OWN_LANES: ${{ needs.own-lanes.result }}
+          HAS_OWN_LANES: ${{ needs.plan.outputs.has-own-lanes }}
         run: |
+          status=0
           if [ "$LANES" != success ]; then
             echo "a lane's job did not succeed: $LANES"
-            exit 1
+            status=1
           fi
+          expected=skipped
+          if [ "$HAS_OWN_LANES" = true ]; then
+            expected=success
+          fi
+          if [ "$OWN_LANES" != "$expected" ]; then
+            echo "an own lane's job is $OWN_LANES, where $expected was expected"
+            status=1
+          fi
+          exit "$status"

@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import quote
 
-from lanes import EMPTY, KINDS, PASS, Action, Lane, Row, problems, step, worst
+from lanes import EMPTY, KINDS, PASS, UNBUILT, Action, Lane, Row, problems, step, worst
 
 OWN_SITE = 'https://github.com/webcpporg/'
 
@@ -340,12 +340,16 @@ def table(heads: list[str], lanes: list[Lane],
 
 
 def lane_problems(lanes: list[Lane]) -> list[str]:
-    """The section that names each lane that built nothing, and each failure outside every test
-    and example, by its file; empty when there is none."""
+    """The section that names each lane that built nothing, each library a lane built nothing
+    of, and each failure outside every test and example, by its file; empty when there is
+    none."""
     items = []
     for lane in lanes:
         if not lane.built():
             items.append(f'<li><strong>{e(lane.name)}</strong>: {e(EMPTY)}.</li>')
+        for library in lane.unbuilt():
+            items.append(f'<li><strong>{e(lane.name)}</strong>: {e(library)}: {e(UNBUILT)}.'
+                         '</li>')
         for number, action in enumerate(lane.outside, 1):
             link = href(f'{outside_of(lane)}#failure-{number}')
             items.append(

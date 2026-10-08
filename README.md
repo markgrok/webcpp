@@ -14,10 +14,10 @@ model: this repository is the superproject, the equivalent of
 | Library | What it is | Targets |
 | --- | --- | --- |
 | [xactor](https://github.com/webcpporg/xactor) | A header-only, deterministic actor system: actors that handle one message at a time, with fuel per execution, timers and a lifecycle. | native, wasip2, wasip3 |
+| [xstate](https://github.com/webcpporg/xstate) | A header-only port of XState's state machines and actors: machines read from XState's JSON config, stepped by XState's pure functions or run as actors on xactor. Ports XState 5.33.2, and is proven against it. | native, wasip2, wasip3 |
 
-xstate (a port of XState's state machines), trystero (a port of Trystero's
-serverless WebRTC rooms) and wasi (a helper for building C++ as WASI
-components) are being moved here. Each library's page, with its API
+trystero (a port of Trystero's serverless WebRTC rooms) and wasi (a helper
+for building C++ as WASI components) are being moved here. Each library's page, with its API
 reference, and the test matrix of every library on every target are
 published at <https://webcpporg.github.io/webcpp/>.
 
@@ -32,6 +32,8 @@ published at <https://webcpporg.github.io/webcpp/>.
   wasm32-wasip3, and wasmtime 47, which runs what it builds;
 - for the documentation, Node, which runs Asciidoctor.js, MrDocs 2026.9.29,
   which writes each library's API reference, and clang++;
+- for a library's oracle lane, which runs the original it ports against the
+  same cases and examples, Node and npm;
 - for the lint, wasi-sdk 34, whose clang-format and clang-tidy it runs, and
   Node, with which it installs Pyright.
 
@@ -86,6 +88,7 @@ The other aggregates work the same way:
 | `b2 doc` | builds the index page, `doc/html/index.html`, and each library's page, `libs/<name>/doc/html/index.html` |
 | `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/`, for CMake or a plain compiler |
 | `b2 libs/<name>/test` | one library's tests; `libs/<name>/example` and `libs/<name>/doc` likewise |
+| `b2 libs/<name>/test/oracle//oracle` | a port's oracle lane: the original it ports runs the same cases and a twin of each example, and the results must be the port's |
 | `b2 -a ...` | the same, from scratch: b2 compares timestamps, so only a build from scratch is a result |
 
 A b2 project uses a library through `/webcpp/<name>//<name>`, which adds its
@@ -145,9 +148,10 @@ clang-tidy, which takes most of the time, and runs every other rule.
 
 The build and its tools have tests of their own, each a Python script run
 from the root, such as `python3 tools/test/jamroot_test.py`:
-`tools/test/*_test.py` for the Jamroot, `tools/webcpp.jam` and the
-documentation build, and `tools/<tool>/*_test.py` for the lint, the report,
-the documentation and the example runner.
+`tools/test/*_test.py` for the Jamroot, `tools/webcpp.jam`, the oracle's
+rules and the documentation build, and `tools/<tool>/*_test.py` for the
+oracle, the lint, the report, the documentation, the example runner and the
+CI's scripts.
 
 ## Contributing
 

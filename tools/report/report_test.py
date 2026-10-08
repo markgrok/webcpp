@@ -8,14 +8,15 @@
 """Checks tools/report/report.py on the samples b2 wrote for lanes over the fixture library demo
 and the libraries record_samples.py plants beside it: a lane that passes, its failures named by
 kind with their output a click away, an expected failure told from a real one, an empty lane
-failed by name, two lanes merged into one matrix, input it cannot read or report truthfully
-refused before anything is written (a lane whose name says another target than its toolset
-builds for, among them), a failure outside every test, and output that b2's XML cannot hold. One
-case uses lanes.py and pages.py alone; a last one records every sample afresh, untrimmed, and
-checks that the report reads it as it reads the committed one. Every page written is checked to
-be self-contained, to link only to the report's own pages, to the site it is served in (its index
-and each library's page) and to github.com/webcpporg, and to name its lane on every lane cell,
-which a phone shows as a chip. Run with the names of some cases to run only those."""
+failed by name, and so a library a lane built nothing of, two lanes merged into one matrix, input
+it cannot read or report truthfully refused before anything is written (a lane whose name says
+another target than its toolset builds for, among them), a failure outside every test, and
+output that b2's XML cannot hold. One case uses lanes.py and pages.py alone; a last one records
+every sample afresh, untrimmed, and checks that the report reads it as it reads the committed
+one. Every page written is checked to be self-contained, to link only to the report's own pages,
+to the site it is served in (its index and each library's page) and to github.com/webcpporg, and
+to name its lane on every lane cell, which a phone shows as a chip. Run with the names of some
+cases to run only those."""
 
 from __future__ import annotations
 
@@ -350,6 +351,32 @@ def test_empty_lane_exits_1_naming_it(root: Path) -> None:
     check_pages(out)
 
 
+def test_a_library_the_lane_built_nothing_of_fails_it(root: Path) -> None:
+    # The CI puts in a lane only the libraries that declare its target, so a library whose tests
+    # --dump-tests lists and none of which the lane built is a failure, not a grey column: here
+    # nativeonly, beside demo, which passes.
+    out = root / 'report'
+    result = report(out, ('wasip2', sample('wasip2-skipped-library')))
+    assert result.returncode == 1, outcome(result)
+    named = 'report: wasip2: nativeonly: the lane built none of its tests and examples'
+    assert result.stderr.splitlines() == [named], outcome(result)
+    index = matrix(out / 'index.html')
+    assert index.verdict('demo', 'wasip2') == 'pass'
+    assert index.verdict('nativeonly', 'wasip2') == 'n/a'
+    # The lane is not empty: it built demo.
+    assert 'empty' not in index.columns[1].classes, index.columns
+    # Every page names the library, and says the matrix fails.
+    for page in ('index.html', 'demo.html', 'nativeonly.html'):
+        text = Page(out / page).text
+        assert 'wasip2: nativeonly: the lane built none of its tests and examples' in text, page
+    assert 'Failing.' in Page(out / 'index.html').text
+    check_pages(out)
+    # lanes.py names it too, and only it.
+    lane = lanes.read_lane('wasip2', sample('wasip2-skipped-library'))
+    assert lane.unbuilt() == ['nativeonly'], lane.unbuilt()
+    assert lanes.exit_status([lane]) == 1
+
+
 def test_two_lanes_merge_into_one_matrix(root: Path) -> None:
     out = root / 'report'
     result = report(out, ('native', sample('native-pass')), ('wasip2', sample('wasip2-pass')))
@@ -635,6 +662,7 @@ CASES = [
     test_run_failure_exits_1_and_cell_links_output,
     test_compile_error_and_expected_compile_fail_are_distinguished,
     test_empty_lane_exits_1_naming_it,
+    test_a_library_the_lane_built_nothing_of_fails_it,
     test_two_lanes_merge_into_one_matrix,
     test_toolset_line_shown_only_when_it_differs_from_the_lane_name,
     test_nine_lanes_fit_the_content_width_at_desktop,

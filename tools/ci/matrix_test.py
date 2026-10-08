@@ -7,11 +7,12 @@
 
 """Checks tools/ci/matrix.py: the plan has a lane per compiler for each target the libraries
 declare, with the libraries that declare it, and fails on a target the CI has no lane for or a
-library that does not exist; a lane is named and registered by the compiler's version when the
-image decides it; a lane runs the lane command and writes its XML, and fails when b2 cannot
-build; the report merges the lanes and fails, by name, a planned lane that wrote nothing. Each
-case runs the scratch superproject's own copy of matrix.py, with the fixture library demo. Run
-with the names of some cases to run only those."""
+library that does not exist; the own lanes the libraries declare are listed, of every library or
+of one, and a line of b2's that is no own lane fails; a lane is named and registered by the
+compiler's version when the image decides it; a lane runs the lane command and writes its XML,
+and fails when b2 cannot build; the report merges the lanes and fails, by name, a planned lane
+that wrote nothing. Each case runs the scratch superproject's own copy of matrix.py, with the
+fixture library demo. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -117,6 +118,55 @@ def test_an_unknown_library_fails(root):
     result = run(root, 'plan', '--library', 'nothing')
     assert result.returncode == 2, (result.returncode, result.stderr)
     assert 'libs/nothing declares no target, or is no library' in result.stderr, result.stderr
+
+
+def own_lanes(root: Path, *arguments: str) -> list[dict]:
+    result = run(root, 'own-lanes', *arguments)
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1, lines
+    return json.loads(lines[0])['include']
+
+
+def test_own_lanes_of_every_library_and_of_one(root):
+    # demo declares no lane of its own, as xactor does not: its matrix is empty, and the CI then
+    # runs no own-lane job.
+    boost_only(root)
+    assert own_lanes(root) == []
+    assert run(root, 'own-lanes', '--library', 'demo').stdout == '{"include":[]}\n'
+    harness.add_library(root, 'alpha',
+                        'import webcpp ;\n'
+                        'webcpp.run plain : plain.cpp ;\n'
+                        'webcpp.lane http : plain ;\n',
+                        {'plain.cpp': 'int main() {}\n'})
+    (root / 'libs/alpha/example/browser').mkdir(parents=True)
+    (root / 'libs/alpha/example/browser/Jamfile').write_text(
+        'import webcpp ;\n'
+        'webcpp.example page.cpp ;\n'
+        'webcpp.lane browser : page.output ;\n')
+    harness.add_library(root, 'beta', 'import webcpp ;\n', {})
+    (root / 'libs/beta/test/oracle').mkdir()
+    (root / 'libs/beta/test/oracle/Jamfile').write_text(
+        'import webcpp ;\n'
+        'alias twins ;\n'
+        'webcpp.lane oracle : twins ;\n')
+    alpha = [{'library': 'alpha', 'lane': 'browser', 'directory': 'libs/alpha/example/browser'},
+             {'library': 'alpha', 'lane': 'http', 'directory': 'libs/alpha/test'}]
+    beta = [{'library': 'beta', 'lane': 'oracle', 'directory': 'libs/beta/test/oracle'}]
+    assert own_lanes(root) == alpha + beta
+    assert own_lanes(root, '--library', 'beta') == beta
+    assert own_lanes(root, '--library', 'demo') == []
+    # What the job runs, b2 -a <directory>//<lane>, is built from these words alone: a line that
+    # is not three of them, or whose directory is not the library's, fails the listing.
+    for printed, named in (('alpha http', 'not "<library> <lane> <directory>"'),
+                           ('alpha http libs/beta/test', 'not in libs/alpha/test or'),
+                           ('alpha http; libs/alpha/test', 'not "<library> <lane> <directory>"')):
+        try:
+            matrix.parsed_own_lanes(printed)
+        except matrix.Failure as failure:
+            assert named in str(failure), (printed, failure)
+        else:
+            raise AssertionError(f'{printed!r} was read as an own lane')
 
 
 def test_a_lane_is_named_by_the_compiler_version(root):
@@ -285,6 +335,7 @@ CASES = [
     test_plan_of_every_library,
     test_a_target_without_a_lane_fails,
     test_an_unknown_library_fails,
+    test_own_lanes_of_every_library_and_of_one,
     test_a_lane_is_named_by_the_compiler_version,
     test_abbreviated_paths_keep_the_lane_name,
     test_register_writes_the_lanes_toolsets_in_order,
