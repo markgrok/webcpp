@@ -424,6 +424,30 @@ def boost_sees_no_exceptions(root: Path, command: list[str]) -> bool:
     return re.search(r'^#define BOOST_NO_EXCEPTIONS\b', completed.stdout, re.MULTILINE) is not None
 
 
+def test_a_failed_check_of_the_database_runs_the_other_rules(root):
+    prepare(root)
+    # A file of the database compiled both by wasi-sdk's clang++ and by another compiler cannot be
+    # analysed, which fails clang-tidy, by name; every later rule still runs, and the summary
+    # names clang-tidy alone. The scratch copy's compile_commands.py writes such a database, its
+    # wasi-sdk's clang++ through a link, which the lint does not read.
+    (root / 'wasi-clang++').symlink_to(Path(CLANG_TIDY).parent / 'clang++')
+    script = root / 'tools/lint/compile_commands.py'
+    harness.replace(script, 'entries = database(root)\n', 'entries = planted(root)\n')
+    harness.replace(script, 'def main(arguments: list[str]) -> int:\n',
+                    'def planted(root: str) -> list[dict[str, object]]:\n'
+                    '    """A database whose one file has a command of each kind."""\n'
+                    "    source = os.path.join(root, 'tools/throw_exception.cpp')\n"
+                    "    compilers = [os.path.join(root, 'wasi-clang++'), 'c++']\n"
+                    "    return [{'directory': root, 'file': source, 'arguments': [compiler, "
+                    "source]}\n"
+                    '            for compiler in compilers]\n'
+                    '\n\n'
+                    'def main(arguments: list[str]) -> int:\n')
+    expect_alone(lint(root), 'clang-tidy', [
+        "tools/throw_exception.cpp is compiled both by wasi-sdk's clang++ and by another compiler",
+        '== include boundaries ==', 'every library keeps to its declared include boundaries'])
+
+
 def test_clang_format(root):
     prepare(root)
     path = 'libs/demo/test/unformatted.cpp'
@@ -1111,6 +1135,7 @@ CASES = [
     test_compile_database_lists_what_b2_builds,
     test_compile_database_reads_what_only_wasi_builds,
     test_wasm_compiler_not_from_wasi_sdk_fails_by_name,
+    test_a_failed_check_of_the_database_runs_the_other_rules,
     test_clang_format,
     test_clang_tidy_reads_what_b2_expects_to_build,
     test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles,

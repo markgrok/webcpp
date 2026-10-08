@@ -178,8 +178,9 @@ if python3 tools/lint/compile_commands.py "${repository_root}" \
     # another compiler (host), and a compiler of the host's, when one is named. compile_commands.py
     # refuses a WebAssembly command of any compiler but wasi-sdk's clang++, so a host command is
     # a native one; both read wasi-sdk's clang++ with its function wasi_sdk.
-    python3 - tools/lint "${work_directory}/database/compile_commands.json" \
-        "${work_directory}/analysed" > "${work_directory}/compiler" <<'PYTHON'
+    # A file of both kinds fails the rule, by name, and the rules after it still run.
+    if python3 - tools/lint "${work_directory}/database/compile_commands.json" \
+            "${work_directory}/analysed" > "${work_directory}/compiler" <<'PYTHON'; then
 import json
 import sys
 
@@ -202,95 +203,99 @@ hosts = [entry['arguments'][0] for entry in entries if kinds[entry['file']] == '
 print(hosts[0] if hosts else '')
 PYTHON
 
-    # The native commands name the host's compiler, which knows where its own system headers
-    # are; the wasi-sdk clang-tidy that reads them does not. It is told the target of that
-    # compiler and, on macOS, the SDK: facts about the machine the analysis runs on, not build
-    # flags. A command of wasi-sdk's clang++ (a program or an aggregate built only for WASI)
-    # names its own --target, and its sysroot is the one clang-tidy's wasi-sdk knows: it is
-    # told neither.
-    host_target=''
-    host_sysroot=''
-    if [ -n "$(cat "${work_directory}/compiler")" ]; then
-        host_target="$("$(cat "${work_directory}/compiler")" -dumpmachine)"
-        if [ "$(uname -s)" = Darwin ] && command -v xcrun >/dev/null 2>&1; then
-            host_sysroot="$(xcrun --show-sdk-path)"
-        fi
-    fi
-
-    # clang-tidy reads one file per run and takes seconds on one that includes Boost, so the
-    # files are analysed in parallel. Each run's findings are kept in a file of their own and
-    # printed in the order of the sorted files, so that the report reads the same on every run.
-    # The bash -c of xargs, below, runs it.
-    # shellcheck disable=SC2329
-    tidy_one() {
-        local index="$1" kind="$2" file="$3"
-        local arguments=(-p "${work_directory}/database")
-        if [ "${kind}" = host ]; then
-            arguments+=("--extra-arg=--target=${host_target}")
-            if [ -n "${host_sysroot}" ]; then
-                arguments+=(--extra-arg=-isysroot "--extra-arg=${host_sysroot}")
+        # The native commands name the host's compiler, which knows where its own system headers
+        # are; the wasi-sdk clang-tidy that reads them does not. It is told the target of that
+        # compiler and, on macOS, the SDK: facts about the machine the analysis runs on, not build
+        # flags. A command of wasi-sdk's clang++ (a program or an aggregate built only for WASI)
+        # names its own --target, and its sysroot is the one clang-tidy's wasi-sdk knows: it is
+        # told neither.
+        host_target=''
+        host_sysroot=''
+        if [ -n "$(cat "${work_directory}/compiler")" ]; then
+            host_target="$("$(cat "${work_directory}/compiler")" -dumpmachine)"
+            if [ "$(uname -s)" = Darwin ] && command -v xcrun >/dev/null 2>&1; then
+                host_sysroot="$(xcrun --show-sdk-path)"
             fi
         fi
-        local status=0
-        "${clang_tidy}" --quiet "${arguments[@]}" "${file}" \
-            > "${work_directory}/${index}.out" 2>&1 || status=$?
-        printf '%s\n' "${status}" > "${work_directory}/${index}.status"
-    }
-    export -f tidy_one
-    export clang_tidy host_target host_sysroot work_directory
 
-    # This shard's slice: the files whose position in the sorted list is K modulo N.
-    # Interleaving keeps the slices alike, since neighbours are alike (the examples of one
-    # directory, the tests of another).
-    listed=0
-    analysed=0
-    while IFS=' ' read -r kind file; do
-        listed=$((listed + 1))
-        [ $(((listed - 1) % shard_count + 1)) -eq "${shard_index}" ] || continue
-        analysed=$((analysed + 1))
-        printf '%s\n' "${file}" >> "${work_directory}/slice"
-        printf '%s\0%s\0%s\0' "${analysed}" "${kind}" "${file}"
-    done < "${work_directory}/analysed" > "${work_directory}/plan"
+        # clang-tidy reads one file per run and takes seconds on one that includes Boost, so the
+        # files are analysed in parallel. Each run's findings are kept in a file of their own and
+        # printed in the order of the sorted files, so that the report reads the same on every run.
+        # The bash -c of xargs, below, runs it.
+        # shellcheck disable=SC2329
+        tidy_one() {
+            local index="$1" kind="$2" file="$3"
+            local arguments=(-p "${work_directory}/database")
+            if [ "${kind}" = host ]; then
+                arguments+=("--extra-arg=--target=${host_target}")
+                if [ -n "${host_sysroot}" ]; then
+                    arguments+=(--extra-arg=-isysroot "--extra-arg=${host_sysroot}")
+                fi
+            fi
+            local status=0
+            "${clang_tidy}" --quiet "${arguments[@]}" "${file}" \
+                > "${work_directory}/${index}.out" 2>&1 || status=$?
+            printf '%s\n' "${status}" > "${work_directory}/${index}.status"
+        }
+        export -f tidy_one
+        export clang_tidy host_target host_sysroot work_directory
 
-    if [ "${analysed}" -gt 0 ]; then
-        xargs -0 -n 3 -P "$(getconf _NPROCESSORS_ONLN)" bash -c 'tidy_one "$@"' tidy \
-            < "${work_directory}/plan"
-    fi
-    # clang-tidy exits 1 on a finding. Any other failing status is a run that did not finish
-    # (a crash, or the kernel ending it for memory) and that analysed nothing; it is named, so
-    # that it does not read as a finding. A file with more than one command (a source two
-    # programs compile with different options) is analysed once per command, and clang-tidy then
-    # says which run it is on; those lines are left out.
-    tidy_failed=0
-    index=0
-    while [ "${index}" -lt "${analysed}" ]; do
-        index=$((index + 1))
-        grep -vE '^\[[0-9]+/[0-9]+\] \([0-9]+/[0-9]+\) Processing file ' \
-            "${work_directory}/${index}.out" || true
-        status="$(cat "${work_directory}/${index}.status")"
-        if [ "${status}" -gt 1 ]; then
-            printf 'clang-tidy ended with status %s on %s\n' "${status}" \
-                "$(sed -n "${index}p" "${work_directory}/slice")"
+        # This shard's slice: the files whose position in the sorted list is K modulo N.
+        # Interleaving keeps the slices alike, since neighbours are alike (the examples of one
+        # directory, the tests of another).
+        listed=0
+        analysed=0
+        while IFS=' ' read -r kind file; do
+            listed=$((listed + 1))
+            [ $(((listed - 1) % shard_count + 1)) -eq "${shard_index}" ] || continue
+            analysed=$((analysed + 1))
+            printf '%s\n' "${file}" >> "${work_directory}/slice"
+            printf '%s\0%s\0%s\0' "${analysed}" "${kind}" "${file}"
+        done < "${work_directory}/analysed" > "${work_directory}/plan"
+
+        if [ "${analysed}" -gt 0 ]; then
+            xargs -0 -n 3 -P "$(getconf _NPROCESSORS_ONLN)" bash -c 'tidy_one "$@"' tidy \
+                < "${work_directory}/plan"
         fi
-        [ "${status}" -eq 0 ] || tidy_failed=1
-    done
-    # A translation unit that does not compile is not analysed: clang-tidy reports the error,
-    # then runs its checks on what error recovery made of the rest, where a type it could not
-    # find reads as int, and what they report there is an artefact. A missing header is a
-    # broken setup, not a finding.
-    units="translation units"
-    [ "${analysed}" -ne 1 ] || units="translation unit"
-    if [ "${analysed}" -gt 0 ] \
-        && grep -qF '[clang-diagnostic-error]' "${work_directory}"/*.out; then
-        fail 'a translation unit does not compile (its [clang-diagnostic-error] above); the
-      other findings in it are artefacts of that'
-    elif [ "${tidy_failed}" -ne 0 ]; then
-        fail 'clang-tidy reported a finding'
-    elif [ "${shard_count}" -eq 1 ]; then
-        printf 'clang-tidy is clean (%d %s)\n' "${analysed}" "${units}"
+        # clang-tidy exits 1 on a finding. Any other failing status is a run that did not finish
+        # (a crash, or the kernel ending it for memory) and that analysed nothing; it is named, so
+        # that it does not read as a finding. A file with more than one command (a source two
+        # programs compile with different options) is analysed once per command, and clang-tidy then
+        # says which run it is on; those lines are left out.
+        tidy_failed=0
+        index=0
+        while [ "${index}" -lt "${analysed}" ]; do
+            index=$((index + 1))
+            grep -vE '^\[[0-9]+/[0-9]+\] \([0-9]+/[0-9]+\) Processing file ' \
+                "${work_directory}/${index}.out" || true
+            status="$(cat "${work_directory}/${index}.status")"
+            if [ "${status}" -gt 1 ]; then
+                printf 'clang-tidy ended with status %s on %s\n' "${status}" \
+                    "$(sed -n "${index}p" "${work_directory}/slice")"
+            fi
+            [ "${status}" -eq 0 ] || tidy_failed=1
+        done
+        # A translation unit that does not compile is not analysed: clang-tidy reports the error,
+        # then runs its checks on what error recovery made of the rest, where a type it could not
+        # find reads as int, and what they report there is an artefact. A missing header is a
+        # broken setup, not a finding.
+        units="translation units"
+        [ "${analysed}" -ne 1 ] || units="translation unit"
+        if [ "${analysed}" -gt 0 ] \
+            && grep -qF '[clang-diagnostic-error]' "${work_directory}"/*.out; then
+            fail 'a translation unit does not compile (its [clang-diagnostic-error] above); the
+          other findings in it are artefacts of that'
+        elif [ "${tidy_failed}" -ne 0 ]; then
+            fail 'clang-tidy reported a finding'
+        elif [ "${shard_count}" -eq 1 ]; then
+            printf 'clang-tidy is clean (%d %s)\n' "${analysed}" "${units}"
+        else
+            printf 'clang-tidy is clean (%d of %d translation units, shard %s)\n' \
+                "${analysed}" "${listed}" "${shard}"
+        fi
     else
-        printf 'clang-tidy is clean (%d of %d translation units, shard %s)\n' \
-            "${analysed}" "${listed}" "${shard}"
+        fail "a file of the compilation database is compiled both by wasi-sdk's clang++ and by
+      another compiler (above), so nothing was analysed"
     fi
 else
     fail 'compile_commands.py wrote no compilation database (above), so nothing was analysed'
