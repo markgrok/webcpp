@@ -16,7 +16,8 @@ component, serves it with wasmtime and checks its answers, as a test of b2's tha
 and the report reads, in two lanes at once; a wrong transcript is a run failure in the report;
 native and emscripten are refused, and a native lane builds no served test and asks for no tool; a
 missing wasmtime fails the served test naming it, only when it runs, and a dry run needs none; no
-wasmtime is left by a test that passes, one that fails, or a b2 that is interrupted. Each case
+wasmtime is left by a test that passes, one that fails, a b2 that is interrupted, or one that
+kills the action that serves it (b2 -l). Each case
 builds a scratch superproject with the fixture library component_demo, given this checkout's
 wit-bindgen and WIT. Run with the names of some cases to run only those."""
 
@@ -664,9 +665,9 @@ def test_serve_script_refuses_what_is_not_there(root):
                    f'{where}: native is not a target a component is served on')
 
 
-# A stand-in for wasmtime that starts the real one in its own process group, writes the pids of
-# both into its first argument's file once the real one serves, and says so itself only seconds
-# later: a window in which the test interrupts b2.
+# A stand-in for wasmtime that starts the real one, writes the pids of both into the file mark
+# once the real one serves, and says so itself only pause seconds later: a window in which the
+# test interrupts b2, or b2 stops the action.
 SLOW_WASMTIME = """#!{python}
 import os
 import subprocess
@@ -677,7 +678,7 @@ real = subprocess.Popen([{real!r}, *sys.argv[1:]], stderr=subprocess.PIPE)
 line = real.stderr.readline()
 with open({mark!r}, 'w') as mark:
     mark.write(f'{{os.getpid()}} {{real.pid}}')
-time.sleep(3)
+time.sleep({pause})
 sys.stderr.buffer.write(line)
 sys.stderr.flush()
 for line in real.stderr:
@@ -693,7 +694,7 @@ def test_an_interrupted_b2_leaves_no_wasmtime(root):
     slow = root / 'linked tools/slow-wasmtime'
     slow.parent.mkdir()
     slow.write_text(SLOW_WASMTIME.format(python=sys.executable, real=shutil.which('wasmtime'),
-                                         mark=str(mark)))
+                                         mark=str(mark), pause=3))
     slow.chmod(0o755)
     process = harness.start_b2(root, '-a', WASIP2, f'-sWASMTIME={slow}', f'{TEST}//answers')
     deadline = time.monotonic() + harness.TIMEOUT
@@ -717,6 +718,45 @@ def test_an_interrupted_b2_leaves_no_wasmtime(root):
             pass
 
 
+def test_a_b2_that_kills_its_action_leaves_no_wasmtime(root):
+    harness.link_wasi_tools(root)
+    # The component first, as it is: the run below has b2 serve it, and nothing else.
+    harness.expect(harness.run_b2(root, '-a', WASIP2, linked_wasmtime(root), f'{TEST}//answers'),
+                   True, '**passed**')
+    mark = root / 'serving'
+    slow = root / 'linked tools/slow-wasmtime'
+    slow.write_text(SLOW_WASMTIME.format(python=sys.executable, real=shutil.which('wasmtime'),
+                                         mark=str(mark), pause=60))
+    slow.chmod(0o755)
+    # b2 -l stops an action that outlasts it with a SIGKILL to the action's process group, which
+    # serve.py cannot answer: wasmtime, which says it serves only a minute after it does, is
+    # stopped all the same, by the keeper serve.py starts it under.
+    began = time.monotonic()
+    result = harness.run_b2(root, '-l', '15', WASIP2, f'-sWASMTIME={slow}', f'{TEST}//answers')
+    try:
+        harness.expect(result, False)
+        assert time.monotonic() - began < 60, time.monotonic() - began
+        assert mark.is_file() and mark.read_text(), 'wasmtime never served'
+        assert not left(root, seconds=30), left(root)
+        # The real wasmtime too, whose command names its component by a path relative to root,
+        # once the system has reaped it.
+        deadline = time.monotonic() + 30
+        for pid in [int(word) for word in mark.read_text().split()]:
+            while True:
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    break
+                assert time.monotonic() < deadline, f'{pid} is still there'
+                time.sleep(0.1)
+    finally:
+        for pid in [int(word) for word in mark.read_text().split()] if mark.is_file() else []:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
 CASES = [
     test_bindings_generated_for_wasip2_and_wasip3,
     test_bindings_link_into_a_component,
@@ -738,6 +778,7 @@ CASES = [
     test_missing_wasmtime_names_it,
     test_wasm_dry_run_needs_no_wasmtime,
     test_an_interrupted_b2_leaves_no_wasmtime,
+    test_a_b2_that_kills_its_action_leaves_no_wasmtime,
     test_a_script_builds_a_served_component,
     test_serve_script_refuses_what_is_not_there,
 ]

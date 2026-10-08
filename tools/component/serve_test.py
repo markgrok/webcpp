@@ -36,16 +36,16 @@ HERE = Path(__file__).resolve().parent
 SERVE = HERE / 'serve.py'
 
 # The stand-in for wasmtime: `<stand-in> serve <flags> --addr <host>:0 <component>`, where the
-# component is a JSON file of settings: delay, the seconds between listening and saying so; meet
-# and meeting, a directory and a number of stand-ins, none of which says it serves before that
-# many listen; silent, never to say it; exit, to exit with that status first, as a wasmtime that
-# cannot bind; hang, never to answer; ignore_term; child, to start a child in its group; and
-# unended, to end no body with a line break. It records into settings['record'] its pid, its
+# component is a JSON file of settings: delay, the seconds between listening and saying so; meet and
+# meeting, a directory and a number of stand-ins, none of which says it serves before that many
+# listen; silent, never to say it; exit, to exit with that status first, as a wasmtime that cannot
+# bind; hang, never to answer; ignore_term; child, to start a child in its group; and unended, to
+# end no body with a line break. It records into settings['record'] its pid, its parent's, its
 # process group, its session, the flags it was given, its port, when it said it serves, and each
 # request with when it came. It answers as answers.cpp of tools/test/fixtures/component_demo does:
-# 404 for /missing, else 200, with the method and the target in the body (none for HEAD), the
-# method in X-Method, and the headers wasmtime adds, Date always and Transfer-Encoding: chunked
-# with a body. Its headers are not in lower case, which the transcript writes them in.
+# 404 for /missing, else 200, with the method and the target in the body (none for HEAD), the method
+# in X-Method, and the headers wasmtime adds, Date always and Transfer-Encoding: chunked with a
+# body. Its headers are not in lower case, which the transcript writes them in.
 STAND_IN = r'''#!/usr/bin/env python3
 import json
 import os
@@ -62,8 +62,8 @@ assert arguments[0] == 'serve', arguments
 flags = arguments[1:arguments.index('--addr')]
 host, port = arguments[arguments.index('--addr') + 1].rsplit(':', 1)
 settings = json.loads(open(arguments[-1]).read())
-record = {'pid': os.getpid(), 'pgid': os.getpgid(0), 'sid': os.getsid(0), 'flags': flags,
-          'requests': []}
+record = {'pid': os.getpid(), 'ppid': os.getppid(), 'pgid': os.getpgid(0), 'sid': os.getsid(0),
+          'flags': flags, 'requests': []}
 
 
 def save():
@@ -264,8 +264,9 @@ def test_transcript_format(scratch: Path) -> None:
     assert recorded['flags'] == ['-S', 'cli,p3', '-W', 'component-model-async'], recorded
     assert [(request['method'], request['target']) for request in recorded['requests']] == [
         ('GET', '/v1/greeting?name=ana'), ('HEAD', '/'), ('POST', '/missing')], recorded
-    # wasmtime runs in a process group of its own, in the session of serve.py.
-    assert recorded['pgid'] == recorded['pid'], recorded
+    # wasmtime runs in a process group of its own, which its keeper leads, in the session of
+    # serve.py.
+    assert recorded['pgid'] == recorded['ppid'] != os.getpgid(0), recorded
     assert recorded['sid'] == os.getsid(0), recorded
     gone([recorded['pid']], recorded['pgid'])
     # A body that does not end with a line break is ended before the empty line that separates
@@ -443,6 +444,66 @@ def test_an_interrupted_run_stops_the_server(scratch: Path) -> None:
         assert not run.output.exists()
 
 
+# A run of serve.py whose second answer raises an exception that no handler of serve.py takes.
+RAISES = """
+import sys
+
+sys.path.insert(0, {here!r})
+import serve
+
+asked = serve.ask
+
+
+def ask(address, method, target, timeout):
+    if method == 'HEAD':
+        raise RuntimeError('an unforeseen failure')
+    return asked(address, method, target, timeout)
+
+
+serve.ask = ask
+sys.exit(serve.main(sys.argv[1:]))
+"""
+
+
+def test_an_exception_stops_the_server(scratch: Path) -> None:
+    # An exception serve.py does not foresee ends the run with its traceback, after the server
+    # is stopped, its whole group with it.
+    run = Run(scratch, 'raises', {'child': True})
+    arguments = run.arguments()
+    # Python 3.13 and later colour a traceback unless told not to.
+    result = subprocess.run([sys.executable, '-c', RAISES.format(here=str(HERE)), *arguments[2:]],
+                            capture_output=True, text=True, check=False, timeout=60,
+                            env={**os.environ, 'PYTHON_COLORS': '0'})
+    assert result.returncode == 1, outcome(result)
+    assert 'RuntimeError: an unforeseen failure' in result.stderr, outcome(result)
+    recorded = run.recorded()
+    gone([recorded['pid'], recorded['child']], recorded['pgid'])
+    assert not run.output.exists()
+
+
+def test_a_killed_run_stops_the_server(scratch: Path) -> None:
+    # A SIGKILL, which serve.py cannot answer, to serve.py alone, or to its process group, as b2
+    # sends to an action it stops (b2 -l), leaves no server: its keeper sees serve.py gone and
+    # stops it, its whole group with it.
+    for name, kill in (('alone', os.kill), ('group', os.killpg)):
+        run = Run(scratch, name, {'hang': True, 'child': True})
+        # As b2 starts an action: in a process group of its own.
+        process = subprocess.Popen(run.arguments(), stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, preexec_fn=os.setpgrp)
+        recorded = run.wait_for_record(lambda record: bool(record['requests']))
+        kill(process.pid, signal.SIGKILL)
+        process.communicate(timeout=60)
+        assert process.returncode == -signal.SIGKILL, (name, process.returncode)
+        try:
+            gone([recorded['pid'], recorded['child']], recorded['pgid'], seconds=10)
+        finally:
+            for pid in (recorded['pid'], recorded['child']):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+
 def test_a_run_bounds_itself(scratch: Path) -> None:
     # An answer that never comes fails the run once the timeout has passed, naming the request,
     # and stops the server: a run whose b2 is gone ends by itself.
@@ -492,6 +553,8 @@ CASES = [
     test_a_signal_held_while_starting_still_stops_the_run,
     test_a_server_that_ignores_sigterm_is_killed,
     test_an_interrupted_run_stops_the_server,
+    test_an_exception_stops_the_server,
+    test_a_killed_run_stops_the_server,
     test_a_run_bounds_itself,
     test_usage_errors_exit_2,
 ]

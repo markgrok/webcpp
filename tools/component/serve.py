@@ -17,10 +17,12 @@ test needs none. --program names the served test's declaration in a message, as 
 ("webcpp.serve <source> in <Jamfile>"), else the component does.
 
 wasmtime runs as `wasmtime serve WORDS --addr 127.0.0.1:0 WASM`, with its standard input
-/dev/null, in a process group of its own and in the session of this script, which b2 runs it in:
-what stops b2's session stops it too. Port 0 makes the system choose a free port, which wasmtime
-names on its standard error when it listens; nothing is sent before that line, and two runs at
-once never share a port.
+/dev/null, the child of a keeper (KEEPER), a small Python program that leads a process group of
+its own, in the session of this script, which b2 runs it in: what stops b2's session stops it too.
+The keeper's standard input is a pipe that only this script holds: when it ends, because this
+script ended, however it ended, the keeper kills its group, wasmtime with it. Port 0 makes the
+system choose a free port, which wasmtime names on its standard error when it listens; nothing is
+sent before that line, and two runs at once never share a port.
 
 Each line of the requests file is `<METHOD> <target>`; an empty line is skipped. Each request is
 sent with http.client, without a body, on a connection of its own. The transcript holds, per
@@ -36,13 +38,14 @@ one transcript holds on every machine and lane. An answer the host makes itself,
 47's own 500 page for a component that traps, is recorded as it came too, so a wasmtime upgrade
 records such a transcript again, as it reviews HOST_HEADERS.
 
-wasmtime is stopped in every outcome: an answer missing, an exception, SIGINT, SIGTERM or SIGHUP.
-Its group is sent SIGTERM, and SIGKILL after GRACE seconds, so that nothing it started is left
-either. The whole run is bounded, by --timeout (30 s by default) for the line that says it
-serves and for each answer, so that a run nobody waits for any longer, its b2 gone, still ends
-and stops wasmtime. A SIGKILL of this script itself is the one end it cannot answer, and it leaves
-wasmtime running: b2 never sends one to an action, and a harness that stops a run by killing its
-session, the way tools/test does, kills wasmtime with it.
+wasmtime is stopped in every outcome: the transcript compared, an answer missing, an exception,
+SIGINT, SIGTERM or SIGHUP. Its group is sent SIGTERM, and SIGKILL after GRACE seconds, so that
+nothing it started is left either. The whole run is bounded, by --timeout (30 s by default) for
+the line that says it serves and for each answer, so that a run nobody waits for any longer, its
+b2 gone, still ends and stops wasmtime. A SIGKILL of this script, which it cannot answer, alone or
+with its process group, as b2 stops an action that outlasts its -l, ends the keeper's pipe, and
+the keeper kills wasmtime; a harness that stops a run by killing its session, the way tools/test
+does, kills it too.
 
 Exit 0 when the transcript equals the expected file byte for byte, which the output file then
 holds; 1 when it does not, with a unified diff, or when an answer does not come, either with
@@ -153,14 +156,51 @@ def read_requests(path: Path) -> list[tuple[str, str]]:
     return requests
 
 
+# The keeper of wasmtime, run as `python -c KEEPER <wasmtime> serve ...`, the leader of a process
+# group of its own: it starts wasmtime as its child, in its group, with the standard input
+# /dev/null, and exits with its status, 128 plus the signal's number for a signal. The SIGTERM that
+# stop sends its group ends wasmtime, and the keeper outlives it, so that waiting for the keeper
+# waits for wasmtime: a handler, unlike an ignored signal, is not passed on to wasmtime. And it
+# reads its own standard input, a pipe that only serve.py holds, until it ends, when serve.py has
+# ended without stopping the group first, as a SIGKILL ends it: it then kills its group, itself
+# and wasmtime with it.
+KEEPER = """
+import os
+import signal
+import subprocess
+import sys
+import threading
+
+signal.signal(signal.SIGTERM, lambda *_: None)
+try:
+    child = subprocess.Popen(sys.argv[1:], stdin=subprocess.DEVNULL)
+except OSError as error:
+    print(f'cannot start {sys.argv[1]}: {error.strerror or error}', file=sys.stderr, flush=True)
+    os._exit(127)
+
+
+def watch():
+    while os.read(0, 4096):
+        pass
+    os.killpg(0, signal.SIGKILL)
+
+
+threading.Thread(target=watch, daemon=True).start()
+status = child.wait()
+# Without the interpreter's shutdown, which a thread still reading would hold up.
+os._exit(status if status >= 0 else 128 - status)
+"""
+
+
 def start(wasmtime: str, flags: list[str], component: Path) -> Server:
-    """wasmtime serving component, started; what it writes is read as it comes.
+    """wasmtime serving component, started under its keeper; what it writes is read as it comes.
 
     Tip: os.setpgrp is Popen's process_group=0 of Python 3.11, which Python 3.9 lacks; no
     thread runs yet when it is called."""
     try:
-        process = subprocess.Popen([wasmtime, 'serve', *flags, '--addr', ADDRESS, str(component)],
-                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        process = subprocess.Popen([sys.executable, '-c', KEEPER, wasmtime, 'serve', *flags,
+                                    '--addr', ADDRESS, str(component)],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, preexec_fn=os.setpgrp)
     except OSError as error:
         raise Failed(2, f'cannot start {wasmtime}: {error.strerror or error}') from None
@@ -205,10 +245,11 @@ def wait_until_serving(server: Server, timeout: float) -> tuple[str, int]:
 
 
 def stop(server: Server) -> None:
-    """Stops server's process group: SIGTERM, then, once wasmtime has ended or GRACE seconds
-    have passed, SIGKILL to whatever of its group is left, which keeps the group, and so its
-    number, from being taken by another. A group that is gone, or that refuses (macOS answers
-    EPERM for a zombie), is left. What wasmtime wrote is then read to its end."""
+    """Stops server's process group, its keeper's: SIGTERM, then, once wasmtime has ended, and
+    its keeper with it, or GRACE seconds have passed, SIGKILL to whatever of its group is left,
+    which keeps the group, and so its number, from being taken by another. A group that is gone,
+    or that refuses (macOS answers EPERM for a zombie), is left. What wasmtime wrote is then read
+    to its end."""
     process = server.process
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(process.pid, signal.SIGTERM)
@@ -217,6 +258,8 @@ def stop(server: Server) -> None:
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(process.pid, signal.SIGKILL)
     process.wait()
+    if process.stdin is not None:
+        process.stdin.close()
     for reader in server.readers:
         reader.join(1)
 
