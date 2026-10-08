@@ -8,6 +8,8 @@ import webcpp ;
 
 webcpp.doc component_demo : component_demo.adoc ;
 # The header of the world's bindings builds only for WASI; the reference parses it natively, with
-# the bindings of wasip2 and the macro of that version.
+# the bindings of wasip2 and the macro of that version, and the Doc Comments of its wasip3 branch
+# are checked too, with the bindings and the macro of wasip3.
 webcpp.reference component_demo : <library>/webcpp/component_demo//demo-bindings-p2-headers
-  <define>WEBCPP_COMPONENT_DEMO_P2 ;
+  <define>WEBCPP_COMPONENT_DEMO_P2
+  : <library>/webcpp/component_demo//demo-bindings-p3-headers <define>WEBCPP_COMPONENT_DEMO_P3 ;

@@ -10,7 +10,7 @@
 #
 #     import webcpp ;
 #     webcpp.doc <library> : <page>.adoc ;
-#     webcpp.reference <library> : <requirements> * ;
+#     webcpp.reference <library> : <requirements> * : <also-checked> * ;
 #
 # webcpp.reference declares the target reference of the library's doc
 # project: tools/doc/reference.py writes the library's API reference with
@@ -29,6 +29,12 @@
 # does the same for the superproject's index page, which includes the table
 # libraries.py writes from every library's meta/libraries.json at
 # {libraries}.
+#
+# Headers that branch by the macro of a version hide the other branch from
+# the reference. The requirements also-checked, those of the other version,
+# have reference.py check the Doc Comments again with them, MrDocs and
+# doc_comments.py both, before the reference is written; no page shows what
+# that check writes.
 #
 # Every page is converted with highlighter.mjs and postprocess.mjs, the
 # style of docinfo.html, and these attributes, which a page need not set:
@@ -204,10 +210,11 @@ local rule linked-pages ( library )
     return $(pages) ;
 }
 
-# webcpp.reference <library> : <requirements> * ; the library's API
-# reference, the target reference of its doc project, read with the library's
-# target and requirements.
-rule reference ( library : requirements * )
+# webcpp.reference <library> : <requirements> * : <also-checked> * ; the
+# library's API reference, the target reference of its doc project, read with
+# the library's target and requirements, once its Doc Comments are also
+# checked with the requirements also-checked, when it gives them.
+rule reference ( library : requirements * : also-checked * )
 {
     local current = [ here reference : libs/$(library)/doc ] ;
     .reference.$(library) = true ;
@@ -215,7 +222,24 @@ rule reference ( library : requirements * )
       : <library>/webcpp/$(library)//$(library) $(requirements)
         <webcpp-doc-page>$(library) ;
     $(current).mark-target-as-always reference.adoc ;
-    alias reference : reference.adoc ;
+    # The check is a reference of its own, written under also-checked/ of the
+    # build directory, apart from the files reference.py writes beside the
+    # reference. It is the reference's sibling, never its dependency: a
+    # dependency's usage requirements, the other version's bindings among
+    # them, would reach the reference's parse. The target reference and the
+    # page (needs-reference) build both.
+    local checked ;
+    if $(also-checked)
+    {
+        .also-checked.$(library) = true ;
+        make also-checked.adoc : : @webcpp-doc%write-reference
+          : <library>/webcpp/$(library)//$(library) $(also-checked)
+            <webcpp-doc-page>$(library) <location-prefix>also-checked ;
+        $(current).mark-target-as-always also-checked.adoc ;
+        $(current).mark-target-as-explicit also-checked.adoc ;
+        checked = also-checked.adoc ;
+    }
+    alias reference : reference.adoc $(checked) ;
 }
 
 # Where a page links another, by -sWEBCPP_INDEX: tree, the default, where b2
@@ -261,6 +285,8 @@ rule index ( source )
 
 # A library's page needs its reference: the conditional stops the build,
 # naming what is missing, before b2 looks for a target that is not there.
+# It needs the check of the reference's Doc Comments with also-checked too,
+# when the reference declares one.
 rule needs-reference ( properties * )
 {
     local id = [ feature.get-values <webcpp-doc-page> : $(properties) ] ;
@@ -268,6 +294,10 @@ rule needs-reference ( properties * )
     {
         errors.user-error "webcpp.doc $(id): the page includes the library's reference,"
             "and libs/$(id)/doc/Jamfile declares none; add webcpp.reference $(id) ;" ;
+    }
+    if $(id) != index && $(.also-checked.$(id))
+    {
+        return <dependency>also-checked.adoc ;
     }
 }
 

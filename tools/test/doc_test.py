@@ -16,8 +16,11 @@ library oracle_demo, whose divergent twin's output the page must show; and a pag
 another library's page, in either layout, is checked against that page, built first; the
 reference of the fixture library component_demo parses natively, with the requirements its doc
 Jamfile gives, the header of its world, which builds only for WASI, documents it and fails on an
-undocumented function of it, and without those requirements fails naming the header; and MrDocs
-and clang++ given at paths that hold a space are found.
+undocumented function of it, and without those requirements fails naming the header; the Doc
+Comments of the header's wasip3 branch, which that reference does not parse, are checked with
+the other requirements the doc Jamfile gives, and an undocumented function, a detail symbol
+without a brief and an undocumented macro there each fail it, the first the page too; and
+MrDocs and clang++ given at paths that hold a space are found.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is; the cases of
@@ -516,10 +519,50 @@ def test_reference_reads_a_header_built_only_for_wasi(root):
     # fails naming it.
     edit(root, 'libs/component_demo/doc/Jamfile',
          ' : <library>/webcpp/component_demo//demo-bindings-p2-headers\n'
-         '  <define>WEBCPP_COMPONENT_DEMO_P2 ;\n', ' ;\n')
+         '  <define>WEBCPP_COMPONENT_DEMO_P2\n'
+         '  : <library>/webcpp/component_demo//demo-bindings-p3-headers'
+         ' <define>WEBCPP_COMPONENT_DEMO_P3 ;\n', ' ;\n')
     harness.expect(harness.run_b2(root, 'libs/component_demo/doc//reference'), False,
                    f'{at(root, WORLD, "#error")}:2: error: "webcpp/component_demo/world.hpp '
                    'builds for wasip2 or wasip3')
+
+
+def test_reference_checks_each_branch_of_a_header(root):
+    prepare(root)
+    add_component_demo(root)
+    # The header of the world has a branch for each WASI version, and the reference parses p2's.
+    # The doc Jamfile gives p3's requirements too, with which the Doc Comments of the other branch
+    # are checked, its bindings generated on the native toolset.
+    harness.expect(harness.run_b2(root, 'libs/component_demo/doc//reference'), True)
+    assert (root / 'bin/generated/component_demo/demo-bindings-p3/demo_world.h').is_file()
+    # The reference's own parse sees p2's bindings alone: the check is its sibling, whose usage
+    # requirements never reach it.
+    database = (root / 'bin/libs/component_demo/doc/compile_commands.json').read_text()
+    assert 'demo-bindings-p2' in database and 'demo-bindings-p3' not in database, database
+    # In p3's branch alone, an undocumented function fails the page, built through its install
+    # alone, as when another page links it; it, a detail symbol without a brief and an
+    # undocumented macro each fail the reference, named, with p3's macro.
+    branch = '    return "p3";\n}\n'
+    edit(root, WORLD, branch, f'{branch}\nint undocumented_p3(int value);\n')
+    harness.expect(harness.run_b2(root, 'libs/component_demo/doc//html'), False,
+                   f'{at(root, WORLD, "int undocumented_p3(")}:',
+                   'undocumented_p3: function is undocumented')
+    assert not (root / COMPONENT_PAGE).exists()
+    edit(root, WORLD, f'{branch}\nint undocumented_p3(int value);\n', branch)
+    for planted, declared, message in (
+            ('int undocumented_p3(int value);\n', 'int undocumented_p3(',
+             'undocumented_p3: function is undocumented'),
+            ('namespace detail {\ninline int helper_p3() {\n    return 3;\n}\n'
+             '}  // namespace detail\n', 'inline int helper_p3(',
+             'webcpp::component_demo::detail::helper_p3: a detail symbol needs a brief'),
+            ('#define WEBCPP_COMPONENT_DEMO_ONLY_P3 3\n', '#define WEBCPP_COMPONENT_DEMO_ONLY_P3',
+             'WEBCPP_COMPONENT_DEMO_ONLY_P3: macro is undocumented')):
+        edit(root, WORLD, branch, f'{branch}\n{planted}')
+        harness.expect(harness.run_b2(root, 'libs/component_demo/doc//reference'), False,
+                       f'{at(root, WORLD, declared)}:', message,
+                       '--define "WEBCPP_COMPONENT_DEMO_P3"')
+        edit(root, WORLD, f'{branch}\n{planted}', branch)
+    harness.expect(harness.run_b2(root, 'libs/component_demo/doc//reference'), True)
 
 
 def test_tools_given_at_paths_with_spaces(root):
@@ -652,6 +695,7 @@ CASES = [
     test_links_between_pages,
     test_links_into_two_pages,
     test_reference_reads_a_header_built_only_for_wasi,
+    test_reference_checks_each_branch_of_a_header,
     test_tools_given_at_paths_with_spaces,
     test_page_outside_git,
     test_counts_warn_and_fail_through_the_build,

@@ -592,6 +592,16 @@ single page, from the library's Doc Comments. `webcpp.reference <name> ;` in
   `webcpp.wit-bindings`, which generates the bindings on any toolset, and the
   macro of one version; a header the reference cannot parse fails it, naming
   the header;
+- headers that branch by that macro have each branch's Doc Comments checked:
+  `webcpp.reference <name> : <requirements> * : <also-checked> * ;` gives
+  the other version's requirements, with which `reference.py` runs again,
+  MrDocs and `doc_comments.py` both, as a sibling of the reference that the
+  target `reference` and the page build too, and whose output no page shows.
+  wasi's doc Jamfile gives wasip2's bindings and macro, then wasip3's, so an
+  undocumented macro or `detail` symbol of the wasip3 branch fails the doc
+  build. The check is never a dependency of the reference: a dependency's
+  usage requirements, the other version's bindings, would reach the
+  reference's parse;
 - the shared settings are `tools/doc/mrdocs.yml.in`: `generator: adoc`,
   `multipage: false`, `embedded: true`, `warn-as-error: true`,
   `auto-function-metadata: false`, `auto-relates: false`, every `warn-*` on,

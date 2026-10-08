@@ -29,7 +29,7 @@
 # doc/Jamfile its index page:
 #
 #     webcpp.doc library : page ;
-#     webcpp.reference library : requirements * ;
+#     webcpp.reference library : requirements * : also-checked * ;
 #     webcpp.index page ;
 #
 # and the rules of the oracle, tools/oracle/oracle.jam's, with which a
@@ -566,11 +566,12 @@ rule doc ( library : page )
 }
 
 # The target reference of a library's doc project, its API reference from
-# MrDocs, strict, read with the library's target and requirements
-# (tools/doc/doc.jam).
-rule reference ( library : requirements * )
+# MrDocs, strict, read with the library's target and requirements, its Doc
+# Comments also checked with also-checked, the requirements of the other
+# branch of headers that branch by target (tools/doc/doc.jam).
+rule reference ( library : requirements * : also-checked * )
 {
-    webcpp-doc.reference $(library) : $(requirements) ;
+    webcpp-doc.reference $(library) : $(requirements) : $(also-checked) ;
 }
 
 # The superproject's index page, doc/html/index.html, which lists every
