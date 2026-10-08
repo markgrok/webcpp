@@ -91,7 +91,8 @@ A library's layout:
 ```
 libs/<name>/
   build.jam                  project /webcpp/<name>: its headers and dependencies
-  include/webcpp/<name>.hpp  the convenience header, which includes every public header
+  include/webcpp/<name>.hpp  the convenience header, which includes every public header but
+                             one that brings an optional heavy dependency (chapter 3)
   include/webcpp/<name>/...  one header per responsibility
   test/                      Jamfile, the tests, and .clang-tidy when the tests need one
   test/oracle/               a port's oracle (chapter 5): its Jamfile, the pinned original,
@@ -310,7 +311,7 @@ owner's:
 | --- | --- | --- |
 | namespace | `webcpp::<name>` | `webcpp::xactor` |
 | what is not public | a namespace `detail`, at any depth | `webcpp::xactor::detail` |
-| convenience header | `<webcpp/<name>.hpp>`, which includes every public header | `<webcpp/xactor.hpp>` |
+| convenience header | `<webcpp/<name>.hpp>`, which includes every public header, but may leave out one that brings an optional heavy dependency (below) | `<webcpp/xactor.hpp>` |
 | headers | `<webcpp/<name>/...>`, one per responsibility, `snake_case` | `<webcpp/xactor/scheduler.hpp>` |
 | macros | `WEBCPP_<NAME>_*` | `WEBCPP_XACTOR_*` |
 | test-only macros | `WEBCPP_TEST_*` | |
@@ -318,6 +319,12 @@ owner's:
 | b2 target | `/webcpp/<name>//<name>` | `/webcpp/xactor//xactor` |
 | error category | `webcpp.<name>` | `webcpp.xactor` |
 | identifiers | `snake_case`, Boost's convention; `.clang-tidy` enforces it | |
+
+A convenience header may leave out a public header that brings an optional
+heavy dependency, which a user of the rest should not pay for, and names in
+its comment the header it leaves out and the dependency:
+`<webcpp/pratt.hpp>` includes pratt's engine, and leaves out
+`<webcpp/pratt/calculator.hpp>`, which brings Boost.Decimal.
 
 A test's helpers that are shared between tests go in `webcpp::test`
 (`libs/xactor/test/require.hpp`). Example programs alias the namespace
