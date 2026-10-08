@@ -14,13 +14,12 @@ none is typed and none drifts from the tree. It prints each on a line of its own
 * From the programs b2 recorded, each given as `--program "<kind> <name> <target>..."`, as
   tools/webcpp.jam records the programs of the library's test and example Jamfiles (a Jamfile is
   never read here): `n-examples` and `n-examples-<target>`, the programs of kind example;
-  `n-tests` and `n-tests-<target>`, every other one, a webcpp.run's -noexcept variant being no
-  program of its own and each header that webcpp.headers-alone compiles alone one;
-  `n-boost-test-suites`; and `n-headers`, the headers webcpp.headers-alone compiles alone, one
-  program each. A target is native, emscripten, wasip2 or wasip3, and every one is counted, so a
-  count of programs may be 0: a library declares the targets it builds for. `n-headers` is never
-  0: every library compiles its public headers alone, and one that declares no
-  webcpp.headers-alone fails the count, naming it.
+  `n-tests` and `n-tests-<target>`, every other one, each header that webcpp.headers-alone
+  compiles alone one; `n-boost-test-suites`; and `n-headers`, the headers webcpp.headers-alone
+  compiles alone, one program each. A target is native, emscripten, wasip2 or wasip3, and every
+  one is counted, so a count of programs may be 0: a library declares the targets it builds for.
+  `n-headers` is never 0: every library compiles its public headers alone, and one that declares
+  no webcpp.headers-alone fails the count, naming it.
 * With `--examples`, `--twins` and `--suffix`, which the library's oracle declares with
   webcpp.twins, from what tools/oracle/twins.py --list prints, which runs no twin:
   `n-twins-agreeing`, `n-twins-divergent`, `n-examples-without-twin` and

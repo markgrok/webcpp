@@ -228,9 +228,9 @@ PYTHON
     fi
     # clang-tidy exits 1 on a finding. Any other failing status is a run that did not finish
     # (a crash, or the kernel ending it for memory) and that analysed nothing; it is named, so
-    # that it does not read as a finding. A file with more than one command (a test built with
-    # and without exceptions) is analysed once per command, and clang-tidy then says which run
-    # it is on; those lines are left out.
+    # that it does not read as a finding. A file with more than one command (a source two
+    # programs compile with different options) is analysed once per command, and clang-tidy then
+    # says which run it is on; those lines are left out.
     tidy_failed=0
     index=0
     while [ "${index}" -lt "${analysed}" ]; do

@@ -27,7 +27,7 @@ COUNTS = HERE / 'counts.py'
 FIXTURES = HERE.parent / 'test/fixtures'
 
 # The programs of demo's test and example Jamfiles, as tools/webcpp.jam records them: "<kind>
-# <name> <target>...", one per program, a webcpp.run's -noexcept variant being none.
+# <name> <target>...", one per program.
 DEMO_PROGRAMS = (
     'run pass native wasip2 wasip3',
     'run-fail fails native wasip2 wasip3',

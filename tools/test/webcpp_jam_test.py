@@ -5,13 +5,14 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, natively
-also without exceptions and RTTI; wasip2 builds without exceptions and wasip3 with them; an example
-is compared with its expected output; every public header compiles alone; `b2 declared-targets`
-lists what each library declares; a Boost.Test suite is built and run natively only, its framework
-always with exceptions; Boost.JSON's definitions link on every target; and every program sees
-C++20, a native one without exceptions also seeing no RTTI through Boost.Config. Each case builds
-a scratch superproject with the fixture library demo. Run with the names of some cases to run only
+"""Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, and
+only once per target; wasip2 builds without exceptions and wasip3 with them, and a native build
+without exceptions is the user's own request, which links the handler as wasip2 does; no variant
+is built without RTTI; an example is compared with its expected output; every public header
+compiles alone; `b2 declared-targets` lists what each library declares; a Boost.Test suite is built
+and run natively only, its framework always with exceptions; Boost.JSON's definitions link on every
+target; and every program sees C++20, the wasip2 one alone without exceptions. Each case builds a
+scratch superproject with the fixture library demo. Run with the names of some cases to run only
 those."""
 
 from __future__ import annotations
@@ -60,9 +61,8 @@ def stand_in_emscripten(root):
     config.write_text(config.read_text() + f'using emscripten : : "{emcc}" ;\n')
 
 
-NATIVE_DEMO = {'pass', 'pass-noexcept', 'fails', 'rejects', 'native_only', 'native_only-noexcept',
-               'native_only_compiles', 'alone-demo', 'alone-demo-answer', 'suite', 'suite-noexcept',
-               'parses_json', 'parses_json-noexcept'}
+NATIVE_DEMO = {'pass', 'fails', 'rejects', 'native_only', 'native_only_compiles', 'alone-demo',
+               'alone-demo-answer', 'suite', 'parses_json'}
 
 WASM_DEMO = {'pass', 'fails', 'rejects', 'alone-demo', 'alone-demo-answer', 'parses_json'}
 
@@ -73,15 +73,15 @@ PLAIN = ('import webcpp ;\n'
 PLAIN_SOURCE = 'int main() { return 0; }\n'
 
 
-def test_native_builds_declared_and_noexcept_variant(root):
+def test_native_builds_exactly_the_declared_programs(root):
     result = harness.run_b2(root, 'libs/demo/test', 'libs/demo/example')
     harness.expect(result, True)
     assert passed(result) == NATIVE_DEMO, (passed(result), result.stdout[-4000:])
-    # The variant -noexcept is built without exceptions and without RTTI, and links the handler
-    # of tools/throw_exception.cpp, which its throw site needs.
+    # Each program once, as its Jamfile declares it: with exceptions and with RTTI, and with no
+    # second variant of its own.
+    assert 'noexcept' not in result.stdout, result.stdout[-4000:]
+    assert not [path for path in (root / 'bin').rglob('*') if 'noexcept' in path.name]
     assert output_of(root, 'pass.output').startswith(built_with(exceptions=True, rtti=True))
-    assert output_of(root, 'pass-noexcept.output').startswith(
-        built_with(exceptions=False, rtti=False))
     assert output_of(root, 'hello.output') == 'The answer is 42.\n'
     assert output_of(root, 'catches.output') == 'caught: boom\n'
 
@@ -89,8 +89,8 @@ def test_native_builds_declared_and_noexcept_variant(root):
 def test_wasip2_skips_native_only_and_has_no_exceptions(root):
     result = harness.run_b2(root, *WASIP2, 'libs/demo/test', 'libs/demo/example')
     harness.expect(result, True)
-    # native_only, which does not compile for WASI, and the variants -noexcept, which are native,
-    # are not built; nor is catches, an example that throws.
+    # native_only, which does not compile for WASI, is not built; nor is catches, an example that
+    # throws.
     assert passed(result) == WASM_DEMO, (passed(result), result.stdout[-4000:])
     assert 'native_only' not in result.stdout, result.stdout[-4000:]
     assert not list((root / 'bin').rglob('catches*')), result.stdout[-4000:]
@@ -203,7 +203,7 @@ def test_undeclared_jamfile_is_native_only(root):
         assert not (root / 'bin/libs/plain').exists(), target
     result = harness.run_b2(root, 'libs/plain/test')
     harness.expect(result, True)
-    assert passed(result) == {'plain', 'plain-noexcept'}, (passed(result), result.stdout[-4000:])
+    assert passed(result) == {'plain'}, (passed(result), result.stdout[-4000:])
 
 
 def test_emscripten_builds_only_what_declares_it(root):
@@ -308,29 +308,29 @@ def compile_lines(root, *request):
     return lines
 
 
-def test_boost_test_passes_natively_with_noexcept(root):
-    result = harness.run_b2(root, 'libs/demo/test//suite', 'libs/demo/test//suite-noexcept')
+def test_boost_test_passes_natively(root):
+    result = harness.run_b2(root, 'libs/demo/test//suite')
     harness.expect(result, True)
-    assert passed(result) == {'suite', 'suite-noexcept'}, (passed(result), result.stdout[-4000:])
-    # The suite's own sources are built as a webcpp.run's are: the variant -noexcept without
-    # exceptions and without RTTI.
+    assert passed(result) == {'suite'}, (passed(result), result.stdout[-4000:])
+    # The suite's own sources are built as a webcpp.run's are, with exceptions and with RTTI.
     assert built_with(exceptions=True, rtti=True) in output_of(root, 'suite.output')
-    assert built_with(exceptions=False, rtti=False) in output_of(root, 'suite-noexcept.output')
-    # The framework is an object of its own, which names the module and is compiled with
-    # exceptions in both variants: without them, a failed BOOST_TEST_REQUIRE never ends the run,
-    # and GCC rejects Boost.Test's unguarded try. The variant -noexcept compiles it without RTTI.
-    lines = compile_lines(root, 'libs/demo/test//suite', 'libs/demo/test//suite-noexcept')
-    framework = lines['boost_test_runner.cpp']
-    assert len(framework) == 2, framework
-    for line in framework:
-        assert '-DBOOST_TEST_MODULE=suite' in line, line
-        assert '-fno-exceptions' not in line and 'BOOST_NO_EXCEPTIONS' not in line, line
-    assert sum('-fno-rtti' in line for line in framework) == 1, framework
-    sources = lines['suite_test.cpp']
-    assert len(sources) == 2, sources
-    assert sum('-fno-exceptions' in line and '-fno-rtti' in line
-               and '-DBOOST_NO_EXCEPTIONS' in line for line in sources) == 1, sources
-    assert not any('BOOST_TEST_MODULE' in line for line in sources), sources
+    # The framework is one object of its own, which names the module and is compiled with
+    # exceptions, whatever the build request says: without them, a failed BOOST_TEST_REQUIRE
+    # never ends the run, and GCC rejects Boost.Test's unguarded try. A user's own
+    # exception-handling=off reaches the suite's sources alone.
+    for request, without in (((), False), (('exception-handling=off',), True)):
+        lines = compile_lines(root, *request, 'libs/demo/test//suite')
+        framework = lines['boost_test_runner.cpp']
+        assert len(framework) == 1, (request, framework)
+        assert '-DBOOST_TEST_MODULE=suite' in framework[0], framework
+        assert '-fno-exceptions' not in framework[0], framework
+        assert 'BOOST_NO_EXCEPTIONS' not in framework[0], framework
+        sources = lines['suite_test.cpp']
+        assert len(sources) == 1, (request, sources)
+        assert ('-fno-exceptions' in sources[0]) == without, (request, sources)
+        assert 'BOOST_TEST_MODULE' not in sources[0], sources
+        for line in framework + sources:
+            assert '-fno-rtti' not in line, (request, line)
 
 
 RED = ('import webcpp ;\n'
@@ -364,27 +364,26 @@ RED_EXPECTED = {
 
 def test_boost_test_failure_is_red_and_named(root):
     # A failed check, after which its case goes on, and a failed requirement, which ends its
-    # case: each ends the run red in both variants, never a hang and never a pass, and each
-    # variant's own output names the case, every failed check and the module, whose name has - as
-    # _. Boost.Test writes a terminal's colours even to a file, unless told not to.
+    # case: each ends the run red, never a hang and never a pass, and its output names the case,
+    # every failed check and the module, whose name has - as _. Boost.Test writes a terminal's
+    # colours even to a file, unless told not to.
     harness.add_library(root, 'red', RED, RED_SOURCES)
     result = harness.run_b2(root, 'libs/red/test')
     harness.expect(result, False)
     assert not passed(result), result.stdout[-4000:]
     for suite, (case, checks, unreached) in RED_EXPECTED.items():
         module = suite.replace('-', '_')
-        for name in (suite, f'{suite}-noexcept'):
-            assert re.search(rf'^\.\.\.failed .*/{name}\.test/.*/{name}\.run\.\.\.$',
-                             result.stdout, re.MULTILINE), (name, result.stdout[-6000:])
-            output = output_of(root, f'{name}.output')
-            lines = output.splitlines()
-            for check in checks:
-                assert any(f'in "{case}": ' in line and f'check {check} has failed' in line
-                           for line in lines), (name, check, output)
-            assert f'detected in the test module "{module}"' in output, (name, output)
-            assert unreached is None or unreached not in output, (name, output)
-            assert re.search(r'^EXIT STATUS: [1-9]', output, re.MULTILINE), (name, output)
-            assert '\x1b' not in output, (name, output)
+        assert re.search(rf'^\.\.\.failed .*/{suite}\.test/.*/{suite}\.run\.\.\.$',
+                         result.stdout, re.MULTILINE), (suite, result.stdout[-6000:])
+        output = output_of(root, f'{suite}.output')
+        lines = output.splitlines()
+        for check in checks:
+            assert any(f'in "{case}": ' in line and f'check {check} has failed' in line
+                       for line in lines), (suite, check, output)
+        assert f'detected in the test module "{module}"' in output, (suite, output)
+        assert unreached is None or unreached not in output, (suite, output)
+        assert re.search(r'^EXIT STATUS: [1-9]', output, re.MULTILINE), (suite, output)
+        assert '\x1b' not in output, (suite, output)
 
 
 SUITES = ('import webcpp ;\n'
@@ -416,7 +415,7 @@ def test_boost_test_never_built_for_wasm(root):
         assert 'boost_test_runner' not in result.stdout, (target, result.stdout[-4000:])
     result = harness.run_b2(root, 'libs/suites/test')
     harness.expect(result, True)
-    assert passed(result) == {'suite', 'suite-noexcept'}, (passed(result), result.stdout[-4000:])
+    assert passed(result) == {'suite'}, (passed(result), result.stdout[-4000:])
     # It is recorded for native alone, whatever its Jamfile declares.
     result = harness.run_b2(root, '-d0', 'declared-targets')
     harness.expect(result, True)
@@ -432,25 +431,32 @@ def boost_json_archives(root):
 
 
 def test_boost_json_on_every_target(root):
-    programs = ('libs/demo/test//parses_json', 'libs/demo/test//parses_json-noexcept')
-    result = harness.run_b2(root, *programs)
+    program = 'libs/demo/test//parses_json'
+    result = harness.run_b2(root, program)
     harness.expect(result, True)
-    assert passed(result) == {'parses_json', 'parses_json-noexcept'}, (passed(result),
-                                                                       result.stdout[-4000:])
-    # The definitions are a library of their own, compiled once per variant: natively two, and
-    # one for each wasm target, in its toolset's directory (clang-darwin-wasip2 on macOS).
-    assert len(boost_json_archives(root)) == 2, (boost_json_archives(root), result.stdout[-4000:])
-    for count, (wasm, target) in enumerate((('wasip2', WASIP2), ('wasip3', WASIP3)), start=3):
-        result = harness.run_b2(root, *target, programs[0])
+    assert passed(result) == {'parses_json'}, (passed(result), result.stdout[-4000:])
+    # The definitions are a library of their own, compiled once per variant built: natively one,
+    # one for each wasm target, in its toolset's directory (clang-darwin-wasip2 on macOS), and one
+    # more natively when a user builds without exceptions.
+    assert len(boost_json_archives(root)) == 1, (boost_json_archives(root), result.stdout[-4000:])
+    for count, (wasm, target) in enumerate((('wasip2', WASIP2), ('wasip3', WASIP3)), start=2):
+        result = harness.run_b2(root, *target, program)
         harness.expect(result, True)
         assert passed(result) == {'parses_json'}, (target, passed(result), result.stdout[-4000:])
         archives = boost_json_archives(root)
         assert len(archives) == count, (target, archives)
         assert len([path for path in archives
                     if any(part.endswith(f'-{wasm}') for part in path.parts)]) == 1, archives
+    result = harness.run_b2(root, 'exception-handling=off', program)
+    harness.expect(result, True)
+    assert passed(result) == {'parses_json'}, (passed(result), result.stdout[-4000:])
+    archives = boost_json_archives(root)
+    assert len(archives) == 4, archives
+    assert len([path for path in archives if 'exception-handling-off' in path.parts]) == 2, (
+        archives)
     # Without the library, a program that parses JSON does not link.
     harness.replace(root / 'libs/demo/test/Jamfile', ' <library>/webcpp//boost_json', '')
-    result = harness.run_b2(root, '-a', programs[0])
+    result = harness.run_b2(root, '-a', program)
     harness.expect(result, False)
     assert re.search(r'^\.\.\.failed .*parses_json', result.stdout, re.MULTILINE), (
         result.stdout[-4000:])
@@ -473,14 +479,6 @@ TOOLCHAIN_SOURCE = (
     'static_assert(__cplusplus >= 202002L, "the build does not compile as C++20");\n'
     '#endif\n'
     '\n'
-    '// Native, without exceptions, is also without RTTI (tools/webcpp.jam\'s .noexcept pairs\n'
-    '// <exception-handling>off with <rtti>off). wasip2 turns exceptions off at the project\n'
-    '// level, through its own <exception-handling>off, without doing the same to RTTI, so the\n'
-    '// check below excludes it.\n'
-    '#if defined(BOOST_NO_EXCEPTIONS) && !defined(__wasi__) && !defined(BOOST_NO_RTTI)\n'
-    '#error "a build without exceptions does not also disable RTTI"\n'
-    '#endif\n'
-    '\n'
     'int main() {\n'
     '#ifdef BOOST_NO_EXCEPTIONS\n'
     '    std::puts("no exceptions");\n'
@@ -491,28 +489,67 @@ TOOLCHAIN_SOURCE = (
     '}\n')
 
 
-def test_toolchain_sees_cxx20_and_ties_rtti_to_exceptions(root):
-    # Restores the promise of xstate-cpp's retired toolchain_test.cpp: every program sees C++20,
-    # and a build without exceptions also sees no RTTI, both through Boost.Config's own macros,
-    # not the raw compiler ones built_with reads. wasip2 is declared too: -noexcept is native
-    # only (tools/webcpp.jam), so the one program built there is the plain one, and it is the
-    # no-exceptions one, since wasip2 turns exceptions off at the project level.
+def test_every_program_sees_cxx20_and_only_wasip2_is_without_exceptions(root):
+    # Restores the promise of xstate-cpp's retired toolchain_test.cpp that every program sees
+    # C++20, and checks through Boost.Config's own macro, not the raw compiler ones built_with
+    # reads, that of the targets the program declares, wasip2 alone builds it without exceptions.
     harness.add_library(root, 'toolchain', TOOLCHAIN_JAMFILE, {'toolchain.cpp': TOOLCHAIN_SOURCE})
-    result = harness.run_b2(root, 'libs/toolchain/test')
+    for target, expected in (((), 'exceptions\n'), (WASIP2, 'no exceptions\n'),
+                             (WASIP3, 'exceptions\n')):
+        result = harness.run_b2(root, *target, 'libs/toolchain/test')
+        harness.expect(result, True)
+        assert passed(result) == {'toolchain'}, (target, passed(result), result.stdout[-4000:])
+        assert output_of(root, 'toolchain.output').startswith(expected), target
+        shutil.rmtree(root / 'bin')
+
+
+def test_a_users_build_without_exceptions_links_the_handler(root):
+    # webcpp builds no native variant without exceptions; a user who wants one asks b2 for it,
+    # and the program then compiles without exceptions, links the handler of
+    # tools/throw_exception.cpp, which its throw site needs, and runs, RTTI untouched.
+    result = harness.run_b2(root, 'exception-handling=off', 'libs/demo/test')
     harness.expect(result, True)
-    assert passed(result) == {'toolchain', 'toolchain-noexcept'}, (passed(result),
-                                                                    result.stdout[-4000:])
-    assert output_of(root, 'toolchain.output').startswith('exceptions\n')
-    assert output_of(root, 'toolchain-noexcept.output').startswith('no exceptions\n')
-    shutil.rmtree(root / 'bin')
-    result = harness.run_b2(root, *WASIP2, 'libs/toolchain/test')
-    harness.expect(result, True)
-    assert passed(result) == {'toolchain'}, (passed(result), result.stdout[-4000:])
-    assert output_of(root, 'toolchain.output').startswith('no exceptions\n')
+    assert passed(result) == NATIVE_DEMO, (passed(result), result.stdout[-4000:])
+    assert output_of(root, 'pass.output').startswith(built_with(exceptions=False, rtti=True))
+    assert built_with(exceptions=False, rtti=True) in output_of(root, 'suite.output')
+    # The handler prints what was thrown and ends the program, where a throw would have gone
+    # through std::terminate.
+    harness.add_library(
+        root, 'aborts',
+        'import webcpp ;\n'
+        '\n'
+        'webcpp.run-fail aborts : aborts.cpp ;\n',
+        {'aborts.cpp': '#include <boost/throw_exception.hpp>\n'
+                       '#include <stdexcept>\n'
+                       'int main() { boost::throw_exception(std::runtime_error("planted")); }\n'})
+    for request, handled in (((), False), (('exception-handling=off',), True)):
+        result = harness.run_b2(root, *request, 'libs/aborts/test')
+        harness.expect(result, True)
+        assert passed(result) == {'aborts'}, (request, passed(result), result.stdout[-4000:])
+        assert ('throw_exception: planted' in output_of(root, 'aborts.output')) == handled, (
+            request, output_of(root, 'aborts.output'))
+        shutil.rmtree(root / 'bin/libs/aborts')
+    # The request is the user's, and reaches every program: an example that throws no longer
+    # compiles.
+    harness.expect(harness.run_b2(root, 'exception-handling=off', 'libs/demo/example'), False,
+                   "cannot use 'throw' with exceptions disabled")
+
+
+def test_no_variant_is_built_without_rtti(root):
+    # On every target, and when a user turns exceptions off: no compile line turns RTTI off, and
+    # no build directory says it is.
+    for request in ((), WASIP2, WASIP3, ('exception-handling=off',)):
+        result = harness.run_b2(root, '-n', '-a', *request, 'libs/demo/test',
+                                'libs/demo/example')
+        harness.expect(result, True)
+        compiles = [line for line in result.stdout.splitlines() if ' -c ' in line]
+        assert compiles, (request, result.stdout[-4000:])
+        for line in compiles:
+            assert '-fno-rtti' not in line and 'rtti-off' not in line, (request, line)
 
 
 CASES = [
-    test_native_builds_declared_and_noexcept_variant,
+    test_native_builds_exactly_the_declared_programs,
     test_wasip2_skips_native_only_and_has_no_exceptions,
     test_wasip3_catches_a_throw,
     test_compile_builds_only_where_declared,
@@ -523,11 +560,13 @@ CASES = [
     test_a_wrong_declaration_is_refused,
     test_example_mismatch_fails_naming_the_program,
     test_headers_alone_catches_a_missing_include,
-    test_boost_test_passes_natively_with_noexcept,
+    test_boost_test_passes_natively,
     test_boost_test_failure_is_red_and_named,
     test_boost_test_never_built_for_wasm,
     test_boost_json_on_every_target,
-    test_toolchain_sees_cxx20_and_ties_rtti_to_exceptions,
+    test_every_program_sees_cxx20_and_only_wasip2_is_without_exceptions,
+    test_a_users_build_without_exceptions_links_the_handler,
+    test_no_variant_is_built_without_rtti,
 ]
 
 

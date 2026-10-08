@@ -70,14 +70,12 @@ every library's tests:
     Performing configuration checks
 
         - Boost 1.92 or newer in /opt/homebrew/opt/boost/include (1.92.0) : yes [1]
-        - Boost 1.92 or newer in /opt/homebrew/opt/boost/include (1.92.0) : yes [2]
 
     [1] clang-darwin-21/debug/cxxstd-20-iso
-    [2] clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off
     ...
     **passed** bin/libs/xactor/test/scheduler.test/clang-darwin-21/debug/cxxstd-20-iso/scheduler.test
 
-    ...updated 146 targets...
+    ...updated 105 targets...
 
 The other aggregates work the same way:
 
@@ -112,8 +110,11 @@ and run the tests and the examples with wasmtime, one toolset per command:
     b2 toolset=clang-wasip2 testing.launcher=wasmtime test example
     b2 toolset=clang-wasip3 testing.launcher=wasmtime test example
 
-On wasip2 a library builds without exceptions, and on wasip3 with them; a
-program that a library does not declare for a target is skipped there.
+On wasip2 a library builds without exceptions, a portability policy, since
+some WebAssembly hosts lack exception handling. Everywhere else, whether a
+program uses exceptions is the choice of whoever builds it: webcpp builds no
+variant without them, and none without RTTI. A program that a library does
+not declare for a target is skipped there.
 `b2 declared-targets -d0` lists the targets each library declares.
 
 ## Documentation

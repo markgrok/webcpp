@@ -275,8 +275,8 @@ obj throw_exception : tools/throw_exception.cpp ;
 # Boost.JSON's definitions, tools/boost_json.cpp, for a header-only build on
 # every target: a library that needs Boost.JSON puts
 # <library>/webcpp//boost_json in its main target's usage requirements.
-# Static, and built once per variant: <exception-handling>off and <rtti>off
-# reach it from the program, as they reach the handler.
+# Static, and built once per variant: the program's own features, such as
+# <exception-handling>off, reach it, as they reach the handler.
 lib boost_json : tools/boost_json.cpp : <link>static ;
 
 # The projects in the directories that pattern matches, each named

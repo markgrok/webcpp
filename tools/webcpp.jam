@@ -67,12 +67,11 @@ feature.feature webcpp-targets : : free incidental ;
 feature.feature webcpp-include : : free incidental ;
 
 # What links tools/throw_exception.cpp, the handler Boost calls in place of
-# a throw, into a program built without exceptions.
+# a throw, into a program built without exceptions: every program on
+# wasip2, whose toolset the Jamroot builds without them, and any other whose
+# user asks b2 for exception-handling=off. webcpp builds no variant of its
+# own without exceptions, nor any without RTTI.
 .handler = <exception-handling>off:<source>/webcpp//throw_exception ;
-
-# The variant -noexcept of a native webcpp.run: a user may build without
-# exceptions and without RTTI, and the library must work for them.
-.noexcept = <exception-handling>off <rtti>off <define>BOOST_NO_EXCEPTIONS ;
 
 if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 
@@ -209,8 +208,7 @@ rule targets ( targets + )
 # targets, else for their Jamfile's, else for native. Each pair <library>
 # <target> is recorded for declared, and each program as "<kind> <name>
 # <target>..." for programs: kind is the rule that declares it, run,
-# run-fail, compile, compile-fail, boost-test, example or headers-alone, and
-# a native run's -noexcept variant is no program of its own.
+# run-fail, compile, compile-fail, boost-test, example or headers-alone.
 local rule program ( kind : names + : targets * )
 {
     local jamfile = [ jamfile ] ;
@@ -227,33 +225,24 @@ local rule program ( kind : names + : targets * )
 }
 
 # A test that passes when its program, built from sources, exits with 0.
-# Built natively, it is also built and run as name-noexcept: without
-# exceptions and without RTTI.
 rule run ( name : sources + : requirements * : targets * )
 {
-    local only = [ program run : $(name) : $(targets) ] ;
-    testing.run $(sources) : : : $(requirements) $(only) $(.handler) : $(name) ;
-    if native in [ feature.get-values <webcpp-targets> : $(only) ]
-    {
-        testing.run $(sources) : : : $(requirements) $(.noexcept) $(.handler)
-            <webcpp-targets>native <conditional>@webcpp%filter : $(name)-noexcept ;
-    }
+    testing.run $(sources) : : : $(requirements) [ program run : $(name) : $(targets) ]
+        $(.handler) : $(name) ;
 }
 
 # A Boost.Test suite, built from sources and the header-only framework of
 # tools/boost_test_runner.cpp, which passes when every case does. It is built
-# and run natively only, whatever its Jamfile's webcpp.targets says, also as
-# name-noexcept, whose own sources are compiled as a webcpp.run's -noexcept
-# variant. The framework is an object of each suite, which names the module
+# and run natively only, whatever its Jamfile's webcpp.targets says. The
+# framework is one object of each suite, which names the module
 # BOOST_TEST_MODULE=name with - as _ (a hyphen in a macro's replacement would
-# read as a subtraction), and is compiled with exceptions on in both
-# variants: built without them, a failed BOOST_TEST_REQUIRE of Boost.Test
-# 1.92 never ends the run, and GCC rejects the unguarded try of
-# unit_test_main.ipp. Its -noexcept object is compiled without RTTI, and with
-# MSVC's standard library without exceptions, as the sources it is linked
-# with are. --log_level=error makes a failure print its case and its check,
-# and --color_output=no keeps out of b2's output and the report's pages the
-# terminal's escape sequences, which Boost.Test writes even to a file.
+# read as a subtraction), and is compiled with exceptions on whatever the
+# build asks for: built without them, a failed BOOST_TEST_REQUIRE of
+# Boost.Test 1.92 never ends the run, and GCC rejects the unguarded try of
+# unit_test_main.ipp. --log_level=error makes a failure print its case and
+# its check, and --color_output=no keeps out of b2's output and the report's
+# pages the terminal's escape sequences, which Boost.Test writes even to a
+# file.
 rule boost-test ( name : sources + : requirements * )
 {
     local only = [ program boost-test : $(name) : native ] ;
@@ -261,13 +250,9 @@ rule boost-test ( name : sources + : requirements * )
     local framework = <define>BOOST_TEST_MODULE=$(identifier) <exception-handling>on ;
     local current = [ project.current ] ;
     obj $(name)-framework : $(.framework) : $(requirements) $(framework) $(only) ;
-    obj $(name)-framework-noexcept : $(.framework)
-      : $(requirements) $(framework) <rtti>off <toolset>msvc:<define>_HAS_EXCEPTIONS=0 $(only) ;
-    $(current).mark-target-as-explicit $(name)-framework $(name)-framework-noexcept ;
+    $(current).mark-target-as-explicit $(name)-framework ;
     testing.run $(sources) $(name)-framework : $(.boost-test-arguments)
         : : $(requirements) $(only) $(.handler) : $(name) ;
-    testing.run $(sources) $(name)-framework-noexcept : $(.boost-test-arguments)
-        : : $(requirements) $(.noexcept) $(only) $(.handler) : $(name)-noexcept ;
 }
 
 # A test that passes when its program, built from sources, exits with a

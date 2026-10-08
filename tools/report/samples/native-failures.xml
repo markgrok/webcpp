@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <build format="1.0" version="5.5.3"> 
-  <directory><![CDATA[/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch c11o4ghs]]></directory> 
-  <command><![CDATA["b2" "--user-config=/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch c11o4ghs/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=native-failures.xml" "toolset=clang" "libs/demo/test//pass" "libs/demo/test//rejects" "libs/planted/test" "libs/planted/example"]]></command> 
+  <directory><![CDATA[/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 044ucj4v]]></directory> 
+  <command><![CDATA["b2" "--user-config=/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 044ucj4v/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=native-failures.xml" "toolset=clang" "libs/demo/test//pass" "libs/demo/test//rejects" "libs/planted/test" "libs/planted/example"]]></command> 
   <targets> 
     <target> 
       <name><![CDATA[.//boost_version.o]]></name> 
@@ -92,55 +92,6 @@
       <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_run.test]]></jam-target> 
     </target> 
     <target> 
-      <name><![CDATA[.//boost_version.o]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[.//tools/test/boost_version.cpp]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>boost_version.o]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[.//throw_exception.o]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[.//tools/throw_exception.cpp]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>throw_exception.o]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_run.o]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_run.cpp]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_run.o]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_run-noexcept]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_run.o]]></dependency> 
-        <dependency><![CDATA[.//throw_exception.o]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_run-noexcept]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_run-noexcept.run]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_run-noexcept]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_run-noexcept.run]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_run-noexcept.test]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_run-noexcept.run]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_run-noexcept.test]]></jam-target> 
-    </target> 
-    <target> 
       <name><![CDATA[libs/planted/test//fails_to_compile.o]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/planted/test//fails_to_compile.cpp]]></dependency> 
@@ -173,39 +124,6 @@
       <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_compile.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_compile.test]]></jam-target> 
     </target> 
     <target> 
-      <name><![CDATA[libs/planted/test//fails_to_compile.o]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_compile.cpp]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_compile.o]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_compile-noexcept]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_compile.o]]></dependency> 
-        <dependency><![CDATA[.//throw_exception.o]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_compile-noexcept]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_compile-noexcept.run]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_compile-noexcept]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_compile-noexcept.run]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_compile-noexcept.test]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_compile-noexcept.run]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_compile-noexcept.test]]></jam-target> 
-    </target> 
-    <target> 
       <name><![CDATA[libs/planted/test//fails_to_link.o]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/planted/test//fails_to_link.cpp]]></dependency> 
@@ -236,39 +154,6 @@
       </dependencies> 
       <path><![CDATA[bin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso]]></path> 
       <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_link.test]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_link.o]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_link.cpp]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_link.o]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_link-noexcept]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_link.o]]></dependency> 
-        <dependency><![CDATA[.//throw_exception.o]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_link-noexcept]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_link-noexcept.run]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_link-noexcept]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_link-noexcept.run]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[libs/planted/test//fails_to_link-noexcept.test]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[libs/planted/test//fails_to_link-noexcept.run]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off]]></path> 
-      <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_link-noexcept.test]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/planted/test//compiles.o]]></name> 
@@ -373,10 +258,6 @@
     <target><![CDATA[libs/demo/test//pass.test]]></target> 
     <source><![CDATA[libs/demo/test/pass.cpp]]></source> 
   </test> 
-  <test type="RUN" name="demo/pass-noexcept"> 
-    <target><![CDATA[libs/demo/test//pass-noexcept.test]]></target> 
-    <source><![CDATA[libs/demo/test/pass.cpp]]></source> 
-  </test> 
   <test type="RUN_FAIL" name="demo/fails"> 
     <target><![CDATA[libs/demo/test//fails.test]]></target> 
     <source><![CDATA[libs/demo/test/fails.cpp]]></source> 
@@ -387,10 +268,6 @@
   </test> 
   <test type="RUN" name="demo/native_only"> 
     <target><![CDATA[libs/demo/test//native_only.test]]></target> 
-    <source><![CDATA[libs/demo/test/native_only.cpp]]></source> 
-  </test> 
-  <test type="RUN" name="demo/native_only-noexcept"> 
-    <target><![CDATA[libs/demo/test//native_only-noexcept.test]]></target> 
     <source><![CDATA[libs/demo/test/native_only.cpp]]></source> 
   </test> 
   <test type="COMPILE" name="demo/native_only_compiles"> 
@@ -407,40 +284,20 @@
     <target><![CDATA[libs/demo/test//suite.test]]></target> 
     <source><![CDATA[libs/demo/test/suite_test.cpp]]></source> 
   </test> 
-  <test type="RUN" name="demo/suite-noexcept"> 
-    <target><![CDATA[libs/demo/test//suite-noexcept.test]]></target> 
-    <source><![CDATA[libs/demo/test/suite_test.cpp]]></source> 
-  </test> 
   <test type="RUN" name="demo/parses_json"> 
     <target><![CDATA[libs/demo/test//parses_json.test]]></target> 
-    <source><![CDATA[libs/demo/test/parses_json.cpp]]></source> 
-  </test> 
-  <test type="RUN" name="demo/parses_json-noexcept"> 
-    <target><![CDATA[libs/demo/test//parses_json-noexcept.test]]></target> 
     <source><![CDATA[libs/demo/test/parses_json.cpp]]></source> 
   </test> 
   <test type="RUN" name="planted/fails_to_run"> 
     <target><![CDATA[libs/planted/test//fails_to_run.test]]></target> 
     <source><![CDATA[libs/planted/test/fails_to_run.cpp]]></source> 
   </test> 
-  <test type="RUN" name="planted/fails_to_run-noexcept"> 
-    <target><![CDATA[libs/planted/test//fails_to_run-noexcept.test]]></target> 
-    <source><![CDATA[libs/planted/test/fails_to_run.cpp]]></source> 
-  </test> 
   <test type="RUN" name="planted/fails_to_compile"> 
     <target><![CDATA[libs/planted/test//fails_to_compile.test]]></target> 
     <source><![CDATA[libs/planted/test/fails_to_compile.cpp]]></source> 
   </test> 
-  <test type="RUN" name="planted/fails_to_compile-noexcept"> 
-    <target><![CDATA[libs/planted/test//fails_to_compile-noexcept.test]]></target> 
-    <source><![CDATA[libs/planted/test/fails_to_compile.cpp]]></source> 
-  </test> 
   <test type="RUN" name="planted/fails_to_link"> 
     <target><![CDATA[libs/planted/test//fails_to_link.test]]></target> 
-    <source><![CDATA[libs/planted/test/fails_to_link.cpp]]></source> 
-  </test> 
-  <test type="RUN" name="planted/fails_to_link-noexcept"> 
-    <target><![CDATA[libs/planted/test//fails_to_link-noexcept.test]]></target> 
     <source><![CDATA[libs/planted/test/fails_to_link.cpp]]></source> 
   </test> 
   <test type="COMPILE_FAIL" name="planted/compiles"> 
@@ -451,7 +308,7 @@
     <target><![CDATA[libs/planted/test//exits_with_zero.test]]></target> 
     <source><![CDATA[libs/planted/test/exits_with_zero.cpp]]></source> 
   </test> 
-  <action status="1" start="2026-10-07 22:14:13.038492000 +0000" end="2026-10-07 22:14:13.064336000 +0000" user="0.009221" system="0.011968"> 
+  <action status="1" start="2026-10-08 02:12:27.282596000 +0000" end="2026-10-08 02:12:27.305704000 +0000" user="0.008340" system="0.010481"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso>does_not_compile.o]]></jam-target> 
     <path><![CDATA[bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/does_not_compile.o]]></path> 
@@ -464,36 +321,7 @@
 1 error generated.
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.039529000 +0000" end="2026-10-07 22:14:13.066476000 +0000" user="0.009360" system="0.011499"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/compiles.test/clang-darwin-21/debug/cxxstd-20-iso>compiles.o]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/compiles.test/clang-darwin-21/debug/cxxstd-20-iso/compiles.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/compiles.test/clang-darwin-21/debug/cxxstd-20-iso/compiles.o" "libs/planted/test/compiles.cpp"
-]]></command> 
-  </action> 
-  <action status="1" start="2026-10-07 22:14:13.042345000 +0000" end="2026-10-07 22:14:13.069692000 +0000" user="0.009174" system="0.012199"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_compile.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_compile.o]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/fails_to_compile.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_compile.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/fails_to_compile.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_compile.o" "libs/planted/test/fails_to_compile.cpp"
-]]></command> 
-    <output><![CDATA[libs/planted/test/fails_to_compile.cpp:1:21: error: use of undeclared identifier 'undeclared'
-    1 | int main() { return undeclared; }
-      |                     ^~~~~~~~~~
-1 error generated.
-]]></output> 
-  </action> 
-  <action status="0" start="2026-10-07 22:14:13.037570000 +0000" end="2026-10-07 22:14:13.070565000 +0000" user="0.014034" system="0.013928"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso>prints_otherwise.o]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise.o" "libs/planted/example/prints_otherwise.cpp"
-]]></command> 
-  </action> 
-  <action status="1" start="2026-10-07 22:14:13.047139000 +0000" end="2026-10-07 22:14:13.075426000 +0000" user="0.009388" system="0.012341"> 
+  <action status="1" start="2026-10-08 02:12:27.284740000 +0000" end="2026-10-08 02:12:27.307640000 +0000" user="0.008094" system="0.011108"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso>rejects.o]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso/rejects.o]]></path> 
@@ -509,15 +337,7 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
 1 error generated.
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.048698000 +0000" end="2026-10-07 22:14:13.077051000 +0000" user="0.009858" system="0.012154"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_link.o]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_link.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_link.o" "libs/planted/test/fails_to_link.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 22:14:13.052280000 +0000" end="2026-10-07 22:14:13.080262000 +0000" user="0.010314" system="0.010949"> 
+  <action status="0" start="2026-10-08 02:12:27.285614000 +0000" end="2026-10-08 02:12:27.308872000 +0000" user="0.008705" system="0.010303"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso>exits_with_zero.o]]></jam-target> 
     <path><![CDATA[bin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso/exits_with_zero.o]]></path> 
@@ -525,20 +345,12 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso/exits_with_zero.o" "libs/planted/test/exits_with_zero.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.081995000 +0000" end="2026-10-07 22:14:13.087857000 +0000" user="0.001214" system="0.003001"> 
-    <name><![CDATA[testing%testing.expect-failure]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso>rejects.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso/rejects.test]]></path> 
-    <command><![CDATA[
-    echo passed > "bin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso/rejects.test"
-]]></command> 
-  </action> 
-  <action status="1" start="2026-10-07 22:14:13.062615000 +0000" end="2026-10-07 22:14:13.089529000 +0000" user="0.009737" system="0.012247"> 
+  <action status="1" start="2026-10-08 02:12:27.287649000 +0000" end="2026-10-08 02:12:27.311276000 +0000" user="0.008393" system="0.009791"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_compile.o]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_compile.o]]></path> 
+    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_compile.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_compile.o]]></jam-target> 
+    <path><![CDATA[bin/libs/planted/test/fails_to_compile.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_compile.o]]></path> 
     <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/fails_to_compile-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_compile.o" "libs/planted/test/fails_to_compile.cpp"
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/fails_to_compile.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_compile.o" "libs/planted/test/fails_to_compile.cpp"
 ]]></command> 
     <output><![CDATA[libs/planted/test/fails_to_compile.cpp:1:21: error: use of undeclared identifier 'undeclared'
     1 | int main() { return undeclared; }
@@ -546,23 +358,47 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
 1 error generated.
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.067868000 +0000" end="2026-10-07 22:14:13.093596000 +0000" user="0.010084" system="0.011219"> 
+  <action status="0" start="2026-10-08 02:12:27.290069000 +0000" end="2026-10-08 02:12:27.312695000 +0000" user="0.008873" system="0.010705"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_link.o]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_link.o]]></path> 
+    <jam-target><![CDATA[<pbin/libs/planted/test/compiles.test/clang-darwin-21/debug/cxxstd-20-iso>compiles.o]]></jam-target> 
+    <path><![CDATA[bin/libs/planted/test/compiles.test/clang-darwin-21/debug/cxxstd-20-iso/compiles.o]]></path> 
     <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_link.o" "libs/planted/test/fails_to_link.cpp"
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/compiles.test/clang-darwin-21/debug/cxxstd-20-iso/compiles.o" "libs/planted/test/compiles.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.070786000 +0000" end="2026-10-07 22:14:13.108134000 +0000" user="0.035953" system="0.025337"> 
+  <action status="0" start="2026-10-08 02:12:27.281781000 +0000" end="2026-10-08 02:12:27.312938000 +0000" user="0.013015" system="0.013215"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso>prints_otherwise.o]]></jam-target> 
+    <path><![CDATA[bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise.o" "libs/planted/example/prints_otherwise.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-08 02:12:27.288750000 +0000" end="2026-10-08 02:12:27.313046000 +0000" user="0.008960" system="0.010602"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_link.o]]></jam-target> 
+    <path><![CDATA[bin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_link.o]]></path> 
+    <command><![CDATA[
+    "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_link.o" "libs/planted/test/fails_to_link.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-08 02:12:27.315256000 +0000" end="2026-10-08 02:12:27.319533000 +0000" user="0.000935" system="0.001897"> 
+    <name><![CDATA[testing%testing.expect-failure]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso>rejects.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso/rejects.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/demo/test/rejects.test/clang-darwin-21/debug/cxxstd-20-iso/rejects.test"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-08 02:12:27.309293000 +0000" end="2026-10-08 02:12:27.352759000 +0000" user="0.031423" system="0.020448"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso>prints_otherwise]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise]]></path> 
+    <jam-target><![CDATA[<pbin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso>exits_with_zero]]></jam-target> 
+    <path><![CDATA[bin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso/exits_with_zero]]></path> 
     <command><![CDATA[
-    "clang++"    -o "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise"  "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise.o"       -fPIC -std=c++20 -g 
+    "clang++"    -o "bin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso/exits_with_zero"  "bin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso/exits_with_zero.o"       -fPIC -std=c++20 -g 
 ]]></command> 
   </action> 
-  <action status="1" start="2026-10-07 22:14:13.077565000 +0000" end="2026-10-07 22:14:13.116162000 +0000" user="0.031700" system="0.023134"> 
+  <action status="1" start="2026-10-08 02:12:27.313168000 +0000" end="2026-10-08 02:12:27.354835000 +0000" user="0.032822" system="0.021509"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_link]]></jam-target> 
     <path><![CDATA[bin/libs/planted/test/fails_to_link.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_link]]></path> 
@@ -576,15 +412,15 @@ ld: symbol(s) not found for architecture arm64
 clang++: error: linker command failed with exit code 1 (use -v to see invocation)
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.080653000 +0000" end="2026-10-07 22:14:13.118181000 +0000" user="0.032467" system="0.024679"> 
+  <action status="0" start="2026-10-08 02:12:27.314305000 +0000" end="2026-10-08 02:12:27.356575000 +0000" user="0.030074" system="0.021369"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso>exits_with_zero]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso/exits_with_zero]]></path> 
+    <jam-target><![CDATA[<pbin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso>prints_otherwise]]></jam-target> 
+    <path><![CDATA[bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise]]></path> 
     <command><![CDATA[
-    "clang++"    -o "bin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso/exits_with_zero"  "bin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso/exits_with_zero.o"       -fPIC -std=c++20 -g 
+    "clang++"    -o "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise"  "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise.o"       -fPIC -std=c++20 -g 
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.118393000 +0000" end="2026-10-07 22:14:13.169807000 +0000" user="0.002690" system="0.006620"> 
+  <action status="0" start="2026-10-08 02:12:27.353041000 +0000" end="2026-10-08 02:12:27.406062000 +0000" user="0.002653" system="0.005541"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso>exits_with_zero.run]]></jam-target> 
     <path><![CDATA[bin/libs/planted/test/exits_with_zero.test/clang-darwin-21/debug/cxxstd-20-iso/exits_with_zero.run]]></path> 
@@ -609,12 +445,12 @@ clang++: error: linker command failed with exit code 1 (use -v to see invocation
     exit $status
 ]]></command> 
   </action> 
-  <action status="1" start="2026-10-07 22:14:13.108448000 +0000" end="2026-10-07 22:14:13.202199000 +0000" user="0.032423" system="0.014868"> 
+  <action status="1" start="2026-10-08 02:12:27.356800000 +0000" end="2026-10-08 02:12:27.458709000 +0000" user="0.029136" system="0.012614"> 
     <name><![CDATA[webcpp%run-and-compare]]></name> 
     <jam-target><![CDATA[<pbin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso>prints_otherwise.output]]></jam-target> 
     <path><![CDATA[bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise.output]]></path> 
     <command><![CDATA[
-    "python3" "/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch c11o4ghs/tools/example/run_example.py"  --expected "libs/planted/example/prints_otherwise.expected" --output "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise.output" -- "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise"
+    "python3" "/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 044ucj4v/tools/example/run_example.py"  --expected "libs/planted/example/prints_otherwise.expected" --output "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise.output" -- "bin/libs/planted/example/clang-darwin-21/debug/cxxstd-20-iso/prints_otherwise"
 ]]></command> 
     <output><![CDATA[--- libs/planted/example/prints_otherwise.expected
 +++ printed
@@ -623,29 +459,7 @@ clang++: error: linker command failed with exit code 1 (use -v to see invocation
 +printed
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:12.977705000 +0000" end="2026-10-07 22:14:13.243573000 +0000" user="0.211358" system="0.044068"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>throw_exception.o]]></jam-target> 
-    <path><![CDATA[bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o" "tools/throw_exception.cpp"
-]]></command> 
-  </action> 
-  <action status="1" start="2026-10-07 22:14:13.243860000 +0000" end="2026-10-07 22:14:13.280435000 +0000" user="0.028363" system="0.024499"> 
-    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_link-noexcept]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_link-noexcept]]></path> 
-    <command><![CDATA[
-    "clang++"    -o "bin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_link-noexcept"  "bin/libs/planted/test/fails_to_link-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_link.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o"       -fPIC -std=c++20 -g 
-]]></command> 
-    <output><![CDATA[Undefined symbols for architecture arm64:
-  "missing()", referenced from:
-      _main in fails_to_link.o
-ld: symbol(s) not found for architecture arm64
-clang++: error: linker command failed with exit code 1 (use -v to see invocation)
-]]></output> 
-  </action> 
-  <action status="0" start="2026-10-07 22:14:13.044697000 +0000" end="2026-10-07 22:14:13.453037000 +0000" user="0.336197" system="0.056414"> 
+  <action status="0" start="2026-10-08 02:12:27.286499000 +0000" end="2026-10-08 02:12:27.641419000 +0000" user="0.293193" system="0.049180"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_run.o]]></jam-target> 
     <path><![CDATA[bin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_run.o]]></path> 
@@ -653,7 +467,7 @@ clang++: error: linker command failed with exit code 1 (use -v to see invocation
     "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_run.o" "libs/planted/test/fails_to_run.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.050969000 +0000" end="2026-10-07 22:14:13.458901000 +0000" user="0.338231" system="0.052962"> 
+  <action status="0" start="2026-10-08 02:12:27.283607000 +0000" end="2026-10-08 02:12:27.645860000 +0000" user="0.299128" system="0.050300"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso>pass.o]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.o]]></path> 
@@ -661,15 +475,7 @@ clang++: error: linker command failed with exit code 1 (use -v to see invocation
     "clang++"   -std=c++20 -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.o" "libs/demo/test/pass.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.064801000 +0000" end="2026-10-07 22:14:13.465798000 +0000" user="0.333311" system="0.050866"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_run.o]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run.o]]></path> 
-    <command><![CDATA[
-    "clang++"   -std=c++20 -fno-exceptions -fno-rtti -fPIC -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run.o" "libs/planted/test/fails_to_run.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-07 22:14:13.453266000 +0000" end="2026-10-07 22:14:13.487919000 +0000" user="0.029843" system="0.022409"> 
+  <action status="0" start="2026-10-08 02:12:27.641688000 +0000" end="2026-10-08 02:12:27.673544000 +0000" user="0.027036" system="0.020520"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_run]]></jam-target> 
     <path><![CDATA[bin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_run]]></path> 
@@ -677,7 +483,7 @@ clang++: error: linker command failed with exit code 1 (use -v to see invocation
     "clang++"    -o "bin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_run"  "bin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_run.o"       -fPIC -std=c++20 -g 
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.459270000 +0000" end="2026-10-07 22:14:13.494442000 +0000" user="0.036793" system="0.022920"> 
+  <action status="0" start="2026-10-08 02:12:27.646107000 +0000" end="2026-10-08 02:12:27.674994000 +0000" user="0.033019" system="0.018950"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso>pass]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass]]></path> 
@@ -685,15 +491,7 @@ clang++: error: linker command failed with exit code 1 (use -v to see invocation
     "clang++"    -o "bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass"  "bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.o"       -fPIC -std=c++20 -g 
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.466113000 +0000" end="2026-10-07 22:14:13.499466000 +0000" user="0.027950" system="0.021656"> 
-    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_run-noexcept]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept]]></path> 
-    <command><![CDATA[
-    "clang++"    -o "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept"  "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run.o" "bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/throw_exception.o"       -fPIC -std=c++20 -g 
-]]></command> 
-  </action> 
-  <action status="1" start="2026-10-07 22:14:13.488328000 +0000" end="2026-10-07 22:14:13.544381000 +0000" user="0.002924" system="0.006348"> 
+  <action status="1" start="2026-10-08 02:12:27.673842000 +0000" end="2026-10-08 02:12:27.728112000 +0000" user="0.002551" system="0.004780"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso>fails_to_run.run]]></jam-target> 
     <path><![CDATA[bin/libs/planted/test/fails_to_run.test/clang-darwin-21/debug/cxxstd-20-iso/fails_to_run.run]]></path> 
@@ -725,39 +523,7 @@ EXIT STATUS: 1
 ====== END OUTPUT ======
 ]]></output> 
   </action> 
-  <action status="1" start="2026-10-07 22:14:13.499811000 +0000" end="2026-10-07 22:14:13.549965000 +0000" user="0.002384" system="0.004781"> 
-    <name><![CDATA[testing%testing.capture-output]]></name> 
-    <jam-target><![CDATA[<pbin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off>fails_to_run-noexcept.run]]></jam-target> 
-    <path><![CDATA[bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept.run]]></path> 
-    <command><![CDATA[
-    
-     "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept"   > "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept.output" 2>&1 < /dev/null
-    status=$?
-    echo >> "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept.output"
-    echo EXIT STATUS: $status >> "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept.output"
-    if test $status -eq 0 ; then
-        cp "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept.output" "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept.run" >/dev/null
-    fi
-    verbose=0
-    if test $status -ne 0 ; then
-        verbose=1
-    fi
-    if test $verbose -eq 1 ; then
-        echo ====== BEGIN OUTPUT ======
-        cat "bin/libs/planted/test/fails_to_run-noexcept.test/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/fails_to_run-noexcept.output"
-        echo ====== END OUTPUT ======
-    fi
-    exit $status
-]]></command> 
-    <output><![CDATA[====== BEGIN OUTPUT ======
-libs/planted/test/fails_to_run.cpp(4): test '1 + 1 == 3' ('2' == '3') failed in function 'int main()'
-1 error detected.
-
-EXIT STATUS: 1
-====== END OUTPUT ======
-]]></output> 
-  </action> 
-  <action status="0" start="2026-10-07 22:14:13.494804000 +0000" end="2026-10-07 22:14:13.550237000 +0000" user="0.002598" system="0.005363"> 
+  <action status="0" start="2026-10-08 02:12:27.675306000 +0000" end="2026-10-08 02:12:27.729364000 +0000" user="0.002345" system="0.004450"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso>pass.run]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.run]]></path> 
@@ -782,7 +548,7 @@ EXIT STATUS: 1
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-07 22:14:13.550372000 +0000" end="2026-10-07 22:14:13.555529000 +0000" user="0.001216" system="0.002242"> 
+  <action status="0" start="2026-10-08 02:12:27.729570000 +0000" end="2026-10-08 02:12:27.733959000 +0000" user="0.000976" system="0.001954"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso>pass.test]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-21/debug/cxxstd-20-iso/pass.test]]></path> 

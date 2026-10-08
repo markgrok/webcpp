@@ -135,7 +135,7 @@ class Sample:
 SAMPLES_BY_NAME = {
     # Every test and example of demo, natively: all pass.
     'native-pass': Sample(NATIVE, ('libs/demo/test', 'libs/demo/example')),
-    # The same on wasip2, where the native-only programs and the -noexcept variants are not built.
+    # The same on wasip2, where the native-only programs are not built.
     'wasip2-pass': Sample(WASIP2, ('libs/demo/test', 'libs/demo/example')),
     # demo's pass and rejects, which pass, and each failure planted.
     'native-failures': Sample(NATIVE, ('libs/demo/test//pass', 'libs/demo/test//rejects',
@@ -143,8 +143,9 @@ SAMPLES_BY_NAME = {
                               plant_failures),
     # A library that declares native only, on wasip2: every program is skipped.
     'wasip2-empty': Sample(WASIP2, ('libs/nativeonly/test',), plant_native_only),
-    # A program whose dependency outside every test, the exception handler, does not compile.
-    'native-dependency': Sample(NATIVE, ('libs/demo/test//pass-noexcept',), plant_broken_handler),
+    # A program whose dependency outside every test, the exception handler, does not compile: on
+    # wasip2, where every program is built without exceptions and links it.
+    'wasip2-dependency': Sample(WASIP2, ('libs/demo/test//pass',), plant_broken_handler),
     # A failure whose output b2 writes into CDATA unescaped.
     'native-odd-output': Sample(NATIVE, ('libs/odd/test//prints',), plant_odd_output),
 }

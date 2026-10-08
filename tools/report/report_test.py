@@ -224,24 +224,20 @@ def check_pages(out: Path) -> None:
 
 DEMO_TYPES = {
     'pass': 'run',
-    'pass-noexcept': 'run',
     'fails': 'run-fail',
     'rejects': 'compile-fail',
     'native_only': 'run',
-    'native_only-noexcept': 'run',
     'native_only_compiles': 'compile',
     'alone-demo': 'compile',
     'alone-demo-answer': 'compile',
     'hello': 'example',
     'catches': 'example',
     'suite': 'run',
-    'suite-noexcept': 'run',
     'parses_json': 'run',
-    'parses_json-noexcept': 'run',
 }
 
-# What wasip2 builds of demo: neither the native-only programs, nor the -noexcept variants, which
-# are native, nor the Boost.Test suite, nor catches, an example that throws.
+# What wasip2 builds of demo: neither the native-only programs, nor the Boost.Test suite, nor
+# catches, an example that throws.
 WASIP2_DEMO = {'pass', 'fails', 'rejects', 'alone-demo', 'alone-demo-answer', 'hello',
                'parses_json'}
 
@@ -270,9 +266,8 @@ def test_run_failure_exits_1_and_cell_links_output(root: Path) -> None:
     out = root / 'report'
     result = report(out, ('native', sample('native-failures')))
     assert result.returncode == 1, outcome(result)
-    for named in ('native: planted/fails_to_run: run',
-                  'native: planted/fails_to_run-noexcept: run'):
-        assert named in result.stderr, (named, outcome(result))
+    named = 'native: planted/fails_to_run: run'
+    assert named in result.stderr, (named, outcome(result))
     assert 'demo/' not in result.stderr, outcome(result)
     index = matrix(out / 'index.html')
     assert index.verdict('demo', 'native') == 'pass'
@@ -350,7 +345,7 @@ def test_empty_lane_exits_1_naming_it(root: Path) -> None:
     for page in ('index.html', 'demo.html', 'nativeonly.html'):
         assert 'wasip2: the lane built no test and no example' in Page(out / page).text, page
     nativeonly = matrix(out / 'nativeonly.html')
-    assert nativeonly.rows() == {'works', 'works-noexcept'}, nativeonly.rows()
+    assert nativeonly.rows() == {'works'}, nativeonly.rows()
     assert nativeonly.verdict('works', 'wasip2') == 'n/a'
     check_pages(out)
 
@@ -532,32 +527,33 @@ def test_a_lane_is_what_its_name_says(root: Path) -> None:
 
 
 def test_a_failure_outside_every_test_fails_the_lane(root: Path) -> None:
-    # The handler of tools/throw_exception.cpp, which pass-noexcept links, does not compile: the
-    # action is no test's, and pass-noexcept is compiled but never linked nor run.
+    # The handler of tools/throw_exception.cpp, which pass links on wasip2, does not compile: the
+    # action is no test's, and pass is compiled but never linked nor run.
     out = root / 'report'
-    result = report(out, ('native', sample('native-dependency')))
+    result = report(out, ('wasip2', sample('wasip2-dependency')))
     assert result.returncode == 1, outcome(result)
     lines = result.stderr.splitlines()
-    assert 'report: native: demo/pass-noexcept: not run' in lines, outcome(result)
+    assert 'report: wasip2: demo/pass: not run' in lines, outcome(result)
     outside = [line for line in lines if 'throw_exception.o' in line]
     assert len(outside) == 1 and 'compile' in outside[0], outcome(result)
-    full = 'bin/clang-darwin-21/debug/cxxstd-20-iso/exception-handling-off/rtti-off/'
+    full = ('bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/'
+            'target-os-wasi/')
     assert full in outside[0], outcome(result)
     # The summary names the file; the page it links to, its whole path.
     index = Page(out / 'index.html')
-    assert 'native: throw_exception.o: compile, outside every test' in index.text, index.text
+    assert 'wasip2: throw_exception.o: compile, outside every test' in index.text, index.text
     assert full not in index.text, index.text
-    problem = [href for href in index.links if href.startswith('output/native/')]
+    problem = [href for href in index.links if href.startswith('output/wasip2/')]
     assert len(problem) == 1, index.links
     page = linked(out / 'index.html', problem[0])
     assert 'planted: the handler does not compile' in page.text, page.text
     assert f'{full}throw_exception.o' in page.text, page.text
     demo = matrix(out / 'demo.html')
-    assert demo.verdict('pass-noexcept', 'native') == 'not run'
-    assert demo.verdict('pass', 'native') == 'n/a'
+    assert demo.verdict('pass', 'wasip2') == 'not run'
+    assert demo.verdict('fails', 'wasip2') == 'n/a'
     assert 'outside' in demo.columns[2].classes, demo.columns
-    assert demo.cells[('pass', 'native')].attributes.get('data-note') == 'outside failure'
-    output = linked(out / 'demo.html', demo.cells[('pass-noexcept', 'native')].href)
+    assert demo.cells[('fails', 'wasip2')].attributes.get('data-note') == 'outside failure'
+    output = linked(out / 'demo.html', demo.cells[('pass', 'wasip2')].href)
     assert 'throw_exception.o' in output.text, output.text
     check_pages(out)
 

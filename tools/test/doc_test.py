@@ -355,8 +355,8 @@ def test_doc_check_and_rendered_check_run(root):
 
 
 def test_page_shows_the_counts_of_its_programs(root):
-    # Counted from what demo's test and example Jamfiles declare, as b2 recorded it: a run's
-    # -noexcept variant is no second test, and each header compiled alone is one.
+    # Counted from what demo's test and example Jamfiles declare, as b2 recorded it: each program
+    # once, and each header compiled alone one.
     prepare(root)
     harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
     text = page_text(root)

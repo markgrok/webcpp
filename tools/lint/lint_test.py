@@ -211,15 +211,22 @@ def test_compile_database_lists_what_b2_builds(root):
     assert files == expected | {aggregate}, sorted(map(str, files))
     for entry in entries:
         assert entry['directory'] == str(root), entry
-    # Each configuration once: pass.cpp as written and without exceptions; native_only.cpp too,
-    # though the test native_only_compiles compiles it a third time, like the first.
+    # Each configuration once: a native test is built as its Jamfile declares it, and nothing
+    # more, so pass.cpp has one command; native_only.cpp too, though the test
+    # native_only_compiles compiles it a second time, the same way.
     sources = [Path(entry['file']) for entry in entries]
-    assert sources.count(root / 'libs/demo/test/pass.cpp') == 2, sources
-    assert sources.count(root / 'libs/demo/test/native_only.cpp') == 2, sources
-    # A Boost.Test suite's framework is compiled once per variant, with exceptions in both, and so
-    # are Boost.JSON's definitions.
-    assert sources.count(root / 'tools/boost_test_runner.cpp') == 2, sources
-    assert sources.count(root / 'tools/boost_json.cpp') == 2, sources
+    assert sources.count(root / 'libs/demo/test/pass.cpp') == 1, sources
+    assert sources.count(root / 'libs/demo/test/native_only.cpp') == 1, sources
+    # A Boost.Test suite's framework is one object, with exceptions, and Boost.JSON's definitions
+    # are compiled once for the one variant the tests are built in.
+    assert sources.count(root / 'tools/boost_test_runner.cpp') == 1, sources
+    assert sources.count(root / 'tools/boost_json.cpp') == 1, sources
+    # The handler is analysed as a program built without exceptions links it.
+    handler = [entry['arguments'] for entry in entries
+               if Path(entry['file']) == root / 'tools/throw_exception.cpp']
+    assert len(handler) == 1 and '-fno-exceptions' in handler[0], handler
+    for entry in entries:
+        assert '-fno-rtti' not in entry['arguments'], entry
     # The aggregate includes every public header, and is compiled as headers-alone compiles one.
     assert aggregate.read_text().splitlines()[-2:] == ['#include <webcpp/demo.hpp>',
                                                        '#include <webcpp/demo/answer.hpp>'], (

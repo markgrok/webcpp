@@ -160,7 +160,7 @@ finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when told:
 | `b2 doc` | the index page, `doc/html/index.html`, and every library's page, `libs/<name>/doc/html/index.html` |
 | `b2 doc -sWEBCPP_INDEX=site` | the same, with the index linking each page where the site serves it, `libs/<name>/` (chapter 8) |
 | `b2 libs/<name>/test` | one library's tests; `libs/<name>/example` and `libs/<name>/doc` likewise |
-| `b2 libs/<name>/test//<test>` | one test, while working on it (`scheduler`, `scheduler-noexcept`) |
+| `b2 libs/<name>/test//<test>` | one test, while working on it (`scheduler`) |
 | `b2 libs/<name>/doc//reference` | one library's API reference alone, MrDocs strict |
 | `b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test libs/<name>/example` | the same for wasm32-wasip2; `clang-wasip3` for wasm32-wasip3; one toolset per command |
 | `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/` |
@@ -391,27 +391,32 @@ The oracle is shared by every port:
 
 ### Exceptions and RTTI
 
-- **wasip2:** a program compiles without exceptions. The Jamroot sets
-  `<exception-handling>off` and `BOOST_NO_EXCEPTIONS` for `clang-wasip2`, and
-  `webcpp.jam` links `tools/throw_exception.cpp`, a `boost::throw_exception`
-  handler that prints and aborts, into every program built without
-  exceptions.
+- **wasip2:** a program compiles without exceptions. This is a portability
+  policy, not a toolchain limit: some WebAssembly hosts lack exception
+  handling. The Jamroot sets `<exception-handling>off` and
+  `BOOST_NO_EXCEPTIONS` for `clang-wasip2`, and `webcpp.jam` links
+  `tools/throw_exception.cpp`, a `boost::throw_exception` handler that prints
+  and aborts, into every program built without exceptions. The wasip2 lane is
+  the one place webcpp proves that a library works without exceptions, for a
+  library that declares wasip2.
+- **Everywhere else** (native, emscripten, wasip3), whether a program uses
+  exceptions is the decision of whoever uses the library, never an
+  imposition of the library or of webcpp. webcpp builds no variant without
+  exceptions there. A user who builds with `exception-handling=off` gets the
+  same handler linked, and MSVC's `_HAS_EXCEPTIONS=0`.
 - **wasip3:** exceptions are on. The Jamroot compiles with
   `-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false` and links with
   `-fwasm-exceptions -lunwind`. The second flag is needed: wasi-sdk 34 emits
   the legacy encoding by default, which wasmtime 47 refuses to run
   ("legacy_exceptions feature required").
-- **Natively,** every `webcpp.run` test also runs as `<name>-noexcept`,
-  without exceptions and without RTTI (`<exception-handling>off <rtti>off
-  BOOST_NO_EXCEPTIONS`), which proves the library works for a user who
-  disables both.
-- So a library's headers never `throw`, `try` or `catch` where wasip2 or the
-  `-noexcept` variant reaches them: they return errors, and a failure that
-  cannot be returned goes through `boost::throw_exception`. A program that
-  throws on purpose declares only the targets where exceptions are on:
-  `webcpp.example catches.cpp : : native wasip3 ;` (an example has no
-  `-noexcept` variant).
-- RTTI is never restricted by webcpp; a user imposes their own.
+- So a library's headers never `throw`, `try` or `catch` where wasip2
+  reaches them: there they return errors, and a failure that cannot be
+  returned goes through `boost::throw_exception`. They may elsewhere, behind
+  a condition wasip2 does not meet (`#ifndef BOOST_NO_EXCEPTIONS`). A program
+  that throws on purpose declares only the targets where exceptions are on:
+  `webcpp.example catches.cpp : : native wasip3 ;`.
+- **RTTI** is never restricted by webcpp, on any target, and no variant is
+  built without it; a user imposes their own.
 
 ### What the lint enforces
 
@@ -741,6 +746,7 @@ webcpp.run          <name> : <sources> + : <requirements> * : <targets> * ;
 webcpp.run-fail     <name> : <sources> + : <requirements> * : <targets> * ;
 webcpp.compile      <name> : <sources> + : <requirements> * : <targets> * ;
 webcpp.compile-fail <name> : <sources> + : <requirements> * : <targets> * ;
+webcpp.boost-test   <name> : <sources> + : <requirements> * ;
 webcpp.example      <source> : <requirements> * : <targets> * ;
 webcpp.headers-alone <library> : <include-root> ;
 ```
@@ -748,10 +754,11 @@ webcpp.headers-alone <library> : <include-root> ;
 | Rule | Passes when | Notes |
 | --- | --- | --- |
 | `webcpp.targets t ...` | | the Jamfile's default targets; before its first program, once; each is `native`, `emscripten`, `wasip2` or `wasip3`, or the build stops naming it |
-| `webcpp.run` | the program exits with 0 | natively, also built and run as `<name>-noexcept`, without exceptions and RTTI |
+| `webcpp.run` | the program exits with 0 | built once per target it declares; without exceptions on wasip2, where it links `tools/throw_exception.cpp` |
 | `webcpp.run-fail` | the program exits with another status | |
 | `webcpp.compile` | the sources compile | no program is linked |
 | `webcpp.compile-fail` | the sources do not compile | left out of clang-tidy |
+| `webcpp.boost-test` | every case of the Boost.Test suite passes | native only, whatever the Jamfile declares; the header-only framework, `tools/boost_test_runner.cpp`, is one object of the suite's, always compiled with exceptions |
 | `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | run through `testing.launcher` for wasm, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again |
 | `webcpp.headers-alone` | each public header compiles alone | one test per header, `alone-<path>` with `/` as `-` (`alone-xactor-scheduler`), against `/webcpp/<library>//<library>` |
 
@@ -771,9 +778,8 @@ webcpp.targets native wasip2 wasip3 ;
 
 webcpp.headers-alone xactor : ../include ;
 
-# xactor's guarantees, one program per file, each also built natively as
-# <name>-noexcept, without exceptions and without RTTI. scheduler checks the
-# Asio driver where drivers.hpp declares it, outside WASI.
+# xactor's guarantees, one program per file. scheduler checks the Asio
+# driver where drivers.hpp declares it, outside WASI.
 webcpp.run scheduler : scheduler_test.cpp ;
 webcpp.run lifecycle : lifecycle_test.cpp ;
 webcpp.run fuel : fuel_test.cpp ;
@@ -816,10 +822,10 @@ webcpp.example xactor_asio.cpp : : native ;
   return from its case, calls `require(BOOST_TEST(...))`, which ends the
   program with the errors counted so far
   (`libs/xactor/test/require.hpp`): a test may be built without exceptions.
-- Boost.Test is not supported by the shared rules yet: `webcpp.run` always
-  adds a `-noexcept` variant natively, and the CI installs no compiled
-  `unit_test_framework`. It is on the roadmap (chapter 13), for a test that
-  needs it (fixtures, data-driven suites).
+- Boost.Test is for a test that needs it (fixtures, data-driven suites),
+  declared with `webcpp.boost-test`, natively only. The CI installs no
+  compiled `unit_test_framework`: the suite compiles Boost.Test's header-only
+  framework, `tools/boost_test_runner.cpp`, as an object of its own.
 - Every test runs on every target its Jamfile declares. What a target cannot
   build is excluded by declaration (`: native`), and inside a program by the
   same condition the library uses (`#ifndef __wasi__`), never by skipping
@@ -1157,9 +1163,8 @@ What webcpp does not have yet, and the chapters that mention it:
   gets a lane for it when emsdk is pinned, as wasi-sdk and wasmtime are;
   until then, a library that declares it fails the CI's plan (chapter 9).
   trystero is its first user.
-- **Compiled Boost libraries and Boost.Test.** The CI installs Boost's
-  headers alone, and `webcpp.run` builds every test natively in a
-  `-noexcept` variant too, so a library uses only header-only Boost and its
-  tests use lightweight_test (chapters 2 and 9).
+- **Compiled Boost libraries.** The CI installs Boost's headers alone, so a
+  library uses only header-only Boost, and a Boost.Test suite compiles the
+  framework's header-only form (chapters 2 and 9).
 - **Bundled toolchains.** Each toolchain is installed by hand and configured
   in `user-config.jam` (chapter 1), until webcpp bundles them.

@@ -1,15 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <build format="1.0" version="5.5.3"> 
-  <directory><![CDATA[/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch dv5hdp4r]]></directory> 
-  <command><![CDATA["b2" "--user-config=/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch dv5hdp4r/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=wasip2-empty.xml" "toolset=clang-wasip2" "testing.launcher=wasmtime" "libs/nativeonly/test"]]></command> 
+  <directory><![CDATA[/private/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 4oituwrg]]></directory> 
+  <command><![CDATA["b2" "--user-config=/var/folders/xk/xsy2ht9x1rvg5db_sg26qgvm0000gn/T/webcpp scratch 4oituwrg/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=wasip2-empty.xml" "toolset=clang-wasip2" "testing.launcher=wasmtime" "libs/nativeonly/test"]]></command> 
   <targets> 
   </targets> 
   <test type="RUN" name="nativeonly/works"> 
     <target><![CDATA[libs/nativeonly/test//works.test]]></target> 
-    <source><![CDATA[libs/nativeonly/test/works.cpp]]></source> 
-  </test> 
-  <test type="RUN" name="nativeonly/works-noexcept"> 
-    <target><![CDATA[libs/nativeonly/test//works-noexcept.test]]></target> 
     <source><![CDATA[libs/nativeonly/test/works.cpp]]></source> 
   </test> 
 </build>
