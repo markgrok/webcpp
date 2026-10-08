@@ -25,12 +25,15 @@ emscripten, a program's or an aggregate's, must name wasi-sdk's clang++, which h
 wasi-sysroot beside it: clang-tidy reads a WebAssembly command only with the --target and the
 sysroot of wasi-sdk, and the lint would give any other compiler's, emscripten's em++ for one, the
 host's --target, as to a native command. Such a command fails the database, naming its file and
-its compiler. Three kinds of line are left out:
+its compiler. Four kinds of line are left out:
 
 - a source b2 generates under bin/, the Jamroot's build directory, which is not ours to analyse;
 - a source b2 expects not to compile (webcpp.compile-fail): the dry run prints its object as a
   `(failed-as-expected)` marker, and an analysis would stop at the error the test exists to
   show. A run-fail test's marker is its .run file: its sources compile, and are analysed;
+- a source that must stop with the error it states (webcpp.compile-diagnostic), whose command
+  holds clang's `-Xclang -verify`: it compiles only because -verify finds that error, at which an
+  analysis would stop;
 - the same source compiled again with the same options, under another name.
 
 Every public header of a library, webcpp/<name>.hpp and each .hpp under webcpp/<name>/, the
@@ -182,12 +185,21 @@ def target_run(root: str, target: str, libraries: list[str]) -> list[list[str]]:
 
 def compiles(lines: list[str]) -> list[list[str]]:
     """The commands of lines that compile a .cpp file, as words, without those b2 expects to
-    fail: a compile-fail test's, whose object is itself a `(failed-as-expected)` marker. A
-    run-fail test's marker is its .run file, so its sources stay."""
+    fail: a compile-fail test's, whose object is itself a `(failed-as-expected)` marker, and a
+    compile-diagnostic test's, whose command holds `-Xclang -verify`. A run-fail test's marker is
+    its .run file, so its sources stay."""
     commands = [shlex.split(line) for line in lines
                 if ' -c ' in line and line.rstrip().endswith('.cpp"')]
     failing = {marker.group(1) for marker in map(MARKER.match, lines) if marker}
-    return [words for words in commands if output_of(words) not in failing]
+    return [words for words in commands
+            if output_of(words) not in failing and not verifies(words)]
+
+
+def verifies(words: list[str]) -> bool:
+    """Whether the compile command words runs clang's -verify, as webcpp.compile-diagnostic's
+    does: `-Xclang -verify`."""
+    return any(first == '-Xclang' and second == '-verify'
+               for first, second in zip(words, words[1:]))
 
 
 def wasi_sdk(compiler: str) -> bool:

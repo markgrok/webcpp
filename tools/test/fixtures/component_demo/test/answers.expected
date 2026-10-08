@@ -1,11 +1,11 @@
-$ curl -i -X GET http://localhost:8080/v1/greeting?name=ana
+$ curl -i -X GET 'http://localhost:8080/v1/greeting?name=ana'
 HTTP/1.1 200 OK
 content-type: text/plain
 x-method: GET
 
 GET /v1/greeting?name=ana
 
-$ curl -i -X HEAD http://localhost:8080/
+$ curl -I http://localhost:8080/
 HTTP/1.1 200 OK
 content-type: text/plain
 x-method: HEAD

@@ -528,8 +528,9 @@ rule that failed.
 | Python line length | a Python line over 100 columns |
 | include boundaries | an `#include` that crosses a boundary the library declares in its `meta/include-boundaries.json` (below), at its line, with the boundary's reason; and a malformed file, or a glob that matches no file of the library |
 
-A source b2 expects not to compile (`webcpp.compile-fail`) is left out of
-clang-tidy only; every other rule reads it.
+A source b2 expects not to compile (`webcpp.compile-fail`), and one that
+must stop with the error it states (`webcpp.compile-diagnostic`), are left
+out of clang-tidy only; every other rule reads them.
 
 **A library's include boundaries.** Every header compiles alone, so only a
 boundary check sees a part of a library start to depend on another. A
@@ -908,6 +909,7 @@ webcpp.run          <name> : <sources> + : <requirements> * : <targets> * ;
 webcpp.run-fail     <name> : <sources> + : <requirements> * : <targets> * ;
 webcpp.compile      <name> : <sources> + : <requirements> * : <targets> * ;
 webcpp.compile-fail <name> : <sources> + : <requirements> * : <targets> * ;
+webcpp.compile-diagnostic <name> : <sources> + : <requirements> * : <targets> * ;
 webcpp.boost-test   <name> : <sources> + : <requirements> * ;
 webcpp.example      <source> : <requirements> * : <targets> * ;
 webcpp.headers-alone <library> : <include-root> : <only> * : <requirements> * : <targets> * ;
@@ -919,7 +921,8 @@ webcpp.headers-alone <library> : <include-root> : <only> * : <requirements> * : 
 | `webcpp.run` | the program exits with 0 | built once per target it declares; without exceptions on wasip2, where it links `tools/throw_exception.cpp` |
 | `webcpp.run-fail` | the program exits with another status | |
 | `webcpp.compile` | the sources compile | no program is linked |
-| `webcpp.compile-fail` | the sources do not compile | left out of clang-tidy |
+| `webcpp.compile-fail` | the sources do not compile | left out of clang-tidy; any error passes it, the wrong one included |
+| `webcpp.compile-diagnostic` | the sources stop with every error they state in clang's `-verify` comments, `// expected-error@<file>:* {{<message>}}` for a header they include or `// expected-error@+1 {{<message>}}` for the next line | compiled with `-Xclang -verify -Xclang -verify-ignore-unexpected=error,note`, so an error not stated and a note are ignored; built on b2's `clang` toolset only (native clang, `clang-wasip2`, `clang-wasip3`) and skipped elsewhere, since `-verify` is clang's: a refusal would turn every gcc and msvc lane red for a declaration that holds; left out of clang-tidy |
 | `webcpp.boost-test` | every case of the Boost.Test suite passes | native only, whatever the Jamfile declares; the header-only framework, `tools/boost_test_runner.cpp`, is one object of the suite's, always compiled with exceptions |
 | `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | its standard input is `<stem>.input` beside it, else empty, never the terminal, on every target (wasmtime passes it through); run through `testing.launcher` for wasm, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again, and `<stem>.input` is a source of the run |
 | `webcpp.headers-alone` | each public header compiles alone | one test per header, `alone-<path>` with `/` as `-` (`alone-xactor-scheduler`), against `/webcpp/<library>//<library>` and the requirements given, for the targets given or the Jamfile's; `only` restricts a call to the public headers its globs match, relative to `<include-root>/webcpp/` (`wasi/http/response.hpp`), a glob that matches none stopping the build; a library may call it several times, and a header two calls take stops the build, naming it |

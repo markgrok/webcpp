@@ -10,14 +10,15 @@
 does, so that the runner is checked without a component. The stand-in reads what to do from the file
 given as the component: when to say it serves, whether to answer, to ignore SIGTERM or to start a
 child in its process group, and where to record its process, its port and the requests it got, with
-when. The cases: the transcript's format; a difference exits 1 with a unified diff and no output;
-two runs at once take two ports; nothing is sent before the server says it serves; a server that
-never says so exits 2 within the timeout, and one that exits first exits 2 with its standard error;
-a wasmtime not found, given or on PATH, exits 2 naming where it was looked for; a signal held while
-wasmtime is started still stops the run; a server that ignores SIGTERM is killed with its whole
-group, after a pass and after a failure; an interrupted run stops the server; a run whose answer
-never comes ends by itself within its bound and stops it; and usage errors exit 2. Each case runs in
-a scratch directory of its own. Run with the names of some cases to run only those."""
+when. The cases: the transcript's format, each request a curl command a shell runs as it is; a
+difference exits 1 with a unified diff and no output; two runs at once take two ports; nothing is
+sent before the server says it serves; a server that never says so exits 2 within the timeout, and
+one that exits first exits 2 with its standard error; a wasmtime not found, given or on PATH, exits
+2 naming where it was looked for; a signal held while wasmtime is started still stops the run; a
+server that ignores SIGTERM is killed with its whole group, after a pass and after a failure; an
+interrupted run stops the server; a run whose answer never comes ends by itself within its bound and
+stops it; and usage errors exit 2. Each case runs in a scratch directory of its own. Run with the
+names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -128,14 +129,14 @@ while True:
 REQUESTS = 'GET /v1/greeting?name=ana\nHEAD /\n\nPOST /missing\n'
 
 # The transcript of REQUESTS, as the stand-in answers them.
-TRANSCRIPT = ('$ curl -i -X GET http://localhost:8080/v1/greeting?name=ana\n'
+TRANSCRIPT = ("$ curl -i -X GET 'http://localhost:8080/v1/greeting?name=ana'\n"
               'HTTP/1.1 200 OK\n'
               'content-type: text/plain\n'
               'x-method: GET\n'
               '\n'
               'GET /v1/greeting?name=ana\n'
               '\n'
-              '$ curl -i -X HEAD http://localhost:8080/\n'
+              '$ curl -I http://localhost:8080/\n'
               'HTTP/1.1 200 OK\n'
               'content-type: text/plain\n'
               'x-method: HEAD\n'
@@ -147,6 +148,29 @@ TRANSCRIPT = ('$ curl -i -X GET http://localhost:8080/v1/greeting?name=ana\n'
               'x-method: POST\n'
               '\n'
               'POST /missing\n')
+
+# Requests whose targets a shell would read otherwise if they were written bare: an asterisk, which
+# is not a path and goes in --request-target, and the & and ? of a query.
+SHELL_REQUESTS = 'OPTIONS *\nPATCH /items/7?x=1&y=%2F\n'
+
+# The transcript of SHELL_REQUESTS.
+SHELL_TRANSCRIPT = ("$ curl -i -X OPTIONS --request-target '*' http://localhost:8080\n"
+                    'HTTP/1.1 200 OK\ncontent-type: text/plain\nx-method: OPTIONS\n\n'
+                    'OPTIONS *\n\n'
+                    "$ curl -i -X PATCH 'http://localhost:8080/items/7?x=1&y=%2F'\n"
+                    'HTTP/1.1 200 OK\ncontent-type: text/plain\nx-method: PATCH\n\n'
+                    'PATCH /items/7?x=1&y=%2F\n')
+
+# The words curl receives from each command of SHELL_TRANSCRIPT and TRANSCRIPT, as a shell splits
+# it: a curl that sends each request as it was sent, and HEAD with -I, since curl -X HEAD waits for
+# a body that never comes.
+CURL_WORDS = [
+    ['-i', '-X', 'OPTIONS', '--request-target', '*', 'http://localhost:8080'],
+    ['-i', '-X', 'PATCH', 'http://localhost:8080/items/7?x=1&y=%2F'],
+    ['-i', '-X', 'GET', 'http://localhost:8080/v1/greeting?name=ana'],
+    ['-I', 'http://localhost:8080/'],
+    ['-i', '-X', 'POST', 'http://localhost:8080/missing'],
+]
 
 
 class Run:
@@ -255,6 +279,18 @@ def test_transcript_format(scratch: Path) -> None:
                             'GET /b'))
     result = unended.run()
     assert result.returncode == 0, outcome(result)
+    # Each request is written as a curl command a shell runs as it is, whatever its target holds.
+    shell = Run(scratch, 'shell', requests=SHELL_REQUESTS, expected=SHELL_TRANSCRIPT)
+    result = shell.run()
+    assert result.returncode == 0, outcome(result)
+    assert [(request['method'], request['target']) for request in shell.recorded()['requests']] == [
+        ('OPTIONS', '*'), ('PATCH', '/items/7?x=1&y=%2F')], shell.recorded()
+    commands = [line.removeprefix('$ ') for line in (SHELL_TRANSCRIPT + TRANSCRIPT).splitlines()
+                if line.startswith('$ ')]
+    for command, words in zip(commands, CURL_WORDS, strict=True):
+        split = subprocess.run(['sh', '-c', 'curl() { printf "%s\\n" "$@"; }; ' + command],
+                               capture_output=True, text=True, check=True, timeout=30)
+        assert split.stdout.splitlines() == words, (command, split.stdout)
 
 
 def test_difference_exits_1_with_a_diff(scratch: Path) -> None:

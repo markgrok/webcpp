@@ -11,11 +11,12 @@ without exceptions is the user's own request, which links the handler as wasip2 
 is built without RTTI; an example is compared with its expected output, its standard input its
 .input file or nothing; every public header compiles alone, each call of webcpp.headers-alone
 taking the headers its globs match, with requirements and targets of its own, and a header two
-calls take or a glob that matches none refused; `b2 declared-targets` lists what each library
-declares; a Boost.Test suite is built and run natively only, its framework always with exceptions;
-Boost.JSON's definitions link on every target; and every program sees C++20, the wasip2 one alone
-without exceptions. Each case builds a scratch superproject with the fixture library demo. Run
-with the names of some cases to run only those."""
+calls take or a glob that matches none refused; a compile-diagnostic test passes only on the
+error it states, and is skipped on a toolset that is not clang; `b2 declared-targets` lists what
+each library declares; a Boost.Test suite is built and run natively only, its framework always
+with exceptions; Boost.JSON's definitions link on every target; and every program sees C++20, the
+wasip2 one alone without exceptions. Each case builds a scratch superproject with the fixture
+library demo. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -160,6 +161,51 @@ def test_compile_builds_only_where_declared(root):
     harness.expect(result, False, 'native_only is declared for native only')
     assert re.search(r'^\.\.\.failed .*native_only_compiles', result.stdout, re.MULTILINE), (
         result.stdout[-4000:])
+
+
+def test_compile_diagnostic_passes_only_on_its_diagnostic(root):
+    # A source that states, in clang's -verify comments, the error it must stop with: in a header
+    # it includes (@<file>:*, as a header's guard), or on its own line (@+1).
+    guard = '#error "the guard says no"\n'
+    stated = ('// expected-error@guard.hpp:* {{the guard says no}}\n'
+              '#include "guard.hpp"\n'
+              'int main() { return undeclared; }\n')
+    harness.add_library(
+        root, 'diagnostic',
+        'import webcpp ;\n'
+        '\n'
+        'webcpp.targets native wasip2 emscripten ;\n'
+        '\n'
+        'webcpp.compile-diagnostic stated : stated.cpp ;\n'
+        'webcpp.compile-diagnostic inline : inline.cpp ;\n'
+        'webcpp.compile-diagnostic other : other.cpp ;\n'
+        'webcpp.compile-diagnostic compiles : compiles.cpp ;\n',
+        {'guard.hpp': guard, 'stated.cpp': stated,
+         'inline.cpp': '// expected-error@+1 {{stated here}}\n#error "stated here"\n',
+         # Another error than the one stated: the test must not pass on it.
+         'other.cpp': stated.replace('#include "guard.hpp"\n', ''),
+         # No error at all: the stated one never comes.
+         'compiles.cpp': '// expected-error@+1 {{never}}\nint main() { return 0; }\n'})
+    for name in ('stated', 'inline'):
+        result = harness.run_b2(root, f'libs/diagnostic/test//{name}')
+        harness.expect(result, True)
+        assert passed(result) == {name}, (passed(result), result.stdout[-4000:])
+    for name, said in (('other', "expected but not seen"), ('compiles', "expected but not seen")):
+        result = harness.run_b2(root, f'libs/diagnostic/test//{name}')
+        harness.expect(result, False, said)
+        assert re.search(rf'^\.\.\.failed .*{name}\.o', result.stdout, re.MULTILINE), (
+            result.stdout[-4000:])
+    # On wasip2, whose toolset is a clang too, it runs as natively.
+    result = harness.run_b2(root, *WASIP2, 'libs/diagnostic/test//stated')
+    harness.expect(result, True)
+    assert passed(result) == {'stated'}, (passed(result), result.stdout[-4000:])
+    # A toolset that is not b2's clang skips it, as any toolset skips a program not built for its
+    # target: -verify is clang's.
+    stand_in_emscripten(root)
+    result = harness.run_b2(root, *EMSCRIPTEN, 'libs/diagnostic/test')
+    harness.expect(result, True)
+    assert not passed(result), result.stdout[-4000:]
+    assert 'stated' not in result.stdout, result.stdout[-4000:]
 
 
 def test_filter_maps_each_toolset_to_its_target(root):
@@ -676,6 +722,7 @@ CASES = [
     test_wasip2_skips_native_only_and_has_no_exceptions,
     test_wasip3_catches_a_throw,
     test_compile_builds_only_where_declared,
+    test_compile_diagnostic_passes_only_on_its_diagnostic,
     test_filter_maps_each_toolset_to_its_target,
     test_undeclared_jamfile_is_native_only,
     test_emscripten_builds_only_what_declares_it,

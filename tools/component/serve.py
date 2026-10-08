@@ -24,9 +24,13 @@ once never share a port.
 
 Each line of the requests file is `<METHOD> <target>`; an empty line is skipped. Each request is
 sent with http.client, without a body, on a connection of its own. The transcript holds, per
-request: the line `$ curl -i -X <METHOD> http://localhost:8080<target>`, then `HTTP/1.1 <status>
-<reason>`, the response's headers in lower case, `<name>: <value>`, sorted, but for those wasmtime
-adds to every response (HOST_HEADERS), an empty line, and the body as it came. Two requests are
+request: the curl command that sends it, after `$ `, which a shell runs as it is written
+(`curl -i -X <METHOD> http://localhost:8080<target>`, a word quoted when a shell would read it
+otherwise, `curl -I <url>` for HEAD, since curl -X HEAD waits for a body that never comes, and
+`--request-target <target>` before the bare origin for a target that is not a path, such as the `*`
+of OPTIONS); then `HTTP/1.1 <status> <reason>`, the response's headers in lower case,
+`<name>: <value>`, sorted, but for those wasmtime adds to every response (HOST_HEADERS), an empty
+line, and the body as it came. Two requests are
 separated by an empty line, after a line break that ends the body when it does not end with one.
 The host and the port are written fixed, so that one transcript holds on every machine and lane.
 
@@ -53,6 +57,7 @@ import difflib
 import http.client
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -214,6 +219,16 @@ def stop(server: Server) -> None:
         reader.join(1)
 
 
+def curl(method: str, target: str) -> str:
+    """The curl command that sends method for target to SHOWN_ORIGIN, as a shell runs it."""
+    words = ['curl', '-I'] if method == 'HEAD' else ['curl', '-i', '-X', method]
+    if target.startswith('/'):
+        words.append(SHOWN_ORIGIN + target)
+    else:
+        words += ['--request-target', target, SHOWN_ORIGIN]
+    return shlex.join(words)
+
+
 def ask(address: tuple[str, int], method: str, target: str, timeout: float) -> bytes:
     """The block of the transcript for one request: what was asked, and the answer."""
     connection = http.client.HTTPConnection(*address, timeout=timeout)
@@ -228,7 +243,7 @@ def ask(address: tuple[str, int], method: str, target: str, timeout: float) -> b
         connection.close()
     shown = sorted((name.lower(), value) for name, value in headers
                    if name.lower() not in HOST_HEADERS)
-    lines = [f'$ curl -i -X {method} {SHOWN_ORIGIN}{target}'.encode(),
+    lines = [f'$ {curl(method, target)}'.encode(),
              f'HTTP/1.1 {status} {reason}'.rstrip().encode('latin-1'),
              *(f'{name}: {value}'.encode('latin-1') for name, value in shown)]
     return b'\n'.join(lines) + b'\n\n' + body

@@ -13,6 +13,7 @@
 #     webcpp.run-fail name : sources + : requirements * : targets * ;
 #     webcpp.compile name : sources + : requirements * : targets * ;
 #     webcpp.compile-fail name : sources + : requirements * : targets * ;
+#     webcpp.compile-diagnostic name : sources + : requirements * : targets * ;
 #     webcpp.boost-test name : sources + : requirements * ;
 #     webcpp.example source : requirements * : targets * ;
 #     webcpp.headers-alone library : include-root : only * : requirements *
@@ -224,8 +225,8 @@ rule targets ( targets + )
 # targets, else for their Jamfile's, else for native. Each pair <library>
 # <target> is recorded for declared, and each program as "<kind> <name>
 # <target>..." for programs: kind is the rule that declares it, run,
-# run-fail, compile, compile-fail, boost-test, example, headers-alone or
-# serve.
+# run-fail, compile, compile-fail, compile-diagnostic, boost-test, example,
+# headers-alone or serve.
 local rule program ( kind : names + : targets * )
 {
     local jamfile = [ jamfile ] ;
@@ -292,6 +293,37 @@ rule compile-fail ( name : sources + : requirements * : targets * )
 {
     testing.compile-fail $(sources) : $(requirements)
         [ program compile-fail : $(name) : $(targets) ] : $(name) ;
+}
+
+# A test that passes when sources stop with the errors they state, in
+# clang's -verify comments: `// expected-error@<file>:* {{<message>}}` for
+# an error of a header they include, `// expected-error@+1 {{<message>}}` for
+# one of the next line. clang's -verify makes the compile succeed only when
+# every stated error appears; an error that is not stated, and a note, are
+# ignored (-verify-ignore-unexpected=error,note), so that a header's
+# #error may be followed by what the rest of the header then fails on. A
+# compile-fail test passes on any error, the wrong one included; this one
+# only on the one it states. -verify is clang's: on a toolset other than
+# b2's clang (native clang, clang-wasip2, clang-wasip3), the test is
+# skipped, as a program is for a target it does not declare, rather than
+# refused, which would turn red every lane of gcc or msvc for a declaration
+# that holds; the report shows it there as not built.
+rule compile-diagnostic ( name : sources + : requirements * : targets * )
+{
+    testing.compile $(sources)
+      : $(requirements) <cxxflags>"-Xclang -verify -Xclang -verify-ignore-unexpected=error,note"
+        <conditional>@webcpp%clang-only [ program compile-diagnostic : $(name) : $(targets) ]
+      : $(name) ;
+}
+
+# The conditional requirement of compile-diagnostic: <build>no on a toolset
+# other than clang, read from <toolset> alone.
+rule clang-only ( properties * )
+{
+    if [ feature.get-values <toolset> : $(properties) ] != clang
+    {
+        return <build>no ;
+    }
 }
 
 # An example: the program built from source, run (through testing.launcher

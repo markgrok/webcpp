@@ -55,8 +55,8 @@ HERE = Path(__file__).resolve().parent
 TWINS = HERE.parent / 'oracle/twins.py'
 SELF = 'tools/doc/counts.py'
 
-KINDS = ('example', 'run', 'run-fail', 'compile', 'compile-fail', 'boost-test', 'headers-alone',
-         'serve')
+KINDS = ('example', 'run', 'run-fail', 'compile', 'compile-fail', 'compile-diagnostic',
+         'boost-test', 'headers-alone', 'serve')
 TARGETS = ('native', 'emscripten', 'wasip2', 'wasip3')
 
 # What each generic count is counted from, by its name, as a fault names it.

@@ -31,8 +31,9 @@
 # header is analysed: natively, and again as b2 compiles it with exception-handling=off, with
 # the handler tools/throw_exception.cpp, so that what only a build without exceptions compiles
 # is analysed too; or, for a library whose headers build only for WASI, on wasip2 and on
-# wasip3. That database leaves out a source b2 expects not to compile (webcpp.compile-fail): an
-# analysis would stop at the error the test exists to show. It is left out of clang-tidy only,
+# wasip3. That database leaves out a source b2 expects not to compile (webcpp.compile-fail), and
+# one that must stop with the error it states (webcpp.compile-diagnostic): an analysis would stop
+# at the error the test exists to show. Each is left out of clang-tidy only,
 # the one rule that compiles: clang-format and the rules that read text read it like any other
 # C++ file. A run-fail test's sources compile, and are analysed. A source that only some targets
 # build (a native_only.cpp that stops with #error for WASI) is analysed as the first of them

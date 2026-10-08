@@ -216,6 +216,15 @@ def test_headers_are_those_compiled_alone(root: Path) -> None:
                                    'counted')
 
 
+def test_a_compile_diagnostic_is_a_test(root: Path) -> None:
+    # A test that must stop with the error it states (webcpp.compile-diagnostic) is a test of each
+    # of its targets, as a compile-fail test is.
+    directory = library(root, 'demo')
+    more = (*DEMO_PROGRAMS, 'compile-diagnostic stated native wasip2')
+    found = counted(count(directory, more))
+    assert (found['n-tests'], found['n-tests-native'], found['n-tests-wasip2'],
+            found['n-tests-wasip3']) == ('10', '10', '7', '6'), found
+
 def test_library_counts_are_added(root: Path) -> None:
     directory = library(root, 'demo')
     own_counts(directory, 'import sys\n'
@@ -279,6 +288,7 @@ CASES = [
     test_oracle_demo_counts_twins_without_running_them,
     test_twins_list_faults_fail,
     test_headers_are_those_compiled_alone,
+    test_a_compile_diagnostic_is_a_test,
     test_served_programs_are_tests_and_counted,
     test_library_counts_are_added,
     test_library_count_named_as_a_generic_one_fails,

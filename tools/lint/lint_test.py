@@ -492,14 +492,25 @@ def test_clang_tidy_reads_what_b2_expects_to_build(root):
           '    int value;\n'
           '    return undeclared;\n'
           '}\n')
+    # Nor is a source that must stop with the error it states (webcpp.compile-diagnostic), which
+    # b2 compiles as a test that passes.
+    write(root, 'libs/demo/test/states_its_error.cpp', CPP + '\n'
+          '// expected-error@+1 {{stated}}\n'
+          '#error "stated"\n'
+          '\n'
+          'int main() {\n'
+          '    int value;\n'
+          '    return undeclared;\n'
+          '}\n')
     append(root, 'libs/demo/test/Jamfile',
            'webcpp.run planted : planted.cpp ;\n'
            'webcpp.run-fail planted_fails : planted_fails.cpp ;\n'
-           'webcpp.compile-fail also_rejects : also_rejects.cpp ;\n')
+           'webcpp.compile-fail also_rejects : also_rejects.cpp ;\n'
+           'webcpp.compile-diagnostic states_its_error : states_its_error.cpp ;\n')
     expect_alone(lint(root), 'clang-tidy',
                  [at(root, test, 'int value;'), at(root, helper, 'int helped_value;'),
                   at(root, header, 'int value;'), at(root, run_fail, 'int status;')],
-                 spared=('also_rejects', 'rejects.cpp'))
+                 spared=('also_rejects', 'rejects.cpp', 'states_its_error'))
 
 
 def test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles(root):
