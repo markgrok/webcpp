@@ -302,11 +302,12 @@ def plant_echoes(root, given, expected):
 
 
 def test_example_reads_its_input(root):
-    # echoes.input, beside echoes, is its standard input, natively and on wasip2, through
-    # wasmtime.
+    # echoes.input, beside echoes, is its standard input, natively and on wasip2 and wasip3,
+    # through wasmtime. The runner finds the input among the sources of echoes.output, so that it
+    # is one of them is pinned here too.
     expected = '1: first\n2: second\n3: third\n3 lines\n'
     plant_echoes(root, 'first\nsecond\nthird\n', expected)
-    for request in ((), WASIP2):
+    for request in ((), WASIP2, WASIP3):
         result = harness.run_b2(root, *request, 'libs/demo/example')
         harness.expect(result, True)
         assert output_of(root, 'echoes.output') == expected, (request, result.stdout[-4000:])
@@ -316,7 +317,9 @@ def test_example_reads_its_input(root):
 def test_example_input_change_reruns(root):
     plant_echoes(root, 'first\nsecond\nthird\n', '1: first\n2: second\n3: third\n3 lines\n')
     harness.expect(harness.run_b2(root, 'libs/demo/example'), True)
-    # The next run, without -a, reads the edited input.
+    # The next run, without -a, reads the edited input. What the user sees: an example's output
+    # is always made again, so this holds whether or not the input is a source of it; that it is
+    # one is pinned by test_example_reads_its_input.
     harness.replace(root / 'libs/demo/example/echoes.input', 'second\n', 'changed\n')
     result = harness.run_b2(root, 'libs/demo/example')
     harness.expect(result, False, '-2: second', '+2: changed')
@@ -330,7 +333,7 @@ def test_example_without_input_reads_nothing(root):
     plant_echoes(root, None, '0 lines\n')
     read, write = os.pipe()
     try:
-        for request in ((), WASIP2):
+        for request in ((), WASIP2, WASIP3):
             try:
                 result = harness.run_b2(root, *request, 'libs/demo/example', stdin=read,
                                         timeout=60)

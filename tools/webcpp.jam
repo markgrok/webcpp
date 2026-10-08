@@ -288,8 +288,6 @@ rule example ( source : requirements * : targets * )
     local name = $(source:B) ;
     local only = [ program example : $(name) : $(targets) ] ;
     exe $(name) : $(source) : $(requirements) $(only) $(.handler) ;
-    # The input is a source of the output, so that editing it runs the
-    # example again.
     local found = [ where ] ;
     local input ;
     if [ path.glob $(found[2]) : $(source:S=.input) ]
@@ -300,7 +298,8 @@ rule example ( source : requirements * : targets * )
     # it lists first: MSVC's debug link adds the .pdb after the .exe. So the
     # action reads the program as the first source and the expected output
     # as the last, never as the second, and run-and-compare finds the input
-    # by its suffix.
+    # by its suffix. The input is a source of the output, so that editing it
+    # runs the example again.
     make $(name).output : $(name) $(input) $(source:S=.expected) : @webcpp%run-and-compare
         : $(requirements) $(only) ;
     # testing.launcher is a free feature: it plays no part in the target's

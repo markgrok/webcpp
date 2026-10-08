@@ -63,9 +63,9 @@ def run_b2(root: Path, *args: str, env_extra: dict | None = None, stdin: int | N
     env_extra adds variables to b2's environment after CPATH and its kin are removed; a value
     of None removes that variable instead. stdin is b2's standard input, a file descriptor,
     else this process's own. A byte that is not UTF-8, which b2 passes on from a test's output,
-    is read as U+FFFD. A run that outlasts timeout, or is interrupted, is killed together with
-    every process it started (b2 runs in a session of its own), and the exception is raised
-    again: subprocess.TimeoutExpired for the timeout.
+    is read as U+FFFD. b2 runs in a session of its own: a run that outlasts timeout, or is
+    interrupted, is stopped with stop_session, and the exception that ended it,
+    subprocess.TimeoutExpired or KeyboardInterrupt, is raised again.
     """
     env = {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
     for name, value in (env_extra or {}).items():
@@ -80,11 +80,42 @@ def run_b2(root: Path, *args: str, env_extra: dict | None = None, stdin: int | N
         try:
             output, _ = process.communicate(timeout=timeout)
         except BaseException:
-            # The group is gone when b2 and everything it started have ended in the meantime.
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
+            stop_session(process)
             raise
     return subprocess.CompletedProcess(command, process.returncode, output)
+
+
+def stop_session(process: subprocess.Popen) -> None:
+    """Kills process, the leader of a session of its own, and every process of its session, then
+    reaps it.
+
+    b2 gives each action a process group of its own, so its group alone holds none of them: the
+    session is what holds them all. b2 is stopped first, so that it starts nothing more; then
+    every process whose session is b2's is killed, pass after pass, until a pass finds none it
+    has not killed already, which catches what an action started between two passes. A process
+    that is gone, or that refuses the signal (macOS answers EPERM for a zombie), is left alone:
+    nothing here raises an OSError over the exception that ended the run.
+    """
+    with contextlib.suppress(OSError):
+        os.kill(process.pid, signal.SIGSTOP)
+    killed: set[int] = set()
+    while True:
+        listed = subprocess.run(['ps', '-A', '-o', 'pid='], capture_output=True, text=True,
+                                check=False)
+        found = set()
+        for word in listed.stdout.split():
+            with contextlib.suppress(OSError):
+                if os.getsid(int(word)) == process.pid:
+                    found.add(int(word))
+        if not found - killed:
+            break
+        for pid in found - killed:
+            with contextlib.suppress(OSError):
+                os.kill(pid, signal.SIGKILL)
+        killed |= found
+    with contextlib.suppress(OSError):
+        os.kill(process.pid, signal.SIGKILL)
+    process.wait()
 
 
 def built(_: str, names: list[str]) -> set[str]:

@@ -1189,6 +1189,7 @@ only branch.
   - the tests of the build and of the tools, when they or what they test
     changed: `tools/test/jamroot_test.py`, `tools/test/webcpp_jam_test.py`,
     `tools/test/oracle_jam_test.py`, `tools/test/doc_test.py`,
+    `tools/test/harness_test.py`,
     `tools/lint/lint_test.py`, `tools/report/report_test.py`,
     `tools/doc/doc_check_test.py`, `tools/doc/doc_comments_test.py`,
     `tools/doc/extensions_test.py`, `tools/doc/counts_test.py`,
