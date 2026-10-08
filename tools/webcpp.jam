@@ -278,20 +278,30 @@ rule compile-fail ( name : sources + : requirements * : targets * )
 }
 
 # An example: the program built from source, run (through testing.launcher
-# for a wasm build), and its standard output compared with the
-# <stem>.expected beside source, by tools/example/run_example.py. The
-# target <stem>.output, which holds that output, exists only when the two
-# are equal.
+# for a wasm build) with the <stem>.input beside source as its standard
+# input, or an empty one when there is none, and its standard output
+# compared with the <stem>.expected beside source, by
+# tools/example/run_example.py. The target <stem>.output, which holds that
+# output, exists only when the two are equal.
 rule example ( source : requirements * : targets * )
 {
     local name = $(source:B) ;
     local only = [ program example : $(name) : $(targets) ] ;
     exe $(name) : $(source) : $(requirements) $(only) $(.handler) ;
+    # The input is a source of the output, so that editing it runs the
+    # example again.
+    local found = [ where ] ;
+    local input ;
+    if [ path.glob $(found[2]) : $(source:S=.input) ]
+    {
+        input = $(source:S=.input) ;
+    }
     # The program's main target can generate more than the executable, which
     # it lists first: MSVC's debug link adds the .pdb after the .exe. So the
     # action reads the program as the first source and the expected output
-    # as the last, never as the second.
-    make $(name).output : $(name) $(source:S=.expected) : @webcpp%run-and-compare
+    # as the last, never as the second, and run-and-compare finds the input
+    # by its suffix.
+    make $(name).output : $(name) $(input) $(source:S=.expected) : @webcpp%run-and-compare
         : $(requirements) $(only) ;
     # testing.launcher is a free feature: it plays no part in the target's
     # build directory, so a .output left over from one launcher reads as up
@@ -320,11 +330,23 @@ rule run-and-compare ( targets * : sources * : properties * )
     {
         LAUNCHER_ARGS on $(targets) = ;
     }
+    # The example's input, the source whose suffix is .input, or nothing.
+    # The action binds it to its path, and its word `--input="$(INPUT)"`,
+    # which holds a reference to it, disappears whole when it is empty.
+    local input ;
+    for local source in $(sources)
+    {
+        if $(source:S) = .input
+        {
+            input = $(source) ;
+        }
+    }
+    INPUT on $(targets) = $(input) ;
 }
 
-actions run-and-compare
+actions run-and-compare bind INPUT
 {
-    "$(PYTHON)" "$(RUNNER)" $(LAUNCHER_ARGS) --expected "$(>[-1])" --output "$(<)" -- "$(>[1])"
+    "$(PYTHON)" "$(RUNNER)" $(LAUNCHER_ARGS) --input="$(INPUT)" --expected "$(>[-1])" --output "$(<)" -- "$(>[1])"
 }
 
 # A test per public header of library, each a translation unit that only

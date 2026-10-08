@@ -14,9 +14,11 @@ run_cases runs a test file's cases, each on a scratch superproject of its own.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -54,12 +56,16 @@ def user_config(root: Path) -> Path:
                        'and WEBCPP_USER_CONFIG is not set')
 
 
-def run_b2(root: Path, *args: str, env_extra: dict | None = None) -> subprocess.CompletedProcess:
+def run_b2(root: Path, *args: str, env_extra: dict | None = None, stdin: int | None = None,
+           timeout: float = TIMEOUT) -> subprocess.CompletedProcess:
     """Runs b2 in root and returns what it printed, stdout and stderr together, in stdout.
 
     env_extra adds variables to b2's environment after CPATH and its kin are removed; a value
-    of None removes that variable instead. A byte that is not UTF-8, which b2 passes on from a
-    test's output, is read as U+FFFD.
+    of None removes that variable instead. stdin is b2's standard input, a file descriptor,
+    else this process's own. A byte that is not UTF-8, which b2 passes on from a test's output,
+    is read as U+FFFD. A run that outlasts timeout, or is interrupted, is killed together with
+    every process it started (b2 runs in a session of its own), and the exception is raised
+    again: subprocess.TimeoutExpired for the timeout.
     """
     env = {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
     for name, value in (env_extra or {}).items():
@@ -68,9 +74,17 @@ def run_b2(root: Path, *args: str, env_extra: dict | None = None) -> subprocess.
         else:
             env[name] = value
     command = ['b2', f'--user-config={user_config(root)}', *args]
-    return subprocess.run(command, cwd=root, env=env, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, text=True, errors='replace', check=False,
-                          timeout=TIMEOUT)
+    with subprocess.Popen(command, cwd=root, env=env, stdin=stdin, stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT, text=True, errors='replace',
+                          start_new_session=True) as process:
+        try:
+            output, _ = process.communicate(timeout=timeout)
+        except BaseException:
+            # The group is gone when b2 and everything it started have ended in the meantime.
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            raise
+    return subprocess.CompletedProcess(command, process.returncode, output)
 
 
 def built(_: str, names: list[str]) -> set[str]:

@@ -7,8 +7,8 @@
 """Checks run_example.py: CRLF ignored, a difference reported, a missing
 launcher named, a nonzero exit status failing the comparison and named before
 the diff of what the program printed until then, a crash named by its signal,
-and a program that cannot be started (a wasm module run without a launcher)
-named in one line."""
+a program that cannot be started (a wasm module run without a launcher)
+named in one line, and the standard input the --input file, else empty."""
 import os
 import subprocess
 import sys
@@ -18,8 +18,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'run_example.py')
 
 
-def run(args):
-    return subprocess.run([sys.executable, RUNNER] + args, capture_output=True, text=True)
+def run(args, stdin=None):
+    return subprocess.run([sys.executable, RUNNER] + args, stdin=stdin, capture_output=True,
+                          text=True, timeout=60)
 
 
 def main():
@@ -69,6 +70,26 @@ def main():
             assert '-two' in crashed.stderr, crashed.stderr
             assert not os.path.exists(output2), (
                 'the output file must not be written when the program crashes')
+        # The standard input is the --input file, else nothing, never the runner's own: here a
+        # pipe that stays open, as a terminal does, which a program reading it would wait on.
+        given = os.path.join(scratch, 'input')
+        with open(given, 'w', newline='') as out:
+            out.write('one\ntwo\n')
+        empty = os.path.join(scratch, 'empty')
+        with open(empty, 'w', newline='') as out:
+            out.write('0\n')
+        echoes = [sys.executable, '-c', 'import sys; sys.stdout.write(sys.stdin.read())']
+        counts = [sys.executable, '-c', 'import sys; print(len(sys.stdin.read()))']
+        read, write = os.pipe()
+        try:
+            fed = run(['--input', given, '--expected', expected, '--output', output, '--']
+                      + echoes, stdin=read)
+            assert fed.returncode == 0, fed.stderr
+            unfed = run(['--expected', empty, '--output', output, '--'] + counts, stdin=read)
+            assert unfed.returncode == 0, unfed.stderr
+        finally:
+            os.close(read)
+            os.close(write)
         module = os.path.join(scratch, 'example.wasm')
         with open(module, 'wb') as out:
             out.write(b'\0asm')

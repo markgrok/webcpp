@@ -5,18 +5,19 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, and
-only once per target; wasip2 builds without exceptions and wasip3 with them, and a native build
-without exceptions is the user's own request, which links the handler as wasip2 does; no variant
-is built without RTTI; an example is compared with its expected output; every public header
-compiles alone; `b2 declared-targets` lists what each library declares; a Boost.Test suite is built
-and run natively only, its framework always with exceptions; Boost.JSON's definitions link on every
-target; and every program sees C++20, the wasip2 one alone without exceptions. Each case builds a
-scratch superproject with the fixture library demo. Run with the names of some cases to run only
-those."""
+"""Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, and only
+once per target; wasip2 builds without exceptions and wasip3 with them, and a native build without
+exceptions is the user's own request, which links the handler as wasip2 does; no variant is built
+without RTTI; an example is compared with its expected output, its standard input its .input file or
+nothing; every public header compiles alone; `b2 declared-targets` lists what each library declares;
+a Boost.Test suite is built and run natively only, its framework always with exceptions;
+Boost.JSON's definitions link on every target; and every program sees C++20, the wasip2 one alone
+without exceptions. Each case builds a scratch superproject with the fixture library demo. Run with
+the names of some cases to run only those."""
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -271,6 +272,78 @@ def test_example_mismatch_fails_naming_the_program(root):
     assert re.search(r'^\.\.\.failed .*hello\.output', result.stdout, re.MULTILINE), (
         result.stdout[-4000:])
     assert not list((root / 'bin').rglob('hello.output')), result.stdout[-4000:]
+
+
+# An example that prints each line of its standard input, numbered, then how many there were.
+ECHOES = ('#include <cstdio>\n'
+          '#include <cstring>\n'
+          '\n'
+          'int main() {\n'
+          '    char line[256];\n'
+          '    int count = 0;\n'
+          '    while (std::fgets(line, sizeof line, stdin) != nullptr) {\n'
+          '        line[std::strcspn(line, "\\n")] = \'\\0\';\n'
+          '        std::printf("%d: %s\\n", ++count, line);\n'
+          '    }\n'
+          '    std::printf("%d lines\\n", count);\n'
+          '}\n')
+
+
+def plant_echoes(root, given, expected):
+    """Adds the example echoes to demo's, with echoes.expected and, unless given is None,
+    echoes.input beside it."""
+    example = root / 'libs/demo/example'
+    (example / 'echoes.cpp').write_text(ECHOES)
+    (example / 'echoes.expected').write_text(expected)
+    if given is not None:
+        (example / 'echoes.input').write_text(given)
+    with (example / 'Jamfile').open('a') as jamfile:
+        jamfile.write('webcpp.example echoes.cpp ;\n')
+
+
+def test_example_reads_its_input(root):
+    # echoes.input, beside echoes, is its standard input, natively and on wasip2, through
+    # wasmtime.
+    expected = '1: first\n2: second\n3: third\n3 lines\n'
+    plant_echoes(root, 'first\nsecond\nthird\n', expected)
+    for request in ((), WASIP2):
+        result = harness.run_b2(root, *request, 'libs/demo/example')
+        harness.expect(result, True)
+        assert output_of(root, 'echoes.output') == expected, (request, result.stdout[-4000:])
+        shutil.rmtree(root / 'bin')
+
+
+def test_example_input_change_reruns(root):
+    plant_echoes(root, 'first\nsecond\nthird\n', '1: first\n2: second\n3: third\n3 lines\n')
+    harness.expect(harness.run_b2(root, 'libs/demo/example'), True)
+    # The next run, without -a, reads the edited input.
+    harness.replace(root / 'libs/demo/example/echoes.input', 'second\n', 'changed\n')
+    result = harness.run_b2(root, 'libs/demo/example')
+    harness.expect(result, False, '-2: second', '+2: changed')
+    assert re.search(r'^\.\.\.failed .*echoes\.output', result.stdout, re.MULTILINE), (
+        result.stdout[-4000:])
+
+
+def test_example_without_input_reads_nothing(root):
+    # Without echoes.input, echoes reads an empty standard input, never b2's own: b2's is here a
+    # pipe that stays open, as a terminal does, which an example reading it would wait on forever.
+    plant_echoes(root, None, '0 lines\n')
+    read, write = os.pipe()
+    try:
+        for request in ((), WASIP2):
+            try:
+                result = harness.run_b2(root, *request, 'libs/demo/example', stdin=read,
+                                        timeout=60)
+            except subprocess.TimeoutExpired:
+                raise AssertionError(
+                    f'{request}: an example waited on b2\'s standard input') from None
+            harness.expect(result, True)
+            assert output_of(root, 'echoes.output') == '0 lines\n', (request,
+                                                                     result.stdout[-4000:])
+            shutil.rmtree(root / 'bin')
+    finally:
+        os.close(read)
+        os.close(write)
 
 
 def test_headers_alone_catches_a_missing_include(root):
@@ -563,6 +636,9 @@ CASES = [
     test_declared_targets_lists_pairs,
     test_a_wrong_declaration_is_refused,
     test_example_mismatch_fails_naming_the_program,
+    test_example_reads_its_input,
+    test_example_input_change_reruns,
+    test_example_without_input_reads_nothing,
     test_headers_alone_catches_a_missing_include,
     test_boost_test_passes_natively,
     test_boost_test_failure_is_red_and_named,

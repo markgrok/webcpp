@@ -6,18 +6,20 @@
 
 """Runs one example and compares what it prints with the committed output.
 
-Usage: run_example.py [--launcher L] --expected FILE --output FILE -- PROGRAM [ARGS]
+Usage: run_example.py [--launcher L] [--input FILE] --expected FILE --output FILE -- PROGRAM [ARGS]
 
-The program runs directly, or through the launcher (wasmtime for a wasm
-build). It must exit with status 0, and its standard output, with every
-carriage return removed, must equal the expected file's; on success that
+The program runs directly, or through the launcher (wasmtime for a wasm build,
+which passes its standard input through). Its standard input is the input
+file, else empty, never the runner's own, so that a program reading it never
+waits on a terminal. It must exit with status 0, and its standard output, with
+every carriage return removed, must equal the expected file's; on success that
 output is written to the output file, which b2 keeps as the target, and on a
-failure nothing is written. Exit 0 when both hold; 1 when either does not:
-an exit status other than 0 is named first, the signal that killed the
-program as well, then a diff follows when the output differs, so a program
-that crashes halfway is told from one that prints something else; 2 when the
-launcher is missing or the program cannot be started, the way a wasm module
-cannot without a launcher (both named, in one line).
+failure nothing is written. Exit 0 when both hold; 1 when either does not: an
+exit status other than 0 is named first, the signal that killed the program as
+well, then a diff follows when the output differs, so a program that crashes
+halfway is told from one that prints something else; 2 when the launcher is
+missing, the input file cannot be read, or the program cannot be started, the
+way a wasm module cannot without a launcher (each named, in one line).
 """
 import argparse
 import difflib
@@ -42,6 +44,7 @@ def ending(status):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--launcher', default='')
+    parser.add_argument('--input', default='')
     parser.add_argument('--expected', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('command', nargs=argparse.REMAINDER)
@@ -52,8 +55,20 @@ def main():
             print(f'run_example: the launcher {arguments.launcher} is not on PATH', file=sys.stderr)
             return 2
         command = [arguments.launcher] + command
+    given = None
+    if arguments.input:
+        try:
+            with open(arguments.input, 'rb') as file:
+                given = file.read()
+        except OSError as error:
+            print(f'run_example: cannot read the input {arguments.input}: {error.strerror}',
+                  file=sys.stderr)
+            return 2
     try:
-        result = subprocess.run(command, capture_output=True)
+        if given is None:
+            result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True)
+        else:
+            result = subprocess.run(command, input=given, capture_output=True)
     except OSError as error:
         hint = '' if arguments.launcher else '; a wasm build needs testing.launcher=wasmtime'
         print(f'run_example: cannot start {command[0]}: {error.strerror}{hint}', file=sys.stderr)
