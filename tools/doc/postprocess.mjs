@@ -276,10 +276,51 @@ function partsOfHeadings(html) {
   });
 }
 
+// The elements whose text is code, or no text at all, where an apostrophe stays as written.
+const VERBATIM = /^<(\/?)(pre|code|kbd|samp|script|style|textarea)\b/;
+// A plural's apostrophe, `the operands' nodes`, after an s that ends a word.
+const PLURAL = /(?<=[A-Za-z]s)'(?=[\s.,;:!?)\]]|$)/g;
+// An apostrophe right after a name of code, or a link around one, `x`'s, before an s that ends
+// the word, or before the end of the word itself.
+const AFTER_CODE = /^'(?=s(?![A-Za-z])|[\s.,;:!?)\]]|$)/;
+
+// Asciidoctor makes an apostrophe curly only between two letters, so the page's prose shows a
+// straight one after the s of a plural and after a name of code, among curly ones, and so does
+// MrDocs's reference. These become curly too, written as Asciidoctor writes its own, &#8217;,
+// outside code, a listing, a script and a style; a quote, 'word', and a year, '90s, stay
+// straight.
+function curledApostrophes(html) {
+  const parts = html.split(TAG);
+  let verbatim = 0;
+  let afterCode = false;
+  return parts
+    .map((part, index) => {
+      if (index % 2 === 1) {
+        const element = VERBATIM.exec(part);
+        if (element && !part.endsWith('/>')) {
+          verbatim += element[1] ? -1 : 1;
+        }
+        afterCode = verbatim === 0 && /^<\/(code|a)>$/.test(part) &&
+          (afterCode || /^<\/code>$/.test(part));
+        return part;
+      }
+      if (verbatim > 0) {
+        return part;
+      }
+      let text = part.replace(PLURAL, '&#8217;');
+      if (afterCode) {
+        text = text.replace(AFTER_CODE, '&#8217;');
+      }
+      afterCode = afterCode && part === '';
+      return text;
+    })
+    .join('');
+}
+
 class Page extends Postprocessor {
   process(_document, output) {
     const page = labelledTables(wordsOfCode(decodeEntities(output)));
-    return boxedTables(partsOfURLs(partsOfHeadings(page)));
+    return curledApostrophes(boxedTables(partsOfURLs(partsOfHeadings(page))));
   }
 }
 

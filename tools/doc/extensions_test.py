@@ -306,17 +306,38 @@ def test_linked_code_is_whole_or_breaks_between_its_parts(_: None) -> None:
 def test_reference_apostrophes_read_as_the_guide_s(_: None) -> None:
     # MrDocs writes each ' as &apos;, which Asciidoctor's replacements, which make the guide's
     # apostrophe curly, never see. Its reference, as reference.py finishes it, shows the same
-    # apostrophes as the guide: curly in a word, and straight in code and where the guide keeps
-    # one straight.
+    # apostrophes as the guide: curly in a word, after the s of a plural, and after a name of
+    # code that owns what follows, and straight in code and where the guide keeps one straight,
+    # before a number.
     prose = 'The fixture{0}s test, the actors{0} queue and the {0}90s'
     mrdocs = (prose.format('&apos;') + ', with `L&apos;x&apos;` and '
               'link:#x[`x`]&apos;s brief&period;\n')
     reference_html = body(convert(reference.finished(mrdocs, 'sample')))
     guide_html = body(convert(prose.format("'") + '.\n'))
-    shown = ('The fixture&#8217;s test, the actors\' queue and the \'90s')
+    shown = ('The fixture&#8217;s test, the actors&#8217; queue and the \'90s')
     assert f'<p>{shown}.</p>' in guide_html, guide_html
     assert (f'<p>{shown}, with <code class="whole">L\'x\'</code> and <a href="#x"><code '
-            'class="whole">x</code></a>\'s brief.</p>') in reference_html, reference_html
+            'class="whole">x</code></a>&#8217;s brief.</p>') in reference_html, reference_html
+
+
+def test_prose_apostrophes_that_asciidoctor_leaves_straight_are_curly(_: None) -> None:
+    # Asciidoctor curls an apostrophe between two letters only: the one after the s of a plural,
+    # and the one after a name of code, `x`'s, stay straight on the page, among curly ones. The
+    # page curls them, in prose and in a table, and leaves alone a quote, code, a listing and an
+    # attribute.
+    # (In the guide, a backtick before an apostrophe is markup of its own, so a name of code
+    # that owns what follows is written in a link there, or in a Doc Comment, as above.)
+    html = body(convert("The operands' nodes, link:#x[`x`]'s brief, the examples' output; a "
+                        "'quoted' word, and `operands'`.\n\n"
+                        "|===\n| The bindings' directory\n|===\n\n"
+                        "[listing]\n----\nthe operands' nodes\n----\n\n"
+                        "link:#o[the plans' list]\n"))
+    assert ('<p>The operands&#8217; nodes, <a href="#x"><code class="whole">x</code></a>&#8217;s '
+            "brief, the examples&#8217; output; a 'quoted' word, and <code class=\"whole\">"
+            "operands'</code>.</p>") in html, html
+    assert 'The bindings&#8217; directory' in html, html
+    assert "<pre>the operands' nodes</pre>" in html, html
+    assert 'the plans&#8217; list</a>' in html, html
 
 
 def test_reference_apostrophes_stay_straight_in_code_and_targets(_: None) -> None:
@@ -503,6 +524,7 @@ CASES: list[Callable[[None], None]] = [
     test_code_in_a_heading_is_broken_once,
     test_linked_code_is_whole_or_breaks_between_its_parts,
     test_reference_apostrophes_read_as_the_guide_s,
+    test_prose_apostrophes_that_asciidoctor_leaves_straight_are_curly,
     test_reference_apostrophes_stay_straight_in_code_and_targets,
     test_tables_scroll_in_their_own_box,
     test_style_breaks_a_word_only_when_it_must,
