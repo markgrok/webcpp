@@ -550,7 +550,12 @@ asserts with `BOOST_TEST` before it reads, which the check does not see) and
 `bugprone-exception-escape.CheckMain` (a test's `main` lets an exception end
 the process, which fails the test as it should); `example/.clang-tidy` turns
 off the second. The library's headers are still analysed with every check,
-through the aggregate translation unit.
+through the aggregate translation unit. A check that applies to a library
+header is never switched off for a directory, since a header's templates are
+analysed only where a test or an example instantiates them: the header states
+its exemption on the line clang-tidy reports, `NOLINT(<check>)` (or
+`NOLINTNEXTLINE(<check>)` on the line above, when that line has no room), with
+its reason in the comment above.
 
 **Sharding.** `--shard K/N` analyses the K-th of N interleaved slices with
 clang-tidy, and runs every other rule; the N shards together analyse every
