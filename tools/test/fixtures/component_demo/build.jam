@@ -20,3 +20,9 @@ webcpp.wit-bindings demo-bindings-p3 : wit/world-p3.wit : demo : demo_world : p3
 
 # The bindings of the target a program is built for, and nothing natively.
 alias demo-bindings : demo-bindings-p2 demo-bindings-p3 ;
+
+# What a program that includes webcpp/component_demo/world.hpp needs: the bindings of its target
+# and the macro of its version.
+alias demo-http : : : : <library>component_demo <library>demo-bindings
+  <toolset>clang-wasip2:<define>WEBCPP_COMPONENT_DEMO_P2
+  <toolset>clang-wasip3:<define>WEBCPP_COMPONENT_DEMO_P3 ;

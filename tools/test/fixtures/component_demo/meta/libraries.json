@@ -1,0 +1,10 @@
+{
+    "key": "component_demo",
+    "name": "component_demo",
+    "authors": ["WebCpp.org"],
+    "description": "A library with a world of its own, which the tests of the build place in libs/component_demo.",
+    "category": ["Testing"],
+    "maintainers": ["WebCpp.org"],
+    "cxxstd": "20",
+    "port-of": null
+}

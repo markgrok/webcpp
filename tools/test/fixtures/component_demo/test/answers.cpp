@@ -58,7 +58,11 @@ answer answer_to(std::string_view method, std::string_view target) {
         boost::throw_exception(std::runtime_error("asked to throw"));
     }
     const std::uint16_t status = target == "/missing" ? 404 : 200;
-    return {status, std::string(method), std::string(method) + " " + std::string(target) + "\n"};
+    return {
+        .status = status,
+        .method = std::string(method),
+        .body = std::string(method) + " " + std::string(target) + "\n",
+    };
 }
 
 // The result of append is not read: it fails only on a forbidden or malformed header, and these
@@ -83,7 +87,7 @@ wasi_http_types_own_fields_t headers_of(const answer& reply) {
 
 }  // namespace
 
-#if defined(__wasip2__)
+#ifdef __wasip2__
 
 extern "C" void exports_wasi_http_incoming_handler_handle(
     exports_wasi_http_incoming_handler_own_incoming_request_t request,

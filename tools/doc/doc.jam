@@ -10,12 +10,18 @@
 #
 #     import webcpp ;
 #     webcpp.doc <library> : <page>.adoc ;
-#     webcpp.reference <library> ;
+#     webcpp.reference <library> : <requirements> * ;
 #
 # webcpp.reference declares the target reference of the library's doc
 # project: tools/doc/reference.py writes the library's API reference with
 # MrDocs, strict, from one translation unit of every public header, and
-# checks with doc_comments.py what MrDocs does not. webcpp.doc converts the
+# checks with doc_comments.py what MrDocs does not. That translation unit is
+# read natively, with the include directories and the defines of the
+# library's target and of the requirements given: a library whose headers
+# build only for WASI gives those a native parse needs, such as the explicit
+# target <name>-headers of webcpp.wit-bindings, which generates the bindings
+# on any toolset and adds their directory, and the macro of one version. A
+# header it cannot parse fails it, naming the header. webcpp.doc converts the
 # page with Asciidoctor.js into libs/<library>/doc/html/index.html, the
 # reference included where the page says include::{reference}[...], once
 # doc-check.py finds the page whole (--complete), and installs it once the
@@ -52,9 +58,10 @@
 #
 # MrDocs is -sMRDOCS=<path>, else .local/mrdocs/bin/mrdocs, else mrdocs on
 # PATH; clang++, which reads the headers for doc_comments.py, is
-# -sCLANG=<path>, else clang++ on PATH. When one is not there, the build
-# stops, naming it and where it was looked for. Node runs Asciidoctor.js,
-# which npm ci installs into tools/doc/node_modules from package-lock.json.
+# -sCLANG=<path>, else clang++ on PATH; a path given may hold a space. When
+# one is not there, the build stops, naming it and where it was looked for.
+# Node runs Asciidoctor.js, which npm ci installs into tools/doc/node_modules
+# from package-lock.json.
 #
 # This file is loaded as the module webcpp-doc: b2 has a module named doc of
 # its own, the one of --help.
@@ -197,14 +204,16 @@ local rule linked-pages ( library )
     return $(pages) ;
 }
 
-# webcpp.reference <library> ; the library's API reference, the target
-# reference of its doc project.
-rule reference ( library )
+# webcpp.reference <library> : <requirements> * ; the library's API
+# reference, the target reference of its doc project, read with the library's
+# target and requirements.
+rule reference ( library : requirements * )
 {
     local current = [ here reference : libs/$(library)/doc ] ;
     .reference.$(library) = true ;
     make reference.adoc : : @webcpp-doc%write-reference
-      : <library>/webcpp/$(library)//$(library) <webcpp-doc-page>$(library) ;
+      : <library>/webcpp/$(library)//$(library) $(requirements)
+        <webcpp-doc-page>$(library) ;
     $(current).mark-target-as-always reference.adoc ;
     alias reference : reference.adoc ;
 }
@@ -263,12 +272,14 @@ rule needs-reference ( properties * )
 }
 
 # A tool given with -s<variable>=<path>, made absolute, which must be a
-# file, or nothing when the variable is not given.
+# file, or nothing when the variable is not given. b2 splits the value of -s
+# at its spaces, which a path may hold: the words are joined again.
 local rule given ( variable )
 {
     local value = [ modules.peek : $(variable) ] ;
     if $(value)
     {
+        value = $(value:J=" ") ;
         local tool = [ path.native [ path.root [ path.make $(value) ] [ path.pwd ] ] ] ;
         if ! [ CHECK_IF_FILE $(tool) ]
         {

@@ -1,0 +1,13 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+import webcpp ;
+
+webcpp.doc component_demo : component_demo.adoc ;
+# The header of the world's bindings builds only for WASI; the reference parses it natively, with
+# the bindings of wasip2 and the macro of that version.
+webcpp.reference component_demo : <library>/webcpp/component_demo//demo-bindings-p2-headers
+  <define>WEBCPP_COMPONENT_DEMO_P2 ;

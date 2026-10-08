@@ -47,6 +47,11 @@ COMPONENT = b'\0asm\x0d\x00\x01\x00'
 
 PASSED = re.compile(r'^\*\*passed\*\* (.*)$', re.MULTILINE)
 
+# The fixture's headers compiled alone: natively its own, and on wasip2 and wasip3 the header of
+# the world's bindings too.
+ALONE_NATIVE = {'alone-component_demo'}
+ALONE_WASI = {'alone-component_demo', 'alone-component_demo-world'}
+
 
 def passed(result):
     """The tests b2 reports as passed, by name."""
@@ -70,7 +75,7 @@ def test_bindings_generated_for_wasip2_and_wasip3(root):
     for toolset, version in ((WASIP2, 'p2'), (WASIP3, 'p3')):
         result = harness.run_b2(root, '-a', toolset, TEST)
         harness.expect(result, True)
-        assert passed(result) == {'bindings', 'answers'}, result.stdout[-4000:]
+        assert passed(result) == {'bindings', 'answers', *ALONE_WASI}, result.stdout[-4000:]
         directory = generated(root, version)
         for name in ('demo_world.h', 'demo_world.c', 'demo_world_component_type.o',
                      f'wit/world-{version}.wit', 'wit/deps/http.wit'):
@@ -136,7 +141,7 @@ def test_native_build_needs_no_wit_bindgen(root):
                '-sWASI_WIT_P3=/nonexistent')
     result = harness.run_b2(root, '-a', *nowhere, TEST)
     harness.expect(result, True)
-    assert passed(result) == {'native_alone'}, result.stdout[-4000:]
+    assert passed(result) == {'native_alone', *ALONE_NATIVE}, result.stdout[-4000:]
     assert not (root / 'bin/generated').exists()
     # Nor on a machine without them: none in .local, none on PATH. A native b2 test and b2
     # declared-targets read the library's build.jam, which declares the bindings.
@@ -145,7 +150,7 @@ def test_native_build_needs_no_wit_bindgen(root):
     environment = without(root, 'wit-bindgen')
     result = harness.run_b2(root, '-a', 'test', env_extra=environment)
     harness.expect(result, True)
-    assert passed(result) == {'native_alone'}, result.stdout[-4000:]
+    assert passed(result) == {'native_alone', *ALONE_NATIVE}, result.stdout[-4000:]
     result = harness.run_b2(root, '-d0', 'declared-targets', env_extra=environment)
     harness.expect(result, True)
     assert result.stdout == DECLARED, result.stdout
@@ -386,8 +391,8 @@ def test_served_component_green_on_wasip2_and_wasip3(root):
     for version, process in lanes.items():
         output, _ = process.communicate(timeout=harness.TIMEOUT)
         assert process.returncode == 0, (version, output[-4000:])
-        assert passed(subprocess.CompletedProcess([], 0, output)) == {'bindings', 'answers'}, (
-            output[-4000:])
+        assert passed(subprocess.CompletedProcess([], 0, output)) == {
+            'bindings', 'answers', *ALONE_WASI}, output[-4000:]
         served = built_in(root, 'answers.served', version)
         assert len(served) == 1, served
         assert served[0].read_bytes() == SERVED_EXPECTED.read_bytes()
@@ -475,7 +480,7 @@ def test_native_lane_skips_served_tests(root):
     assert not (root / 'bin/generated').exists()
     result = harness.run_b2(root, '-a', '--dump-tests', '--out-xml=native.xml', *nowhere, TEST)
     harness.expect(result, True)
-    assert passed(result) == {'native_alone'}, result.stdout[-4000:]
+    assert passed(result) == {'native_alone', *ALONE_NATIVE}, result.stdout[-4000:]
     assert not (root / 'bin/generated').exists()
     assert not list((root / 'bin').rglob('answers*')), sorted((root / 'bin').rglob('answers*'))
     # The lane lists the served test, which it does not build.
@@ -492,7 +497,7 @@ def test_missing_wasmtime_names_it(root):
     harness.expect(result, False, named, '-sWASMTIME=/nonexistent is not an executable file',
                    'It is looked for at -sWASMTIME=<path>, else on PATH.',
                    '...failed webcpp-component.serve-and-compare')
-    assert passed(result) == {'bindings'}, result.stdout[-4000:]
+    assert passed(result) == {'bindings', *ALONE_WASI}, result.stdout[-4000:]
     result = harness.run_b2(root, '-a', WASIP3, TEST, env_extra=without(root, 'wasmtime'))
     harness.expect(result, False, named, 'no -sWASMTIME=<path> was given, and there is none on '
                    'PATH')

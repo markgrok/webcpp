@@ -7,10 +7,14 @@
 
 """Checks tools/lint/lint.sh: a clean superproject passes, with the fixture library and without
 any library; each rule, planted alone, fails alone and names the file and the line; and
-tools/lint/compile_commands.py lists what b2 builds, without what b2 expects to fail, plus one
-aggregate translation unit per library. Each case lints a scratch superproject whose libs/demo
-is the fixture library demo, a repository of its own as a library's submodule is. Run with the
-names of some cases to run only those."""
+tools/lint/compile_commands.py lists what b2 builds, without what b2 expects to fail, plus the
+aggregate translation units of each library: what builds only for WASI, the header of the fixture
+library component_demo's world and its programs that declare no native target, is analysed as
+wasi-sdk's clang++ builds it, with no host target, the header on wasip2 and on wasip3; a public
+header that no target compiles alone, and a target whose toolset is not configured, fail the
+database by name. Each case lints a scratch superproject whose libs/demo is the fixture library
+demo, a repository of its own as a library's submodule is, and libs/component_demo too in the cases
+of WASI. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -117,6 +121,26 @@ def prepare(root: Path) -> None:
         git(directory, 'init', '-q', '-b', 'main')
         commit(directory, 'The scratch copy')
     (root / 'tools/lint/node_modules').symlink_to(pyright_installed())
+
+
+def add_component_demo(root: Path) -> None:
+    """Places the fixture library component_demo beside demo in the scratch superproject root, a
+    repository of its own too, with this checkout's wit-bindgen and WIT, which its bindings
+    need."""
+    shutil.copytree(harness.FIXTURES / 'component_demo', root / 'libs/component_demo',
+                    ignore=harness.built)
+    git(root / 'libs/component_demo', 'init', '-q', '-b', 'main')
+    commit(root / 'libs/component_demo', 'The fixture')
+    harness.link_wasi_tools(root)
+
+
+def compile_database(root: Path) -> subprocess.CompletedProcess:
+    """Runs the scratch superproject's compile_commands.py, writing root/compile database/."""
+    script = root / 'tools/lint/compile_commands.py'
+    out = root / 'compile database/compile_commands.json'
+    return subprocess.run([sys.executable, str(script), str(root), str(out)],
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                          check=False, timeout=harness.TIMEOUT)
 
 
 def lint(root: Path, *arguments: str) -> subprocess.CompletedProcess:
@@ -243,16 +267,118 @@ def test_compile_database_lists_what_b2_builds(root):
     for command in (handler[0], aggregates[1]):
         assert boost_sees_no_exceptions(root, command), command
     assert not boost_sees_no_exceptions(root, aggregates[0]), aggregates[0]
+    # A test project whose requirements name a library b2 builds, as xstate's do, puts the source
+    # of a headers-alone translation unit under a directory of properties; the unit's test is
+    # still found by its object, and the aggregate's command without exceptions with it.
+    jamfile = root / 'libs/demo/test/Jamfile'
+    text = jamfile.read_text()
+    harness.replace(jamfile, 'import webcpp ;\n',
+                    'project : requirements <library>/webcpp//boost_json ;\n\nimport webcpp ;\n')
+    completed = compile_database(root)
+    assert completed.returncode == 0, completed.stdout[-6000:]
+    entries = json.loads(out.read_text())
+    aggregates = [entry['arguments'] for entry in entries if Path(entry['file']) == aggregate]
+    assert ['-fno-exceptions' in command for command in aggregates] == [False, True], aggregates
+    jamfile.write_text(text)
     # A library whose public headers headers-alone does not compile has no command to give its
     # aggregate, and is named.
     harness.replace(root / 'libs/demo/test/Jamfile', 'webcpp.headers-alone demo : ../include ;\n',
                     '')
-    completed = subprocess.run([sys.executable, str(script), str(root), str(out)],
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                               check=False, timeout=harness.TIMEOUT)
+    completed = compile_database(root)
     assert completed.returncode == 1, completed.stdout[-6000:]
     assert 'libs/demo' in completed.stdout and 'headers-alone' in completed.stdout, (
         completed.stdout[-6000:])
+
+
+WORLD = 'libs/component_demo/include/webcpp/component_demo/world.hpp'
+
+
+def test_compile_database_reads_what_only_wasi_builds(root):
+    add_component_demo(root)
+    completed = compile_database(root)
+    assert completed.returncode == 0, completed.stdout[-6000:]
+    entries = json.loads((root / 'compile database/compile_commands.json').read_text())
+    by_file: dict[Path, list[list[str]]] = {}
+    for entry in entries:
+        by_file.setdefault(Path(entry['file']), []).append(entry['arguments'])
+    # The header of the world builds only for WASI, so the library's aggregate does: once as
+    # wasip2 builds it, without exceptions and with the macro of p2, and once as wasip3 does,
+    # with exceptions and the macro of p3, each with the bindings of its version.
+    aggregate = root / 'bin/aggregate/component_demo.cpp'
+    assert aggregate.read_text().splitlines()[-2:] == [
+        '#include <webcpp/component_demo.hpp>', '#include <webcpp/component_demo/world.hpp>'], (
+        aggregate.read_text())
+    wasip2, wasip3 = by_file[aggregate]
+    for command, version, without in ((wasip2, 'p2', True), (wasip3, 'p3', False)):
+        assert f'--target=wasm32-wasi{version}' in command, command
+        assert ('-fno-exceptions' in command) == without, command
+        assert f'-DWEBCPP_COMPONENT_DEMO_{version.upper()}' in command, command
+        assert any(word.endswith(f'generated/component_demo/demo-bindings-{version}')
+                   for word in command), command
+    # The programs that declare no native target are analysed as wasip2 builds them, once; the
+    # native one natively.
+    for source in ('bindings.cpp', 'answers.cpp'):
+        commands = by_file[root / 'libs/component_demo/test' / source]
+        assert len(commands) == 1 and '--target=wasm32-wasip2' in commands[0], commands
+    native = by_file[root / 'libs/component_demo/test/native_alone.cpp']
+    assert len(native) == 1 and not any(word.startswith('--target') for word in native[0]), native
+    # demo's aggregate builds natively, and keeps its native command and the one without
+    # exceptions; the handler is analysed once, natively without exceptions.
+    demo = by_file[root / 'bin/aggregate/demo.cpp']
+    assert ['-fno-exceptions' in command for command in demo] == [False, True], demo
+    for command in demo:
+        assert not any(word.startswith('--target') for word in command), command
+    handler = by_file[root / 'tools/throw_exception.cpp']
+    assert len(handler) == 1 and '-fno-exceptions' in handler[0], handler
+    assert not any(word.startswith('--target') for word in handler[0]), handler
+    # A public header that no target compiles alone fails the database, naming it.
+    jamfile = root / 'libs/component_demo/test/Jamfile'
+    text = jamfile.read_text()
+    harness.replace(jamfile, 'webcpp.headers-alone component_demo : ../include : '
+                    'component_demo/world.hpp\n  : <library>/webcpp/component_demo//demo-http : '
+                    'wasip2 wasip3 ;\n', '')
+    completed = compile_database(root)
+    assert completed.returncode == 1, completed.stdout[-6000:]
+    assert f'no target compiles alone {WORLD}' in completed.stdout, completed.stdout[-6000:]
+    jamfile.write_text(text)
+    # A target some library declares, whose toolset is not configured, fails it, naming the
+    # target and its toolset.
+    config = root / '.local/user-config.jam'
+    configured = config.read_text()
+    harness.configure(root, re.sub(r'^using clang : wasip3 :.*?;\n', '', configured,
+                                   flags=re.MULTILINE | re.DOTALL))
+    completed = compile_database(root)
+    assert completed.returncode == 1, completed.stdout[-6000:]
+    for text in ('b2 could not dry-run the programs for wasip3, which libs/component_demo, '
+                 'libs/demo declare, with toolset=clang-wasip3',
+                 'is that toolset configured'):
+        assert text in completed.stdout, (text, completed.stdout[-6000:])
+
+
+def test_clang_tidy_reads_what_only_wasi_builds(root):
+    prepare(root)
+    add_component_demo(root)
+    # The fixture is clean, analysed as wasi-sdk's clang++ builds it.
+    expect_clean(lint(root))
+    # A finding in each branch of the header of the world, which only wasip2's aggregate and only
+    # wasip3's read, and one in a program that declares no native target, behind __wasip2__,
+    # which a host target given to clang-tidy would hide.
+    harness.replace(root / WORLD, '    return "p2";\n}\n',
+                    '    return "p2";\n}\n\n/** Planted.\n\n    @return 2.\n*/\n'
+                    'constexpr int PlantedTwo() noexcept {\n    return 2;\n}\n')
+    harness.replace(root / WORLD, '    return "p3";\n}\n',
+                    '    return "p3";\n}\n\n/** Planted.\n\n    @return 3.\n*/\n'
+                    'constexpr int PlantedThree() noexcept {\n    return 3;\n}\n')
+    program = 'libs/component_demo/test/bindings.cpp'
+    append(root, program, '\n#ifdef __wasip2__\nnamespace {\n\nint PlantedWasi() {\n'
+                          '    return 2;\n}\n\n}  // namespace\n#endif\n')
+    result = lint(root)
+    expect_alone(result, 'clang-tidy', [f"{at(root, WORLD, 'PlantedTwo')}",
+                                        f"{at(root, WORLD, 'PlantedThree')}",
+                                        f"{at(root, program, 'PlantedWasi')}"])
+    for name in ('PlantedTwo', 'PlantedThree', 'PlantedWasi'):
+        assert f"invalid case style for function '{name}'" in result.stdout, (
+            name, result.stdout[-6000:])
 
 
 def boost_sees_no_exceptions(root: Path, command: list[str]) -> bool:
@@ -906,9 +1032,11 @@ CASES = [
     test_clean_tree_passes,
     test_no_library_passes,
     test_compile_database_lists_what_b2_builds,
+    test_compile_database_reads_what_only_wasi_builds,
     test_clang_format,
     test_clang_tidy_reads_what_b2_expects_to_build,
     test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles,
+    test_clang_tidy_reads_what_only_wasi_builds,
     test_blocking_io_context_call,
     test_fluent_chain,
     test_returns_this,

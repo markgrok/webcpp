@@ -13,11 +13,16 @@ it is not there; `b2 doc` builds the index page from every library's meta/librar
 linking each page in the tree, or, with -sWEBCPP_INDEX=site, where the site serves it; a page
 shows the counts its build computes, of the programs b2 recorded and of the twins of the fixture
 library oracle_demo, whose divergent twin's output the page must show; and a page's link into
-another library's page, in either layout, is checked against that page, built first.
+another library's page, in either layout, is checked against that page, built first; the
+reference of the fixture library component_demo parses natively, with the requirements its doc
+Jamfile gives, the header of its world, which builds only for WASI, documents it and fails on an
+undocumented function of it, and without those requirements fails naming the header; and MrDocs
+and clang++ given at paths that hold a space are found.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is; the cases of
-twins and links add oracle_demo beside it. Run with the names of some cases to run only those.
+twins and links add oracle_demo beside it, and the case of WASI component_demo. Run with the
+names of some cases to run only those.
 """
 
 from __future__ import annotations
@@ -35,6 +40,9 @@ import harness
 HEADER = 'libs/demo/include/webcpp/demo/answer.hpp'
 
 PAGE = 'libs/demo/doc/html/index.html'
+
+COMPONENT_PAGE = 'libs/component_demo/doc/html/index.html'
+WORLD = 'libs/component_demo/include/webcpp/component_demo/world.hpp'
 
 ORACLE_PAGE = 'libs/oracle_demo/doc/html/index.html'
 ORACLE_SOURCE = 'libs/oracle_demo/doc/oracle_demo.adoc'
@@ -82,6 +90,17 @@ def add_oracle_demo(root: Path) -> None:
     shutil.copytree(harness.FIXTURES / 'oracle_demo', root / 'libs/oracle_demo',
                     ignore=harness.built)
     subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=root / 'libs/oracle_demo', check=True)
+
+
+def add_component_demo(root: Path) -> None:
+    """Places the fixture library component_demo beside demo in the scratch superproject root, a
+    git repository of its own too, with this checkout's wit-bindgen and WIT, which its bindings
+    need."""
+    shutil.copytree(harness.FIXTURES / 'component_demo', root / 'libs/component_demo',
+                    ignore=harness.built)
+    subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=root / 'libs/component_demo',
+                   check=True)
+    harness.link_wasi_tools(root)
 
 
 def add_third(root: Path) -> None:
@@ -469,6 +488,58 @@ def test_links_into_two_pages(root):
                    'of third: third#quick-start')
 
 
+def test_reference_reads_a_header_built_only_for_wasi(root):
+    prepare(root)
+    add_component_demo(root)
+    # The header of the world builds only for WASI. The reference parses it natively, with the
+    # requirements of the doc Jamfile: the bindings of wasip2, which their -headers target
+    # generates on the native toolset, and the macro of p2.
+    harness.expect(harness.run_b2(root, 'libs/component_demo/doc//reference'), True)
+    reference = next((root / 'bin/libs/component_demo/doc').rglob('reference.adoc')).read_text()
+    assert '[#webcpp-component_demo-text_of]' in reference, reference
+    assert 'Returns the text a string of the world' in reference, reference
+    assert (root / 'bin/generated/component_demo/demo-bindings-p2/demo_world.h').is_file()
+    # The page shows it, and counts the header among those compiled alone, though only WASI
+    # compiles it.
+    harness.expect(harness.run_b2(root, 'libs/component_demo/doc'), True)
+    text = page_text(root, COMPONENT_PAGE)
+    assert ('component_demo has 5 tests: 2 run natively, 4 on wasip2 and 4 on wasip3; wasmtime '
+            'serves 1 of them. Each of its 2 headers compiles alone') in text, text
+    # An undocumented function of the header fails the reference, naming it.
+    edit(root, WORLD, '}  // namespace webcpp::component_demo',
+         'int undocumented(int value);\n\n}  // namespace webcpp::component_demo')
+    harness.expect(harness.run_b2(root, 'libs/component_demo/doc//reference'), False,
+                   f'{at(root, WORLD, "int undocumented(")}:',
+                   'undocumented: function is undocumented')
+    edit(root, WORLD, 'int undocumented(int value);\n\n', '')
+    # Without the requirements a native parse needs, the header is not parsed, and the build
+    # fails naming it.
+    edit(root, 'libs/component_demo/doc/Jamfile',
+         ' : <library>/webcpp/component_demo//demo-bindings-p2-headers\n'
+         '  <define>WEBCPP_COMPONENT_DEMO_P2 ;\n', ' ;\n')
+    harness.expect(harness.run_b2(root, 'libs/component_demo/doc//reference'), False,
+                   f'{at(root, WORLD, "#error")}:2: error: "webcpp/component_demo/world.hpp '
+                   'builds for wasip2 or wasip3')
+
+
+def test_tools_given_at_paths_with_spaces(root):
+    # b2 splits the value of -s at its spaces; MrDocs and clang++ are found at a path that holds
+    # one, as the scratch superproject's does.
+    prepare(root)
+    clang = shutil.which('clang++')
+    assert clang, 'no clang++ on PATH'
+    tools = root / 'linked tools'
+    tools.mkdir()
+    for name, tool in (('mrdocs', mrdocs_root() / 'bin/mrdocs'), ('clang++', Path(clang))):
+        wrapper = tools / name
+        wrapper.write_text(f'#!/bin/sh\nexec "{tool}" "$@"\n')
+        wrapper.chmod(0o755)
+    (root / '.local/mrdocs').unlink()
+    harness.expect(harness.run_b2(root, f'-sMRDOCS={tools}/mrdocs', f'-sCLANG={tools}/clang++',
+                                  'libs/demo/doc'), True)
+    assert (root / PAGE).is_file()
+
+
 def test_page_outside_git(root):
     # A library that is not a git checkout loads, and builds what needs no git; only the check
     # of its page, which reads the files git lists, names it.
@@ -580,6 +651,8 @@ CASES = [
     test_page_shows_twins_and_their_counts,
     test_links_between_pages,
     test_links_into_two_pages,
+    test_reference_reads_a_header_built_only_for_wasi,
+    test_tools_given_at_paths_with_spaces,
     test_page_outside_git,
     test_counts_warn_and_fail_through_the_build,
     test_index_lists_every_library,

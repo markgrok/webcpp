@@ -612,7 +612,8 @@ def test_served_test_passes_and_fails_as_a_run(root: Path) -> None:
     index = matrix(out / 'index.html')
     assert index.verdict('component_demo', 'wasip2') == 'pass'
     component = matrix(out / 'component_demo.html')
-    assert component.rows() == {'bindings', 'native_alone', 'answers'}, component.rows()
+    assert component.rows() == {'bindings', 'native_alone', 'answers', 'alone-component_demo',
+                                'alone-component_demo-world'}, component.rows()
     assert component.cells[('answers', 'Type')].text == 'serve'
     assert component.verdict('answers', 'wasip2') == 'pass'
     assert component.verdict('bindings', 'wasip2') == 'pass'

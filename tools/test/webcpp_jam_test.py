@@ -5,15 +5,17 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, and only
-once per target; wasip2 builds without exceptions and wasip3 with them, and a native build without
-exceptions is the user's own request, which links the handler as wasip2 does; no variant is built
-without RTTI; an example is compared with its expected output, its standard input its .input file or
-nothing; every public header compiles alone; `b2 declared-targets` lists what each library declares;
-a Boost.Test suite is built and run natively only, its framework always with exceptions;
+"""Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, and
+only once per target; wasip2 builds without exceptions and wasip3 with them, and a native build
+without exceptions is the user's own request, which links the handler as wasip2 does; no variant
+is built without RTTI; an example is compared with its expected output, its standard input its
+.input file or nothing; every public header compiles alone, each call of webcpp.headers-alone
+taking the headers its globs match, with requirements and targets of its own, and a header two
+calls take or a glob that matches none refused; `b2 declared-targets` lists what each library
+declares; a Boost.Test suite is built and run natively only, its framework always with exceptions;
 Boost.JSON's definitions link on every target; and every program sees C++20, the wasip2 one alone
-without exceptions. Each case builds a scratch superproject with the fixture library demo. Run with
-the names of some cases to run only those."""
+without exceptions. Each case builds a scratch superproject with the fixture library demo. Run
+with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -257,6 +259,13 @@ def test_a_wrong_declaration_is_refused(root):
         # A wrong include root would otherwise check no header at all, and pass.
         ('webcpp.headers-alone demo : include ;\n',
          'webcpp.headers-alone: include holds neither webcpp/demo.hpp nor a header under'),
+        # A header two calls take would be compiled alone twice, under one name.
+        ('webcpp.headers-alone demo : ../include ;\n'
+         'webcpp.headers-alone demo : ../include : demo/answer.hpp : : wasip2 ;\n',
+         'webcpp.headers-alone demo: webcpp/demo/answer.hpp is taken by two calls'),
+        # A glob that matches no public header restricts the call to nothing.
+        ('webcpp.headers-alone demo : ../include : demo/nothing*.hpp ;\n',
+         'webcpp.headers-alone demo: demo/nothing*.hpp matches no public header'),
     ):
         (root / 'libs/demo/test/Jamfile').write_text('import webcpp ;\n\n' + declarations)
         result = harness.run_b2(root, 'libs/demo/test')
@@ -369,6 +378,40 @@ def test_headers_alone_catches_a_missing_include(root):
     assert re.search(r'^\.\.\.failed .*alone-demo-broken', result.stdout, re.MULTILINE), (
         result.stdout[-4000:])
     assert passed(result) == NATIVE_DEMO, (passed(result), result.stdout[-4000:])
+
+
+def test_headers_alone_takes_some_headers_with_their_own_requirements_and_targets(root):
+    # Two calls, each taking headers of its own: demo.hpp natively, and every header under demo/
+    # on wasip2 only, compiled with a macro of its own, as a header that builds only for WASI is
+    # with the bindings and the macro it needs.
+    (root / 'libs/demo/test/Jamfile').write_text(
+        'import webcpp ;\n'
+        '\n'
+        'webcpp.targets native wasip2 wasip3 ;\n'
+        '\n'
+        'webcpp.headers-alone demo : ../include : demo.hpp : : native ;\n'
+        'webcpp.headers-alone demo : ../include : demo/*.hpp : <define>WEBCPP_DEMO_PLANTED\n'
+        '  : wasip2 ;\n')
+    for request, expected in (((), {'alone-demo'}), (WASIP2, {'alone-demo-answer'}),
+                              (WASIP3, set())):
+        result = harness.run_b2(root, *request, 'libs/demo/test')
+        harness.expect(result, True)
+        assert passed(result) == expected, (request, passed(result), result.stdout[-4000:])
+    native = compile_lines(root, 'libs/demo/test')
+    assert set(native) == {'alone-demo.cpp'}, native
+    assert '-DWEBCPP_DEMO_PLANTED' not in native['alone-demo.cpp'][0], native
+    wasip2 = compile_lines(root, *WASIP2, 'libs/demo/test')
+    assert set(wasip2) == {'alone-demo-answer.cpp'}, wasip2
+    assert '-DWEBCPP_DEMO_PLANTED' in wasip2['alone-demo-answer.cpp'][0], wasip2
+    # The requirements are the translation unit's: a header that builds only with them fails
+    # alone without them.
+    harness.replace(root / 'libs/demo/include/webcpp/demo/answer.hpp', 'namespace webcpp::demo {\n',
+                    '#ifndef WEBCPP_DEMO_PLANTED\n#error "planted"\n#endif\n\n'
+                    'namespace webcpp::demo {\n')
+    harness.expect(harness.run_b2(root, *WASIP2, 'libs/demo/test'), True)
+    harness.replace(root / 'libs/demo/test/Jamfile', ' : <define>WEBCPP_DEMO_PLANTED\n', ' :\n')
+    result = harness.run_b2(root, '-a', *WASIP2, 'libs/demo/test')
+    harness.expect(result, False, 'answer.hpp:11:2: error: "planted"')
 
 
 def compile_lines(root, *request):
@@ -643,6 +686,7 @@ CASES = [
     test_example_input_change_reruns,
     test_example_without_input_reads_nothing,
     test_headers_alone_catches_a_missing_include,
+    test_headers_alone_takes_some_headers_with_their_own_requirements_and_targets,
     test_boost_test_passes_natively,
     test_boost_test_failure_is_red_and_named,
     test_boost_test_never_built_for_wasm,

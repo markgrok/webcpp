@@ -10,6 +10,12 @@ import webcpp ;
 
 webcpp.targets native wasip2 wasip3 ;
 
+# Each public header compiles alone: the library's own on every target, and the header of the
+# world's bindings only on wasip2 and wasip3, with the bindings and the macro of each.
+webcpp.headers-alone component_demo : ../include : component_demo.hpp ;
+webcpp.headers-alone component_demo : ../include : component_demo/world.hpp
+  : <library>/webcpp/component_demo//demo-http : wasip2 wasip3 ;
+
 # On wasip2 and wasip3, a translation unit that includes the world's
 # bindings compiles, and the bindings' own C is compiled with it.
 webcpp.compile bindings : bindings.cpp : <library>/webcpp/component_demo//demo-bindings

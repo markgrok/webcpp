@@ -24,16 +24,18 @@
 # every Python file passes Pyright and keeps to 100 columns.
 #
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
-# for the libraries' tests and examples, natively and with the host's default toolset, plus one
-# aggregate translation unit per library, through which every public header is analysed; and, as
-# b2 compiles them with exception-handling=off, the handler tools/throw_exception.cpp and each
-# aggregate again, so that what only a build without exceptions compiles is analysed too. That
+# for the libraries' tests and examples, natively and with the host's default toolset, and, for
+# a program that declares no native target, as its first WASI target compiles it (wasip2, else
+# wasip3); plus each library's aggregate translation unit, through which every public header is
+# analysed: natively, and again as b2 compiles it with exception-handling=off, with the handler
+# tools/throw_exception.cpp, so that what only a build without exceptions compiles is analysed
+# too; or, for a library whose headers build only for WASI, on wasip2 and on wasip3. That
 # database leaves out a source b2 expects not to compile (webcpp.compile-fail): an analysis
 # would stop at the error the test exists to show. It is left out of clang-tidy only, the one
 # rule that compiles: clang-format and the rules that read text read it like any other C++
 # file. A run-fail test's sources compile, and are analysed. A source that only some targets
-# build (a native_only.cpp that stops with #error for WASI) is analysed natively, as b2 builds
-# it there.
+# build (a native_only.cpp that stops with #error for WASI) is analysed as the first of them
+# builds it.
 #
 # clang-tidy is most of the lint's time, so it can be split: --shard K/N analyses the K-th of N
 # interleaved slices of the files and runs every other rule as before. The N shards together
@@ -168,28 +170,50 @@ fi
 rule 'clang-tidy'
 if python3 tools/lint/compile_commands.py "${repository_root}" \
         "${work_directory}/database/compile_commands.json"; then
-    # The files to analyse, and the compiler the commands name.
+    # The files to analyse, each with whether its commands name wasi-sdk's clang++ (wasi) or
+    # another compiler (host), and a compiler of the host's, when one is named.
     python3 - "${work_directory}/database/compile_commands.json" "${work_directory}/analysed" \
         > "${work_directory}/compiler" <<'PYTHON'
 import json
+import os
 import sys
+
+
+def wasi_sdk(compiler):
+    """Whether compiler is a wasi-sdk's clang++, which has its sysroot beside it."""
+    real = os.path.realpath(compiler)
+    return os.path.isdir(os.path.join(os.path.dirname(os.path.dirname(real)), 'share',
+                                      'wasi-sysroot'))
+
 
 with open(sys.argv[1]) as opened:
     entries = json.load(opened)
+kinds = {}
+for entry in entries:
+    kind = 'wasi' if wasi_sdk(entry['arguments'][0]) else 'host'
+    if kinds.setdefault(entry['file'], kind) != kind:
+        sys.exit(f'lint: {entry["file"]} is compiled both by wasi-sdk\'s clang++ and by '
+                 'another compiler; clang-tidy reads one --target for it')
 with open(sys.argv[2], 'w') as analysed:
-    for file in sorted({entry['file'] for entry in entries}):
-        print(file, file=analysed)
-print(entries[0]['arguments'][0])
+    for file in sorted(kinds):
+        print(f'{kinds[file]} {file}', file=analysed)
+hosts = [entry['arguments'][0] for entry in entries if kinds[entry['file']] == 'host']
+print(hosts[0] if hosts else '')
 PYTHON
 
     # The native commands name the host's compiler, which knows where its own system headers
     # are; the wasi-sdk clang-tidy that reads them does not. It is told the target of that
     # compiler and, on macOS, the SDK: facts about the machine the analysis runs on, not build
-    # flags.
-    host_target="$("$(cat "${work_directory}/compiler")" -dumpmachine)"
+    # flags. A command of wasi-sdk's clang++ (a program or an aggregate built only for WASI)
+    # names its own --target, and its sysroot is the one clang-tidy's wasi-sdk knows: it is
+    # told neither.
+    host_target=''
     host_sysroot=''
-    if [ "$(uname -s)" = Darwin ] && command -v xcrun >/dev/null 2>&1; then
-        host_sysroot="$(xcrun --show-sdk-path)"
+    if [ -n "$(cat "${work_directory}/compiler")" ]; then
+        host_target="$("$(cat "${work_directory}/compiler")" -dumpmachine)"
+        if [ "$(uname -s)" = Darwin ] && command -v xcrun >/dev/null 2>&1; then
+            host_sysroot="$(xcrun --show-sdk-path)"
+        fi
     fi
 
     # clang-tidy reads one file per run and takes seconds on one that includes Boost, so the
@@ -198,10 +222,13 @@ PYTHON
     # The bash -c of xargs, below, runs it.
     # shellcheck disable=SC2329
     tidy_one() {
-        local index="$1" file="$2"
-        local arguments=(-p "${work_directory}/database" "--extra-arg=--target=${host_target}")
-        if [ -n "${host_sysroot}" ]; then
-            arguments+=(--extra-arg=-isysroot "--extra-arg=${host_sysroot}")
+        local index="$1" kind="$2" file="$3"
+        local arguments=(-p "${work_directory}/database")
+        if [ "${kind}" = host ]; then
+            arguments+=("--extra-arg=--target=${host_target}")
+            if [ -n "${host_sysroot}" ]; then
+                arguments+=(--extra-arg=-isysroot "--extra-arg=${host_sysroot}")
+            fi
         fi
         local status=0
         "${clang_tidy}" --quiet "${arguments[@]}" "${file}" \
@@ -216,16 +243,16 @@ PYTHON
     # directory, the tests of another).
     listed=0
     analysed=0
-    while IFS= read -r file; do
+    while IFS=' ' read -r kind file; do
         listed=$((listed + 1))
         [ $(((listed - 1) % shard_count + 1)) -eq "${shard_index}" ] || continue
         analysed=$((analysed + 1))
         printf '%s\n' "${file}" >> "${work_directory}/slice"
-        printf '%s\0%s\0' "${analysed}" "${file}"
+        printf '%s\0%s\0%s\0' "${analysed}" "${kind}" "${file}"
     done < "${work_directory}/analysed" > "${work_directory}/plan"
 
     if [ "${analysed}" -gt 0 ]; then
-        xargs -0 -n 2 -P "$(getconf _NPROCESSORS_ONLN)" bash -c 'tidy_one "$@"' tidy \
+        xargs -0 -n 3 -P "$(getconf _NPROCESSORS_ONLN)" bash -c 'tidy_one "$@"' tidy \
             < "${work_directory}/plan"
     fi
     # clang-tidy exits 1 on a finding. Any other failing status is a run that did not finish

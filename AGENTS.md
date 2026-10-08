@@ -513,7 +513,7 @@ rule that failed.
 | Rule | What fails |
 | --- | --- |
 | clang-format | a C++ file not formatted as `.clang-format` says (Google-based, 4 spaces, 100 columns); `clang-format -i` fixes it |
-| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry run: every test and example natively, plus one aggregate translation unit per library that includes every public header (`bin/aggregate/<name>.cpp`); and, as b2 compiles them with `exception-handling=off`, the handler `tools/throw_exception.cpp` and each aggregate again, so that what only a build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
+| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, and each program that declares no native target as wasip2 builds it (else wasip3), with wasi-sdk's `clang++` and its own `--target`, to which the lint adds no host target or SDK; plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, and again, with the handler `tools/throw_exception.cpp`, as b2 compiles it with `exception-handling=off`, so that what only a build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too; or, for a library whose headers build only for WASI, on wasip2 (without exceptions) and on wasip3 (with them), each reading its version's branch. A public header without a headers-alone translation unit on any target, and a declared target whose toolset is not configured, fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
 | io_context::run | a call of Boost.Asio's `run`, `run_one` or `run_for`, which block; a driver drains with `poll` and `poll_one` |
 | fluent chains | three calls chained in one expression |
 | returns `*this` | a function other than an assignment operator returning `*this` |
@@ -583,7 +583,14 @@ single page, from the library's Doc Comments. `webcpp.reference <name> ;` in
 `doc/Jamfile` declares it; `tools/doc/reference.py` runs it:
 
 - the input is a compilation database of one aggregate translation unit,
-  which includes every public header (the same one the lint analyses);
+  which includes every public header (the same one the lint analyses), read
+  natively with the include directories and defines of the library's target
+  and of the requirements `webcpp.reference <name> : <requirements> * ;`
+  gives: a library whose headers build only for WASI gives those a native
+  parse needs, the explicit target `<bindings>-headers` of
+  `webcpp.wit-bindings`, which generates the bindings on any toolset, and the
+  macro of one version; a header the reference cannot parse fails it, naming
+  the header;
 - the shared settings are `tools/doc/mrdocs.yml.in`: `generator: adoc`,
   `multipage: false`, `embedded: true`, `warn-as-error: true`,
   `auto-function-metadata: false`, `auto-relates: false`, every `warn-*` on,
@@ -903,7 +910,7 @@ webcpp.compile      <name> : <sources> + : <requirements> * : <targets> * ;
 webcpp.compile-fail <name> : <sources> + : <requirements> * : <targets> * ;
 webcpp.boost-test   <name> : <sources> + : <requirements> * ;
 webcpp.example      <source> : <requirements> * : <targets> * ;
-webcpp.headers-alone <library> : <include-root> ;
+webcpp.headers-alone <library> : <include-root> : <only> * : <requirements> * : <targets> * ;
 ```
 
 | Rule | Passes when | Notes |
@@ -915,10 +922,10 @@ webcpp.headers-alone <library> : <include-root> ;
 | `webcpp.compile-fail` | the sources do not compile | left out of clang-tidy |
 | `webcpp.boost-test` | every case of the Boost.Test suite passes | native only, whatever the Jamfile declares; the header-only framework, `tools/boost_test_runner.cpp`, is one object of the suite's, always compiled with exceptions |
 | `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | its standard input is `<stem>.input` beside it, else empty, never the terminal, on every target (wasmtime passes it through); run through `testing.launcher` for wasm, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again, and `<stem>.input` is a source of the run |
-| `webcpp.headers-alone` | each public header compiles alone | one test per header, `alone-<path>` with `/` as `-` (`alone-xactor-scheduler`), against `/webcpp/<library>//<library>` |
+| `webcpp.headers-alone` | each public header compiles alone | one test per header, `alone-<path>` with `/` as `-` (`alone-xactor-scheduler`), against `/webcpp/<library>//<library>` and the requirements given, for the targets given or the Jamfile's; `only` restricts a call to the public headers its globs match, relative to `<include-root>/webcpp/` (`wasi/http/response.hpp`), a glob that matches none stopping the build; a library may call it several times, and a header two calls take stops the build, naming it |
 
 The rules of the doc Jamfiles are in chapter 8: `webcpp.doc <library> :
-<page>.adoc ;`, `webcpp.reference <library> ;` and, for the superproject's
+<page>.adoc ;`, `webcpp.reference <library> : <requirements> * ;` and, for the superproject's
 index, `webcpp.index <page>.adoc ;`. Those of an oracle's Jamfile,
 `libs/<name>/test/oracle/Jamfile`, are in chapter 5: `webcpp.original`,
 `webcpp.twins`, `webcpp.cases` and `webcpp.lane`.

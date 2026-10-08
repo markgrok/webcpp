@@ -9,9 +9,7 @@
 #include <demo_world.h>
 
 // A world-level name of the bindings, renamed demo_world.
-static_assert(sizeof(demo_world_string_t) > 0);
-
 int main() {
-    demo_world_string_t text{};
+    const demo_world_string_t text{};
     return static_cast<int>(text.len);
 }

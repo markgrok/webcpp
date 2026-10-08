@@ -1,0 +1,28 @@
+// Copyright (c) 2026 WebCpp.org
+//
+// Distributed under the Boost Software License, Version 1.0. (See
+// accompanying file LICENSE_1_0.txt or copy at
+// https://www.boost.org/LICENSE_1_0.txt)
+
+= component_demo: the fixture of a world
+:toc: left
+:toclevels: 2
+:idprefix:
+:sectanchors:
+
+component_demo is a library with a world of its own, whose C bindings
+wit-bindgen generates for wasip2 and wasip3, which the tests of the build place
+in `libs/component_demo` of a scratch superproject.
+
+[#holds]
+== What it holds
+
+component_demo has {n-tests} tests: {n-tests-native} run natively,
+{n-tests-wasip2} on wasip2 and {n-tests-wasip3} on wasip3; wasmtime serves
+{n-served} of them. Each of its {n-headers} headers compiles alone, the header
+of the world's bindings on wasip2 and wasip3 only.
+
+[#reference]
+== Reference
+
+include::{reference}[leveloffset=+1]

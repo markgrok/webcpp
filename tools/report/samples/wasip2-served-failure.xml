@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <build format="1.0" version="5.5.3"> 
-  <directory><![CDATA[$TMPDIR/webcpp scratch w1uayx7b]]></directory> 
-  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp scratch w1uayx7b/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=wasip2-served-failure.xml" "toolset=clang-wasip2" "testing.launcher=wasmtime" "libs/component_demo/test"]]></command> 
+  <directory><![CDATA[$TMPDIR/webcpp scratch b8ay_ul6]]></directory> 
+  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp scratch b8ay_ul6/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=wasip2-served-failure.xml" "toolset=clang-wasip2" "testing.launcher=wasmtime" "libs/component_demo/test"]]></command> 
   <targets> 
     <target> 
       <name><![CDATA[.//boost_version.o]]></name> 
@@ -12,12 +12,58 @@
       <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>boost_version.o]]></jam-target> 
     </target> 
     <target> 
+      <name><![CDATA[libs/component_demo/test//alone-component_demo.cpp]]></name> 
+      <dependencies> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/component_demo/test]]></path> 
+      <jam-target><![CDATA[<pbin/libs/component_demo/test>alone-component_demo.cpp]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/component_demo/test//alone-component_demo.o]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/component_demo/test//alone-component_demo.cpp]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-component_demo.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/component_demo/test//alone-component_demo.test]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/component_demo/test//alone-component_demo.o]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-component_demo.test]]></jam-target> 
+    </target> 
+    <target> 
       <name><![CDATA[libs/component_demo//demo-bindings-p2-c.o]]></name> 
       <dependencies> 
-        <dependency><![CDATA[libs/component_demo//$TMPDIR/webcpp scratch w1uayx7b/bin/generated/component_demo/demo-bindings-p2/demo_world.c]]></dependency> 
+        <dependency><![CDATA[libs/component_demo//$TMPDIR/webcpp scratch b8ay_ul6/bin/generated/component_demo/demo-bindings-p2/demo_world.c]]></dependency> 
       </dependencies> 
       <path><![CDATA[bin/libs/component_demo/clang-darwin-wasip2/debug/exception-handling-off/link-static/target-os-wasi]]></path> 
       <jam-target><![CDATA[<pbin/libs/component_demo/clang-darwin-wasip2/debug/exception-handling-off/link-static/target-os-wasi>demo-bindings-p2-c.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/component_demo/test//alone-component_demo-world.cpp]]></name> 
+      <dependencies> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/component_demo/test]]></path> 
+      <jam-target><![CDATA[<pbin/libs/component_demo/test>alone-component_demo-world.cpp]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/component_demo/test//alone-component_demo-world.o]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/component_demo/test//alone-component_demo-world.cpp]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-component_demo-world.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/component_demo/test//alone-component_demo-world.test]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/component_demo/test//alone-component_demo-world.o]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-component_demo-world.test]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/component_demo/test//bindings.o]]></name> 
@@ -55,7 +101,7 @@
       <name><![CDATA[libs/component_demo/test//answers.wasm]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/component_demo/test//answers.o]]></dependency> 
-        <dependency><![CDATA[libs/component_demo//$TMPDIR/webcpp scratch w1uayx7b/bin/generated/component_demo/demo-bindings-p2/demo_world_component_type.o]]></dependency> 
+        <dependency><![CDATA[libs/component_demo//$TMPDIR/webcpp scratch b8ay_ul6/bin/generated/component_demo/demo-bindings-p2/demo_world_component_type.o]]></dependency> 
         <dependency><![CDATA[.//throw_exception.o]]></dependency> 
         <dependency><![CDATA[libs/component_demo//demo-bindings-p2-c.o]]></dependency> 
       </dependencies> 
@@ -79,6 +125,12 @@
       <jam-target><![CDATA[<pbin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>answers.test]]></jam-target> 
     </target> 
   </targets> 
+  <test type="COMPILE" name="component_demo/alone-component_demo"> 
+    <target><![CDATA[libs/component_demo/test//alone-component_demo.test]]></target> 
+  </test> 
+  <test type="COMPILE" name="component_demo/alone-component_demo-world"> 
+    <target><![CDATA[libs/component_demo/test//alone-component_demo-world.test]]></target> 
+  </test> 
   <test type="COMPILE" name="component_demo/bindings"> 
     <target><![CDATA[libs/component_demo/test//bindings.test]]></target> 
     <source><![CDATA[libs/component_demo/test/bindings.cpp]]></source> 
@@ -91,15 +143,47 @@
     <target><![CDATA[libs/component_demo/test//answers.test]]></target> 
     <source><![CDATA[libs/component_demo/test/answers.cpp]]></source> 
   </test> 
-  <action status="0" start="2026-10-08 10:07:11.904733000 +0000" end="2026-10-08 10:07:11.941146000 +0000" user="0.027932" system="0.006267"> 
+  <action status="0" start="2026-10-08 10:24:30.028641000 +0000" end="2026-10-08 10:24:30.034318000 +0000" user="0.001292" system="0.002740"> 
+    <name><![CDATA[webcpp%write-include]]></name> 
+    <jam-target><![CDATA[<pbin/libs/component_demo/test>alone-component_demo.cpp]]></jam-target> 
+    <path><![CDATA[bin/libs/component_demo/test/alone-component_demo.cpp]]></path> 
+    <command><![CDATA[
+    cat "$TMPDIR//jam2c136f60.000" > "bin/libs/component_demo/test/alone-component_demo.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-08 10:24:30.030287000 +0000" end="2026-10-08 10:24:30.036612000 +0000" user="0.001330" system="0.002873"> 
+    <name><![CDATA[webcpp%write-include]]></name> 
+    <jam-target><![CDATA[<pbin/libs/component_demo/test>alone-component_demo-world.cpp]]></jam-target> 
+    <path><![CDATA[bin/libs/component_demo/test/alone-component_demo-world.cpp]]></path> 
+    <command><![CDATA[
+    cat "$TMPDIR//jam2c136f61.000" > "bin/libs/component_demo/test/alone-component_demo-world.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-08 10:24:30.067193000 +0000" end="2026-10-08 10:24:30.099845000 +0000" user="0.025843" system="0.004752"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-component_demo.o]]></jam-target> 
+    <path><![CDATA[bin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-component_demo.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-zsgh4ejj/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/component_demo/include"  -c -o "bin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-component_demo.o" "bin/libs/component_demo/test/alone-component_demo.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-08 10:24:30.100148000 +0000" end="2026-10-08 10:24:30.104236000 +0000" user="0.000907" system="0.001619"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-component_demo.test]]></jam-target> 
+    <path><![CDATA[bin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-component_demo.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/component_demo/test/alone-component_demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-component_demo.test"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-08 10:24:30.069580000 +0000" end="2026-10-08 10:24:30.106215000 +0000" user="0.028703" system="0.005723"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/component_demo/test/bindings.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>bindings.o]]></jam-target> 
     <path><![CDATA[bin/libs/component_demo/test/bindings.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/bindings.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-cefwpdtd/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"$TMPDIR/webcpp scratch w1uayx7b/bin/generated/component_demo/demo-bindings-p2" -I"libs/component_demo/include"  -c -o "bin/libs/component_demo/test/bindings.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/bindings.o" "libs/component_demo/test/bindings.cpp"
+    "$TMPDIR/webcpp-local-zsgh4ejj/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"$TMPDIR/webcpp scratch b8ay_ul6/bin/generated/component_demo/demo-bindings-p2" -I"libs/component_demo/include"  -c -o "bin/libs/component_demo/test/bindings.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/bindings.o" "libs/component_demo/test/bindings.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 10:07:11.941494000 +0000" end="2026-10-08 10:07:11.945714000 +0000" user="0.000958" system="0.001698"> 
+  <action status="0" start="2026-10-08 10:24:30.106407000 +0000" end="2026-10-08 10:24:30.110194000 +0000" user="0.000952" system="0.001794"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/component_demo/test/bindings.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>bindings.test]]></jam-target> 
     <path><![CDATA[bin/libs/component_demo/test/bindings.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/bindings.test]]></path> 
@@ -107,44 +191,60 @@
     echo passed > "bin/libs/component_demo/test/bindings.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/bindings.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 10:07:11.892076000 +0000" end="2026-10-08 10:07:11.961042000 +0000" user="0.056718" system="0.009794"> 
+  <action status="0" start="2026-10-08 10:24:30.056015000 +0000" end="2026-10-08 10:24:30.127686000 +0000" user="0.058475" system="0.010633"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c]]></name> 
     <jam-target><![CDATA[<pbin/libs/component_demo/clang-darwin-wasip2/debug/exception-handling-off/link-static/target-os-wasi>demo-bindings-p2-c.o]]></jam-target> 
     <path><![CDATA[bin/libs/component_demo/clang-darwin-wasip2/debug/exception-handling-off/link-static/target-os-wasi/demo-bindings-p2-c.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-cefwpdtd/local/wasi-sdk/bin/clang++" -x c --target=wasm32-wasip2 -O0 -fno-inline -w -Werror -g  -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/component_demo/clang-darwin-wasip2/debug/exception-handling-off/link-static/target-os-wasi/demo-bindings-p2-c.o" "$TMPDIR/webcpp scratch w1uayx7b/bin/generated/component_demo/demo-bindings-p2/demo_world.c"
+    "$TMPDIR/webcpp-local-zsgh4ejj/local/wasi-sdk/bin/clang++" -x c --target=wasm32-wasip2 -O0 -fno-inline -w -Werror -g  -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/component_demo/clang-darwin-wasip2/debug/exception-handling-off/link-static/target-os-wasi/demo-bindings-p2-c.o" "$TMPDIR/webcpp scratch b8ay_ul6/bin/generated/component_demo/demo-bindings-p2/demo_world.c"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 10:07:11.853488000 +0000" end="2026-10-08 10:07:11.987426000 +0000" user="0.114122" system="0.016944"> 
+  <action status="0" start="2026-10-08 10:24:30.012742000 +0000" end="2026-10-08 10:24:30.149565000 +0000" user="0.117053" system="0.017044"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>throw_exception.o]]></jam-target> 
     <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-cefwpdtd/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o" "tools/throw_exception.cpp"
+    "$TMPDIR/webcpp-local-zsgh4ejj/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o" "tools/throw_exception.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 10:07:11.906208000 +0000" end="2026-10-08 10:07:12.040263000 +0000" user="0.115824" system="0.016328"> 
+  <action status="0" start="2026-10-08 10:24:30.068685000 +0000" end="2026-10-08 10:24:30.153286000 +0000" user="0.071522" system="0.011157"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-component_demo-world.o]]></jam-target> 
+    <path><![CDATA[bin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-component_demo-world.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-zsgh4ejj/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS -DWEBCPP_COMPONENT_DEMO_P2   -I"/opt/homebrew/opt/boost/include" -I"$TMPDIR/webcpp scratch b8ay_ul6/bin/generated/component_demo/demo-bindings-p2" -I"libs/component_demo/include"  -c -o "bin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-component_demo-world.o" "bin/libs/component_demo/test/alone-component_demo-world.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-08 10:24:30.153463000 +0000" end="2026-10-08 10:24:30.157829000 +0000" user="0.000967" system="0.001681"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-component_demo-world.test]]></jam-target> 
+    <path><![CDATA[bin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-component_demo-world.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/component_demo/test/alone-component_demo-world.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-component_demo-world.test"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-08 10:24:30.070737000 +0000" end="2026-10-08 10:24:30.203840000 +0000" user="0.115062" system="0.016168"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>answers.o]]></jam-target> 
     <path><![CDATA[bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-cefwpdtd/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"$TMPDIR/webcpp scratch w1uayx7b/bin/generated/component_demo/demo-bindings-p2" -I"libs/component_demo/include"  -c -o "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.o" "libs/component_demo/test/answers.cpp"
+    "$TMPDIR/webcpp-local-zsgh4ejj/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"$TMPDIR/webcpp scratch b8ay_ul6/bin/generated/component_demo/demo-bindings-p2" -I"libs/component_demo/include"  -c -o "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.o" "libs/component_demo/test/answers.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 10:07:12.040503000 +0000" end="2026-10-08 10:07:12.103157000 +0000" user="0.049658" system="0.012347"> 
+  <action status="0" start="2026-10-08 10:24:30.204063000 +0000" end="2026-10-08 10:24:30.264313000 +0000" user="0.047710" system="0.011890"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>answers.wasm]]></jam-target> 
     <path><![CDATA[bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.wasm]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-cefwpdtd/local/wasi-sdk/bin/clang++"    -o "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.wasm"  "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.o" "$TMPDIR/webcpp scratch w1uayx7b/bin/generated/component_demo/demo-bindings-p2/demo_world_component_type.o" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o" "bin/libs/component_demo/clang-darwin-wasip2/debug/exception-handling-off/link-static/target-os-wasi/demo-bindings-p2-c.o"       -std=c++20 -g --target=wasm32-wasip2 -mexec-model=reactor
+    "$TMPDIR/webcpp-local-zsgh4ejj/local/wasi-sdk/bin/clang++"    -o "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.wasm"  "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.o" "$TMPDIR/webcpp scratch b8ay_ul6/bin/generated/component_demo/demo-bindings-p2/demo_world_component_type.o" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o" "bin/libs/component_demo/clang-darwin-wasip2/debug/exception-handling-off/link-static/target-os-wasi/demo-bindings-p2-c.o"       -std=c++20 -g --target=wasm32-wasip2 -mexec-model=reactor
 ]]></command> 
   </action> 
-  <action status="1" start="2026-10-08 10:07:12.103460000 +0000" end="2026-10-08 10:07:12.191393000 +0000" user="0.105631" system="0.038227"> 
+  <action status="1" start="2026-10-08 10:24:30.264622000 +0000" end="2026-10-08 10:24:30.351446000 +0000" user="0.104968" system="0.035213"> 
     <name><![CDATA[webcpp-component%webcpp-component.serve-and-compare]]></name> 
     <jam-target><![CDATA[<pbin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>answers.served]]></jam-target> 
     <path><![CDATA[bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.served]]></path> 
     <command><![CDATA[
-    "python3" "$TMPDIR/webcpp scratch w1uayx7b/tools/component/serve.py"  --program 'answers.cpp in libs/component_demo/test/Jamfile' --flags="-S cli" --component "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.wasm" --requests "libs/component_demo/test/answers.requests" --expected "libs/component_demo/test/answers.expected" --output "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.served"
+    "python3" "$TMPDIR/webcpp scratch b8ay_ul6/tools/component/serve.py"  --program 'answers.cpp in libs/component_demo/test/Jamfile' --flags="-S cli" --component "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.wasm" --requests "libs/component_demo/test/answers.requests" --expected "libs/component_demo/test/answers.expected" --output "bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.served"
 ]]></command> 
     <output><![CDATA[serve: bin/libs/component_demo/test/answers.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/answers.wasm: the transcript differs from libs/component_demo/test/answers.expected:
 --- libs/component_demo/test/answers.expected
@@ -159,7 +259,7 @@
  x-method: POST
  
 wasmtime's standard error:
-Serving HTTP on http://127.0.0.1:59463/
+Serving HTTP on http://127.0.0.1:64863/
 ]]></output> 
   </action> 
 </build>

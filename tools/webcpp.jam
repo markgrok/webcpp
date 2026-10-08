@@ -15,7 +15,8 @@
 #     webcpp.compile-fail name : sources + : requirements * : targets * ;
 #     webcpp.boost-test name : sources + : requirements * ;
 #     webcpp.example source : requirements * : targets * ;
-#     webcpp.headers-alone library : include-root ;
+#     webcpp.headers-alone library : include-root : only * : requirements *
+#       : targets * ;
 #
 # the rule with which any test or example Jamfile of a library declares one
 # of its own lanes, which `b2 declared-lanes` lists:
@@ -27,7 +28,7 @@
 # doc/Jamfile its index page:
 #
 #     webcpp.doc library : page ;
-#     webcpp.reference library ;
+#     webcpp.reference library : requirements * ;
 #     webcpp.index page ;
 #
 # and the rules of the oracle, tools/oracle/oracle.jam's, with which a
@@ -62,6 +63,7 @@ import path ;
 import project ;
 import regex ;
 import sequence ;
+import set ;
 import testing ;
 
 .known = native emscripten wasip2 wasip3 ;
@@ -371,9 +373,21 @@ actions run-and-compare bind INPUT
 # target, /webcpp/<library>//<library>, and named alone-<path>, with the
 # header's path under webcpp/ written with dashes: alone-xactor-scheduler
 # for webcpp/xactor/scheduler.hpp.
-rule headers-alone ( library : include-root )
+#
+# only restricts the call to the public headers that match one of its globs,
+# each relative to <include-root>/webcpp/ (wasi/http/response.hpp, wasi/*.hpp),
+# and a glob that matches none is an error naming it; without only, the call
+# takes every public header. requirements are added to each translation unit,
+# such as the bindings and the macro a header that builds only for WASI
+# needs, and targets replace the Jamfile's for them. A library may call it
+# several times, in one Jamfile or several, each for headers of its own: a
+# header that two calls take is an error naming it and both Jamfiles. A
+# header no call takes is found by tools/lint/compile_commands.py, which
+# needs a translation unit of each.
+rule headers-alone ( library : include-root : only * : requirements * : targets * )
 {
     local current = [ project.current ] ;
+    local found = [ where ] ;
     local root = [ path.make $(include-root) ] ;
     local headers =
         [ project.glob-internal-ex $(current) : $(root)/webcpp : $(library).hpp : : glob ]
@@ -383,24 +397,47 @@ rule headers-alone ( library : include-root )
         errors.user-error "webcpp.headers-alone: $(include-root) holds neither"
             "webcpp/$(library).hpp nor a header under webcpp/$(library)/" ;
     }
+    if $(only)
+    {
+        local taken ;
+        for local glob in $(only)
+        {
+            local matched = [ set.intersection $(headers) : [ project.glob-internal-ex $(current)
+                : $(root)/webcpp : $(glob) : : glob ] ] ;
+            if ! $(matched)
+            {
+                errors.user-error "webcpp.headers-alone $(library): $(glob) matches no public"
+                    "header under $(include-root)/webcpp/, webcpp/$(library).hpp or a header"
+                    "under webcpp/$(library)/" ;
+            }
+            taken += $(matched) ;
+        }
+        headers = [ sequence.unique $(taken) ] ;
+    }
     local included ;
     local names ;
     for local header in $(headers)
     {
         local path = [ path.relative-to $(root) $(header) ] ;
+        if $(.alone.$(library).$(path))
+        {
+            errors.user-error "webcpp.headers-alone $(library): $(path) is taken by two calls, in"
+                "$(.alone.$(library).$(path)) and in $(found[4]); a header compiles alone once" ;
+        }
+        .alone.$(library).$(path) = $(found[4]) ;
         local stem = [ MATCH "^webcpp/(.*)[.]hpp$" : $(path) ] ;
         local dashed = [ regex.replace $(stem) "/" "-" ] ;
         included += $(path) ;
         names += alone-$(dashed) ;
     }
-    local only = [ program headers-alone : $(names) ] ;
+    local only-targets = [ program headers-alone : $(names) : $(targets) ] ;
     for local index in [ numbers.range 1 [ sequence.length $(names) ] ]
     {
         local name = $(names[$(index)]) ;
         make $(name).cpp : : @webcpp%write-include : <webcpp-include>$(included[$(index)]) ;
         $(current).mark-target-as-explicit $(name).cpp ;
-        testing.compile $(name).cpp : <library>/webcpp/$(library)//$(library) $(only)
-            : $(name) ;
+        testing.compile $(name).cpp : <library>/webcpp/$(library)//$(library) $(requirements)
+            $(only-targets) : $(name) ;
     }
 }
 
@@ -497,10 +534,11 @@ rule doc ( library : page )
 }
 
 # The target reference of a library's doc project, its API reference from
-# MrDocs, strict (tools/doc/doc.jam).
-rule reference ( library )
+# MrDocs, strict, read with the library's target and requirements
+# (tools/doc/doc.jam).
+rule reference ( library : requirements * )
 {
-    webcpp-doc.reference $(library) ;
+    webcpp-doc.reference $(library) : $(requirements) ;
 }
 
 # The superproject's index page, doc/html/index.html, which lists every
