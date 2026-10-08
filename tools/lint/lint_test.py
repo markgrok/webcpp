@@ -130,9 +130,12 @@ def prepare(root: Path) -> None:
 def add_component_demo(root: Path) -> None:
     """Places the fixture library component_demo beside demo in the scratch superproject root, a
     repository of its own too, with this checkout's wit-bindgen and WIT, which its bindings
-    need."""
+    need. Its served test runs in an own lane, http, as every served program must for
+    `b2 declared-lanes`, which the database reads, to list the lanes."""
     shutil.copytree(harness.FIXTURES / 'component_demo', root / 'libs/component_demo',
                     ignore=harness.built)
+    append(root, 'libs/component_demo/test/Jamfile',
+           'webcpp.lane http : answers : wasip2 wasip3 ;\n')
     git(root / 'libs/component_demo', 'init', '-q', '-b', 'main')
     commit(root / 'libs/component_demo', 'The fixture')
     harness.link_wasi_tools(root)
@@ -460,6 +463,29 @@ def test_clang_tidy_reads_what_only_wasi_builds(root):
     for name in ('PlantedTwo', 'PlantedThree', 'PlantedWasi'):
         assert f"invalid case style for function '{name}'" in result.stdout, (
             name, result.stdout[-6000:])
+
+
+def test_clang_tidy_reads_what_an_own_lane_builds(root):
+    prepare(root)
+    add_component_demo(root)
+    # A served program runs in an own lane, which takes it out of the test and example
+    # directories' requests: it is analysed all the same, as the first target of its lane builds
+    # it, and a finding in it fails the lint.
+    program = 'libs/component_demo/test/answers.cpp'
+    append(root, program, '\nnamespace {\n\nint PlantedServed() {\n    return 2;\n}\n\n'
+                          '}  // namespace\n')
+    result = lint(root)
+    expect_alone(result, 'clang-tidy', [at(root, program, 'PlantedServed')])
+    assert "invalid case style for function 'PlantedServed'" in result.stdout, (
+        result.stdout[-6000:])
+    # A served program in no own lane fails `b2 declared-lanes`, and with it the database, which
+    # would otherwise analyse it nowhere.
+    harness.replace(root / 'libs/component_demo/test/Jamfile',
+                    'webcpp.lane http : answers : wasip2 wasip3 ;\n', '')
+    completed = compile_database(root)
+    assert completed.returncode == 1, completed.stdout[-6000:]
+    assert ('webcpp.serve answers.cpp in libs/component_demo/test/Jamfile is in no own lane' in
+            completed.stdout), completed.stdout[-6000:]
 
 
 def boost_sees_no_exceptions(root: Path, command: list[str]) -> bool:
@@ -1193,6 +1219,7 @@ CASES = [
     test_clang_tidy_reads_what_b2_expects_to_build,
     test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles,
     test_clang_tidy_reads_what_only_wasi_builds,
+    test_clang_tidy_reads_what_an_own_lane_builds,
     test_blocking_io_context_call,
     test_fluent_chain,
     test_returns_this,

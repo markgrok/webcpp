@@ -11,11 +11,15 @@ tests and examples, and the aggregate translation units of each library.
 Usage: compile_commands.py <root> <out>
 
 b2 5.5.3's --command-database writes nothing, so its dry runs (b2 -n -a) are read instead, from
-root. `b2 declared-targets` first says which targets the libraries' programs are built for; then
-`test example`, every library's programs, is dry-run for each of those targets, in the order
-native, wasip2, wasip3, emscripten: natively with the host's default toolset, and for each other
-target with its toolset (toolset=clang-wasip2, which also generates the bindings of
-webcpp.wit-bindings, as a build does). A target that some library declares and whose toolset is
+root. `b2 declared-targets` first says which targets the libraries' programs are built for, and
+`b2 declared-lanes` which own lanes they declare, on which targets; then `test example`, every
+library's programs, is dry-run for each of those targets, in the order native, wasip2, wasip3,
+emscripten, with every own lane on that target, <directory>//<lane>, whose programs leave `test
+example` (a served component among them), and natively with every own lane that names no
+target: natively with the host's default toolset, and for each other target with its toolset
+(toolset=clang-wasip2, which also generates the bindings of webcpp.wit-bindings, as a build
+does). A served program that no own lane runs fails `b2 declared-lanes`, and the database with
+it, by name. A target that some library declares and whose toolset is
 not configured fails the database, naming the target: its programs would otherwise go unanalysed
 without a word. Every line that compiles a .cpp file of the source tree becomes an entry of
 <out>, once per distinct command: every native command, and, from the dry run of each other
@@ -114,6 +118,10 @@ ALONE_OBJECT = re.compile(rf'^{BUILD_DIR}/(libs/.+?)/(alone-[^/]+)\.test/')
 # A line of `b2 declared-targets`: a library and a target its programs are built for.
 DECLARED = re.compile(rf'([a-z][a-z0-9_]*) ({"|".join(TARGETS)})')
 
+# A line of `b2 declared-lanes`: a library, one of its lanes, the directory that declares it and
+# the target it runs on, when it names one.
+LANE = re.compile(rf'[a-z][a-z0-9_]* (\S+) (libs/\S+)(?: ({"|".join(TARGETS)}))?')
+
 
 class Failure(Exception):
     """What stops the database from being written, said to the user."""
@@ -169,11 +177,29 @@ def declared_targets(root: str) -> dict[str, set[str]]:
     return declared
 
 
-def target_run(root: str, target: str, libraries: list[str]) -> list[list[str]]:
+def declared_lanes(root: str) -> dict[str, list[str]]:
+    """The own lanes the libraries declare, <directory>//<lane>, by the target they run on, those
+    that name none under native, as `b2 declared-lanes` lists them, which reads only Jamfiles. A
+    line that is no lane's, such as a Jamfile's ECHO, is skipped."""
+    command, completed = run_b2(root, ['-d0', 'declared-lanes'])
+    if completed.returncode != 0:
+        raise Failure(f'{completed.stdout}{" ".join(command)} exited {completed.returncode}')
+    lanes: dict[str, list[str]] = {}
+    for line in completed.stdout.splitlines():
+        lane = LANE.fullmatch(line)
+        if lane:
+            lanes.setdefault(lane.group(3) or 'native', []).append(
+                f'{lane.group(2)}//{lane.group(1)}')
+    return lanes
+
+
+def target_run(root: str, target: str, libraries: list[str],
+               lanes: list[str]) -> list[list[str]]:
     """The compile commands of the dry run of every library's programs for target, which the
-    libraries named declare; a dry run that fails names the target and its toolset."""
+    libraries named declare, and of the own lanes given; a dry run that fails names the target
+    and its toolset."""
     try:
-        return compiles(dry_run(root, [*TARGETS[target], *PROGRAMS]))
+        return compiles(dry_run(root, [*TARGETS[target], *PROGRAMS, *lanes]))
     except Failure as failure:
         if target == 'native':
             raise
@@ -417,14 +443,16 @@ def database(root: str) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
     seen: set[tuple[str, ...]] = set()
     declared = declared_targets(root)
+    lanes = declared_lanes(root)
     published = [library for library in libraries(root) if public_headers(root, library)]
     headers = {library: public_headers(root, library) for library in published}
 
     # Natively: every library's programs, then, built without exceptions, the handler and the
     # headers-alone translation unit of each library whose aggregate builds natively.
     units: dict[str, Units] = {}
-    units['native'], analysed = read(root, 'native', target_run(root, 'native', []), entries,
-                                     seen, set())
+    units['native'], analysed = read(root, 'native',
+                                     target_run(root, 'native', [], lanes.get('native', [])),
+                                     entries, seen, set())
     chosen = {library: pick(root, library, ['native'], units) for library in published
               if whole_targets(headers[library], units, library)}
     twins = [target_of_unit(commands[0][1]) for commands in chosen.values()]
@@ -446,8 +474,9 @@ def database(root: str) -> list[dict[str, object]]:
         declaring = sorted(library for library, theirs in declared.items() if target in theirs)
         if target == 'native' or not declaring:
             continue
-        units[target], sources = read(root, target, target_run(root, target, declaring), entries,
-                                      seen, analysed)
+        units[target], sources = read(root, target,
+                                      target_run(root, target, declaring, lanes.get(target, [])),
+                                      entries, seen, analysed)
         analysed |= sources
 
     for library in published:

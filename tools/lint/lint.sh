@@ -25,20 +25,20 @@
 # or class, and that a comment of a Jam file keeps to 80 columns.
 #
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
-# for the libraries' tests and examples, natively and with the host's default toolset, and, for
-# a source that no native program compiles, as the first WASI target that compiles it does
-# (wasip2, else wasip3), with wasi-sdk's clang++, the one compiler of a WebAssembly command the
-# database accepts; plus each library's aggregate translation unit, through which every public
-# header is analysed: natively, and again as b2 compiles it with exception-handling=off, with
-# the handler tools/throw_exception.cpp, so that what only a build without exceptions compiles
-# is analysed too; or, for a library whose headers build only for WASI, on wasip2 and on
-# wasip3. That database leaves out a source b2 expects not to compile (webcpp.compile-fail), and
-# one that must stop with the error it states (webcpp.compile-diagnostic): an analysis would stop
-# at the error the test exists to show. Each is left out of clang-tidy only,
-# the one rule that compiles: clang-format and the rules that read text read it like any other
-# C++ file. A run-fail test's sources compile, and are analysed. A source that only some targets
-# build (a native_only.cpp that stops with #error for WASI) is analysed as the first of them
-# builds it.
+# for the libraries' tests and examples and for their own lanes, a served component among them,
+# natively and with the host's default toolset, and, for a source that no native program
+# compiles, as the first WASI target that compiles it does (wasip2, else wasip3), with
+# wasi-sdk's clang++, the one compiler of a WebAssembly command the database accepts; plus each
+# library's aggregate translation unit, through which every public header is analysed: natively,
+# and again as b2 compiles it with exception-handling=off, with the handler
+# tools/throw_exception.cpp, so that what only a build without exceptions compiles is analysed
+# too; or, for a library whose headers build only for WASI, on wasip2 and on wasip3. That
+# database leaves out a source b2 expects not to compile (webcpp.compile-fail), and one that
+# must stop with the error it states (webcpp.compile-diagnostic): an analysis would stop at the
+# error the test exists to show. Each is left out of clang-tidy only, the one rule that
+# compiles: clang-format and the rules that read text read it like any other C++ file. A
+# run-fail test's sources compile, and are analysed. A source that only some targets build (a
+# native_only.cpp that stops with #error for WASI) is analysed as the first of them builds it.
 #
 # clang-tidy is most of the lint's time, so it can be split: --shard K/N analyses the K-th of N
 # interleaved slices of the files and runs every other rule as before. The N shards together
