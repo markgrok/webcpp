@@ -21,11 +21,13 @@ without a word. Every line that compiles a .cpp file of the source tree becomes 
 <out>, once per distinct command: every native command, and, from the dry run of each other
 target, the commands of the sources that no earlier target compiles, which are analysed as the
 first target that compiles them does, with its own --target. A command of wasip2, wasip3 or
-emscripten, a program's or an aggregate's, must name wasi-sdk's clang++, which has its
-wasi-sysroot beside it: clang-tidy reads a WebAssembly command only with the --target and the
-sysroot of wasi-sdk, and the lint would give any other compiler's, emscripten's em++ for one, the
-host's --target, as to a native command. Such a command fails the database, naming its file and
-its compiler. Four kinds of line are left out:
+emscripten, a program's or an aggregate's, must name wasi-sdk's clang++, as the compiler itself
+says: the resource directory it names when asked with -print-resource-dir, which a wrapper such as
+ccache asks the compiler it runs, has wasi-sdk's share/wasi-sysroot three levels above it.
+clang-tidy reads a WebAssembly command only with the --target and the sysroot of wasi-sdk, and the
+lint would give any other compiler's, emscripten's em++ for one, the host's --target, as to a
+native command. Such a command fails the database, naming its file, its compiler and what that
+compiler said. Four kinds of line are left out:
 
 - a source b2 generates under bin/, the Jamroot's build directory, which is not ours to analyse;
 - a source b2 expects not to compile (webcpp.compile-fail): the dry run prints its object as a
@@ -69,11 +71,11 @@ or when nothing at all is compiled; 2 on a usage error.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -202,24 +204,42 @@ def verifies(words: list[str]) -> bool:
                for first, second in zip(words, words[1:]))
 
 
+@functools.lru_cache(maxsize=None)
+def resource_dir(compiler: str) -> str | None:
+    """The resource directory compiler names, asked with -print-resource-dir, which a wrapper
+    such as ccache passes on to the compiler it runs; None when it names none, as GCC does."""
+    try:
+        completed = subprocess.run([compiler, '-print-resource-dir'], stdin=subprocess.DEVNULL,
+                                   capture_output=True, text=True, check=False, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    named = completed.stdout.strip()
+    return named if completed.returncode == 0 and named else None
+
+
 def wasi_sdk(compiler: str) -> bool:
-    """Whether compiler, a path or a name on PATH, is a wasi-sdk's clang++: <sdk>/bin/clang++, with
-    its sysroot in <sdk>/share/wasi-sysroot."""
-    real = os.path.realpath(shutil.which(compiler) or compiler)
-    return os.path.isdir(os.path.join(os.path.dirname(os.path.dirname(real)), 'share',
-                                      'wasi-sysroot'))
+    """Whether compiler, a path or a name on PATH, is a wasi-sdk's clang++, as the compiler itself
+    says: its resource directory is <sdk>/lib/clang/<version>, with its sysroot in
+    <sdk>/share/wasi-sysroot."""
+    resource = resource_dir(compiler)
+    return resource is not None and (Path(resource).parents[2] / 'share/wasi-sysroot').is_dir()
 
 
 def check_compiler(target: str, source: str, words: list[str]) -> None:
     """Refuses the command words that compiles source for target when target is a WebAssembly one
-    and its compiler is not wasi-sdk's clang++, which the lint would analyse as a native one."""
+    and its compiler is not wasi-sdk's clang++, which the lint would analyse as a native one,
+    saying what was asked."""
     if target == 'native' or wasi_sdk(words[0]):
         return
+    resource = resource_dir(words[0])
+    asked = (f'{words[0]} -print-resource-dir names {resource}, with no share/wasi-sysroot three '
+             'levels above it, as in wasi-sdk' if resource is not None else
+             f'{words[0]} -print-resource-dir names no resource directory')
     raise Failure(f'{source} is compiled for {target} by {words[0]}, which is not wasi-sdk\'s '
-                  'clang++. clang-tidy reads a WebAssembly command only with the --target and the '
-                  'sysroot of wasi-sdk, and the lint would analyse this one as a native command, '
-                  f'with the host\'s --target; configure the toolset of {target} with wasi-sdk\'s '
-                  'clang++')
+                  f'clang++: {asked}. clang-tidy reads a WebAssembly command only with the '
+                  '--target and the sysroot of wasi-sdk, and the lint would analyse this one as a '
+                  f'native command, with the host\'s --target; configure the toolset of {target} '
+                  'with wasi-sdk\'s clang++')
 
 
 def output_of(words: list[str]) -> str:

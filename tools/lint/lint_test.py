@@ -30,6 +30,7 @@ from pathlib import Path
 # The harness lives beside the other tests of the build, in tools/test.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'test'))
 
+import compile_commands
 import harness
 
 LINT = Path('tools/lint/lint.sh')
@@ -379,20 +380,49 @@ def test_an_aggregate_no_units_options_compile_names_each(root):
         assert named, (unit, error, said[-6000:])
 
 
+def test_wasi_sdk_is_told_by_the_compiler_itself(root):
+    # A compiler is wasi-sdk's clang++ when it says its resource directory is wasi-sdk's, with
+    # share/wasi-sysroot three levels above it, whatever runs it: a script that runs wasi-sdk's
+    # clang++, as a ccache wrapper does, is; a script that runs another clang, from a directory
+    # with a wasi-sysroot beside it, is not, and the refusal says what was asked.
+    wrapper = root / 'wrapper/bin/clang++'
+    wrapper.parent.mkdir(parents=True)
+    wrapper.write_text(f'#!/bin/sh\nexec "{wasi_sdk_tool("clang++")}" "$@"\n')
+    wrapper.chmod(0o755)
+    assert compile_commands.wasi_sdk(str(wrapper)), wrapper
+    impostor = root / 'impostor/bin/clang++'
+    impostor.parent.mkdir(parents=True)
+    (root / 'impostor/share/wasi-sysroot').mkdir(parents=True)
+    impostor.write_text('#!/bin/sh\nexec clang++ "$@"\n')
+    impostor.chmod(0o755)
+    assert not compile_commands.wasi_sdk(str(impostor)), impostor
+    try:
+        compile_commands.check_compiler('wasip2', 'x.cpp', [str(impostor), '-c', 'x.cpp'])
+    except compile_commands.Failure as failure:
+        said = str(failure)
+    else:
+        raise AssertionError(f'{impostor} was taken for wasi-sdk\'s clang++')
+    resource = subprocess.run(['clang++', '-print-resource-dir'], capture_output=True, text=True,
+                              check=True).stdout.strip()
+    assert (f"x.cpp is compiled for wasip2 by {impostor}, which is not wasi-sdk's clang++: "
+            f'{impostor} -print-resource-dir names {resource}, with no share/wasi-sysroot three '
+            'levels above it') in said, said
+
+
 def test_wasm_compiler_not_from_wasi_sdk_fails_by_name(root):
     prepare(root)
     add_component_demo(root)
     # A toolset of wasip2 whose compiler is not wasi-sdk's clang++, as emscripten's em++ is not:
-    # a script that runs wasi-sdk's, so that it compiles as it does, from a directory with no
-    # wasi-sysroot beside it. clang-tidy would read its commands as native ones and give them the
-    # host's --target, so the database refuses them, naming the file and the compiler.
+    # a script that runs the host's clang++, as em++ runs a clang of its own. clang-tidy would
+    # read its commands as native ones and give them the host's --target, so the database refuses
+    # them, naming the file and the compiler.
     config = root / '.local/user-config.jam'
     configured = config.read_text()
     using = re.search(r'^using clang : wasip2 : (\S+)', configured, re.MULTILINE)
     assert using is not None, configured
     compiler = root / 'other sdk/bin/em++'
     compiler.parent.mkdir(parents=True)
-    compiler.write_text(f'#!/bin/sh\nexec "{wasi_sdk_tool("clang++")}" "$@"\n')
+    compiler.write_text('#!/bin/sh\nexec clang++ "$@"\n')
     compiler.chmod(0o755)
     harness.configure(root, configured.replace(using.group(0),
                                                f'using clang : wasip2 : "{compiler}"', 1))
@@ -1156,6 +1186,7 @@ CASES = [
     test_compile_database_lists_what_b2_builds,
     test_compile_database_reads_what_only_wasi_builds,
     test_an_aggregate_no_units_options_compile_names_each,
+    test_wasi_sdk_is_told_by_the_compiler_itself,
     test_wasm_compiler_not_from_wasi_sdk_fails_by_name,
     test_a_failed_check_of_the_database_runs_the_other_rules,
     test_clang_format,
