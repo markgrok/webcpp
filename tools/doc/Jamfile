@@ -9,8 +9,8 @@
 # tools/node/install.py installs once per package-lock.json, under
 # .node-modules/, and links at node_modules. It runs at every build, and does
 # nothing when the install is there: two doc builds at once, in one b2 run or
-# in two, never install over packages the other reads. It needs no Boost, whose check the Jamroot's
-# requirements would run.
+# in two, never install over packages the other reads. It needs no Boost,
+# whose check the Jamroot's requirements would run.
 
 make node-modules.stamp : package.json package-lock.json : @webcpp-doc%install-packages
   : <webcpp-boost-check>off ;

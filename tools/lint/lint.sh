@@ -20,8 +20,9 @@
 # webcpp's own: the licence notice every source file opens with, the word that must never
 # appear, the em dash, the layout of JSON literals, that a library's test and example Jamfiles
 # declare their programs only with tools/webcpp.jam's rules, that a Doc Comment uses only the
-# commands MrDocs renders and puts no colon after a reference, which MrDocs drops, and that
-# every Python file passes Pyright and keeps to 100 columns.
+# commands MrDocs renders and puts no colon after a reference, which MrDocs drops, that every
+# Python file passes Pyright, keeps to 100 columns and has two blank lines before a top-level def
+# or class, and that a comment of a Jam file keeps to 80 columns.
 #
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
 # for the libraries' tests and examples, natively and with the host's default toolset, and, for
@@ -550,7 +551,25 @@ else
     fail 'a Python line is longer than 100 columns'
 fi
 
-# 13. A library's include boundaries: libs/<name>/meta/include-boundaries.json, when a library
+# 13. A top-level def or class of a Python file has two blank lines before it, its decorators
+#     and the comments just above it, as PEP 8 lays a module out (tools/lint/rules.py).
+rule 'Python blank lines'
+if python3 tools/lint/rules.py blank-lines < "${work_directory}/python"; then
+    printf 'every top-level def and class has two blank lines before it\n'
+else
+    fail 'a top-level def or class has other than two blank lines before it'
+fi
+
+# 14. A comment of a Jam file keeps to 80 columns, the width Jam comments are wrapped at; its
+#     code may run longer (tools/lint/rules.py).
+rule 'Jam comment width'
+if python3 tools/lint/rules.py jam-comments < "${work_directory}/files"; then
+    printf 'every Jam comment is 80 columns or fewer\n'
+else
+    fail 'a Jam comment is longer than 80 columns; wrap it as its neighbours are'
+fi
+
+# 15. A library's include boundaries: libs/<name>/meta/include-boundaries.json, when a library
 #     has one, names boundaries, each a set of headers (a headers glob, less an except glob,
 #     each anchored to the whole path relative to libs/<name>/ and matched segment by segment
 #     with Python's fnmatch, so * stays within one path segment and never reaches a deeper one)

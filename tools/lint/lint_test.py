@@ -1048,6 +1048,42 @@ def test_python_line_length(root):
                  spared=(at(root, path, 'xxx'),))
 
 
+def test_python_blank_lines(root):
+    prepare(root)
+    # Two blank lines come before a top-level def or class, its decorators and the comments just
+    # above it; a def in a string, a nested one and the first statement of a file need none.
+    path = 'tools/crowded.py'
+    write(root, path, HASH + '\n"""Planted."""\n\n'
+          'import functools\n\n\n'
+          'def spaced():\n    """Is spaced."""\n\n'
+          'def crowded():\n    """Is crowded."""\n\n\n'
+          'TEXT = """\ndef in_a_string():\n"""\n'
+          '# Commented.\n@functools.cache\ndef decorated():\n    """Is decorated."""\n\n'
+          '    def nested():\n        """Is nested."""\n\n'
+          '    return nested\n\n\n'
+          'class Spaced:\n    """Is spaced."""\n')
+    expect_alone(lint(root), 'Python blank lines',
+                 [f'{at(root, path, "def crowded")} 1 blank line before a top-level def or class, '
+                  'where 2 are', f'{at(root, path, "# Commented.")} 0 blank lines'],
+                 spared=(at(root, path, 'def spaced'), at(root, path, 'def in_a_string'),
+                         at(root, path, 'class Spaced'), at(root, path, 'def nested')))
+
+
+def test_jam_comment_width(root):
+    prepare(root)
+    # A comment of a Jam file keeps to 80 columns, as Jam comments are wrapped; a line of code
+    # does not.
+    path = 'libs/demo/test/Jamfile'
+    append(root, path, '# ' + 'x' * 78 + '\n'
+                       + '# ' + 'y' * 79 + '\n'
+                       + '    # ' + 'z' * 75 + '\n'
+                       + 'alias long : ' + 'q' * 80 + ' ;\nexplicit long ;\n')
+    expect_alone(lint(root), 'Jam comment width',
+                 [f'{at(root, path, "yyy")} 81 columns, over the limit of 80 for a comment',
+                  at(root, path, 'zzz')],
+                 spared=(at(root, path, 'xxx'), at(root, path, 'qqq')))
+
+
 def test_shards_split_clang_tidy(root):
     prepare(root)
     total = TIDY_CLEAN.search(lint(root).stdout)
@@ -1103,6 +1139,8 @@ CASES = [
     test_doc_comment_references,
     test_pyright,
     test_python_line_length,
+    test_python_blank_lines,
+    test_jam_comment_width,
     test_shards_split_clang_tidy,
 ]
 

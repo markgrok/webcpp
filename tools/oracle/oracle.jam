@@ -36,10 +36,10 @@
 # names it (webcpp.lane), runs Node: `b2 test` never does. The install runs
 # again when package-lock.json is newer than its stamp, and then installs only
 # when the lockfile's content changed: tools/node/install.py installs once per
-# lockfile under .node-modules/ beside it and links node_modules there. Node and npm are looked for
-# on PATH only when an oracle target runs, and the build stops, naming the
-# one that is missing. The targets compile nothing, so they leave the
-# Jamroot's check of Boost out.
+# lockfile under .node-modules/ beside it and links node_modules there. Node
+# and npm are looked for on PATH only when an oracle target runs, and the
+# build stops, naming the one that is missing. The targets compile nothing,
+# so they leave the Jamroot's check of Boost out.
 #
 # This file is loaded as the module webcpp-oracle, beside webcpp-doc. Each
 # rule receives first where its Jamfile is, as tools/webcpp.jam's `where`

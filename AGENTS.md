@@ -589,6 +589,8 @@ rule that failed.
 | Doc Comments | a command webcpp does not allow, a bare `@`, or a colon after a reference (chapter 7) |
 | Pyright | an error or a warning in any Python file, with `pyrightconfig.json` (unused imports and variables are errors) |
 | Python line length | a Python line over 100 columns |
+| Python blank lines | a top-level `def` or `class` without two blank lines before it, its decorators and the comments just above it |
+| Jam comment width | a comment line of a Jam file (`.jam`, `Jamroot`, `Jamfile`) over 80 columns, the width Jam comments are wrapped at |
 | include boundaries | an `#include` that crosses a boundary the library declares in its `meta/include-boundaries.json` (below), at its line, with the boundary's reason; and a malformed file, or a glob that matches no file of the library |
 
 A source b2 expects not to compile (`webcpp.compile-fail`), and one that

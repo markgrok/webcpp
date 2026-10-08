@@ -20,12 +20,17 @@ Exit 0 when there is none, 1 when there is one, 2 on a usage error.
                       colon after a reference;
   line-length         no line of a Python file is longer than 100 columns, .clang-format's
                       ColumnLimit;
+  blank-lines         two blank lines come before a top-level def or class of a Python file,
+                      and before its decorators and the comments just above it;
+  jam-comments        no comment line of a Jam file is longer than 80 columns, the width Jam
+                      comments are wrapped at;
   include-boundaries  a library keeps to the include boundaries its own
                       libs/<name>/meta/include-boundaries.json declares, when it has one.
 """
 
 from __future__ import annotations
 
+import ast
 import fnmatch
 import json
 import re
@@ -345,6 +350,46 @@ def line_length(path: str, text: str) -> Iterator[Finding]:
             yield (path, number, f'{len(line)} columns, over the limit of {LINE_LIMIT}')
 
 
+def blank_lines(path: str, text: str) -> Iterator[Finding]:
+    """Two blank lines come before each top-level def or class of a Python file, counted from its
+    first decorator, or from the comment lines just above it, unless nothing comes before it. A
+    file Python cannot parse is left to Pyright."""
+    if not path.endswith('.py'):
+        return
+    try:
+        module = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return
+    lines = text.splitlines()
+    for node in module.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        # 0-based, the first line of the block: its first decorator, then its comments.
+        first = min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)]) - 1
+        while first > 0 and lines[first - 1].startswith('#'):
+            first -= 1
+        blank = 0
+        while first - blank > 0 and not lines[first - blank - 1].strip():
+            blank += 1
+        if first - blank > 0 and blank != 2:
+            yield (path, first + 1, f'{blank} blank line{"" if blank == 1 else "s"} before a '
+                   'top-level def or class, where 2 are')
+
+
+JAM_COMMENT_LIMIT = 80
+
+
+def jam_comments(path: str, text: str) -> Iterator[Finding]:
+    """No comment line of a Jam file is longer than JAM_COMMENT_LIMIT columns."""
+    name = PurePosixPath(path).name
+    if not (name.endswith('.jam') or name in ('Jamroot', 'Jamfile')):
+        return
+    for number, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith('#') and len(line) > JAM_COMMENT_LIMIT:
+            yield (path, number, f'{len(line)} columns, over the limit of {JAM_COMMENT_LIMIT} '
+                   'for a comment')
+
+
 # The config a library's meta/include-boundaries.json may hold, and what each of its boundaries
 # may hold. "except" is the only optional key of a boundary.
 CONFIG_KEYS = {'boundaries'}
@@ -464,6 +509,8 @@ PER_FILE_RULES: dict[str, Callable[[str, str], Iterator[Finding]]] = {
     'raw-rules': raw_rules,
     'doc-comments': doc_comments,
     'line-length': line_length,
+    'blank-lines': blank_lines,
+    'jam-comments': jam_comments,
 }
 
 # Rules that need every path at once, to find a library's own files from among them.

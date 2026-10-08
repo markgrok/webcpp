@@ -97,10 +97,11 @@ if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 # action that runs it starts in the directory b2 was started in.
 .runner = [ path.native [ path.join $(.tools) example/run_example.py ] ] ;
 
-# The Boost.Test framework of webcpp.boost-test, beside this file, as a plain file of /webcpp,
-# this file's own project, by its location relative to the superproject: a suite's obj gets it
-# the way throw_exception and boost_json below are got, by a project and a path, never by an
-# absolute path or one joined to the suite's own location, which a resolved symlink in root
+# The Boost.Test framework of webcpp.boost-test, beside this file, as a plain
+# file of /webcpp, this file's own project, by its location relative to the
+# superproject: a suite's obj gets it the way throw_exception and boost_json
+# below are got, by a project and a path, never by an absolute path or one
+# joined to the suite's own location, which a resolved symlink in root
 # (TMPDIR on macOS) would then disagree with.
 local .tools-relative = [ path.relative-to $(.root) $(.tools) ] ;
 .framework = /webcpp//$(.tools-relative)/boost_test_runner.cpp ;

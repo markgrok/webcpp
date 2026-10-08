@@ -225,6 +225,7 @@ def test_a_compile_diagnostic_is_a_test(root: Path) -> None:
     assert (found['n-tests'], found['n-tests-native'], found['n-tests-wasip2'],
             found['n-tests-wasip3']) == ('10', '10', '7', '6'), found
 
+
 def test_library_counts_are_added(root: Path) -> None:
     directory = library(root, 'demo')
     own_counts(directory, 'import sys\n'
