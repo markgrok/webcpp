@@ -5,13 +5,15 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 #
 # The rules of a WebAssembly component, which tools/webcpp.jam offers a
-# library's Jamfiles as webcpp.wit-bindings and webcpp.serve:
+# library's Jamfiles as webcpp.wit-bindings, webcpp.serve and
+# webcpp.serve-script:
 #
 #     import webcpp ;
 #     webcpp.wit-bindings <name> : <world-file> : <world> : <rename> : <version>
 #       : <wit-bindgen-argument> * ;
 #     webcpp.serve <source> : <requirements> * : <targets> * ;
-#     webcpp.serve-script <name> : <script> : <stem> : <targets> * ;
+#     webcpp.serve-script <name> : <script> : <stem>
+#       : <targets> * ;
 #
 # webcpp.wit-bindings declares the target <name>, the C bindings that
 # wit-bindgen generates for the world <world> of <world-file> (relative to
