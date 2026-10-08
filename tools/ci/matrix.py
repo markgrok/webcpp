@@ -24,17 +24,18 @@ is pinned: AGENTS.md, Roadmap) is a failure, never a lane left out.
 own-lanes runs `b2 -d0 declared-lanes` and prints the JSON matrix of the libraries' own lanes, of
 the library --library names, else of every library; empty, {"include":[]}, when none declares one,
 and a failure when --library names no library of libs/, as plan's does. An own lane is one a
-library declares with webcpp.lane, such as its oracle, or its served tests. One that names no
-target is the entry {"library": L, "lane": N, "directory": D}, which the CI runs as
-`b2 -a toolset=clang-18 D//N`, whose exit status is its verdict: it writes no XML, so it is no
-column of the report. One that names targets is an entry per target T, which adds "platform": T,
-the "id" <T>.<L>.<D under libs/L/, its slashes as dots>.<N> (wasip2.wasi.test.http), and the "os"
-and "wasm" of the lane whose setup it shares: T's own lane, and the oracle's Clang 18 for native.
-It runs as that lane runs, with --dump-tests and --out-xml, and its XML, <id>.xml, is a column of
-the report under its id, which tools/report/report.py checks against the toolset it was built
-with and the library whose tests it lists. A target the CI cannot set up an own lane on,
-emscripten until emsdk is pinned (AGENTS.md, Roadmap), fails the listing by name: an own lane is
-never run natively in its place.
+library declares with webcpp.lane, such as its oracle, or its served tests, and one job runs it,
+per target it runs on, in every directory D that declares it there: the entry {"library": L,
+"lane": N, "directories": [D, ...]}, with "name", what the CI shows for the job, Own lane (L, N)
+or Own lane (L, N, T), and the "os" and "wasm" of the lane whose setup it shares. One that names
+no target runs as `b2 -a toolset=clang-18 D//N ...`, whose exit status is its verdict: it writes
+no XML, so it is no column of the report. One that names targets is an entry per target T, which
+adds "platform": T and the "id" <T>.<L>.<N> (wasip2.wasi.http), and shares T's own lane, or the
+oracle's Clang 18 for native. It runs as that lane runs, with --dump-tests and --out-xml, and its
+XML, <id>.xml, is a column of the report under its id, which tools/report/report.py checks
+against the toolset it was built with and the library whose tests it lists. A target the CI
+cannot set up an own lane on, emscripten until emsdk is pinned (AGENTS.md, Roadmap), fails the
+listing by name: an own lane is never run natively in its place.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -280,7 +281,7 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
 
 # A line of `b2 declared-lanes`: a library, the name of one of its lanes, the directory of the
 # Jamfile that declares it, under the library's test or example directory, and the target it runs
-# on, when it names one. The job runs `b2 -a <directory>//<lane>` from these words, so each is
+# on, when it names one. The job runs `b2 -a <directory>//<lane> ...` from these words, so each is
 # checked whole.
 OWN_LANE = re.compile(r'([a-z][a-z0-9_]*) ([A-Za-z0-9][A-Za-z0-9_.-]*) (libs/[^ ]+)(?: ([^ ]+))?')
 
@@ -293,37 +294,38 @@ OWN_LANE_BASES = {None: 'clang-18', 'native': 'clang-18', 'wasip2': 'wasip2', 'w
 
 @dataclass(frozen=True)
 class OwnLane:
-    """An own lane, as a line of `b2 declared-lanes` names it."""
+    """An own lane: a lane a library declares, on one target or on none, in every directory that
+    declares it there, run as one job."""
 
     library: str
     lane: str
-    directory: str
+    # The directories whose Jamfiles declare it, sorted: libs/wasi/example and libs/wasi/test.
+    directories: tuple[str, ...]
     # The target it runs on, or None for one that names none.
     target: str | None = None
 
     @property
     def id(self) -> str:
-        """Its name in the report, its XML's and its artifact's: <target>.<library>.<directory
-        under libs/<library>/, its slashes as dots>.<lane>, which no lane of LANES is named, so
-        that its column stands beside the target's own."""
-        under = self.directory.removeprefix(f'libs/{self.library}/').replace('/', '.')
-        return f'{self.target}.{self.library}.{under}.{self.lane}'
+        """Its name in the report, its XML's and its artifact's: <target>.<library>.<lane>, which
+        no lane of LANES is named, so that its column stands beside the target's own."""
+        return f'{self.target}.{self.library}.{self.lane}'
 
     @property
     def name(self) -> str:
         """What the CI shows for its job."""
-        words = [self.library, self.lane, self.directory, *([self.target] if self.target else [])]
+        words = [self.library, self.lane, *([self.target] if self.target else [])]
         return f'Own lane ({", ".join(words)})'
 
     @property
-    def request(self) -> str:
-        """The b2 target that runs it."""
-        return f'{self.directory}//{self.lane}'
+    def requests(self) -> list[str]:
+        """The b2 targets that run it, one per directory."""
+        return [f'{directory}//{self.lane}' for directory in self.directories]
 
 
 def parsed_own_lanes(text: str) -> list[OwnLane]:
-    """The own lanes of the lines text holds, as `b2 declared-lanes` prints them."""
-    lanes = []
+    """The own lanes of the lines text holds, as `b2 declared-lanes` prints them, each line
+    checked: one per library, lane and target, with every directory that declares it there."""
+    grouped: dict[tuple[str, str, str | None], list[str]] = {}
     for line in text.splitlines():
         found = OWN_LANE.fullmatch(line)
         if found is None:
@@ -337,8 +339,12 @@ def parsed_own_lanes(text: str) -> list[OwnLane]:
         if target is not None and target not in TARGETS:
             raise Failure(f'b2 declared-lanes printed {line!r}: {target} is not a target; the '
                           f'targets are {", ".join(TARGETS)}', 2)
-        lanes.append(OwnLane(library, lane, directory, target))
-    return lanes
+        directories = grouped.setdefault((library, lane, target), [])
+        if directory not in directories:
+            directories.append(directory)
+    return [OwnLane(library, lane, tuple(sorted(directories)), target)
+            for (library, lane, target), directories
+            in sorted(grouped.items(), key=lambda item: (item[0][:2], item[0][2] or ''))]
 
 
 def own_lane_base(target: str | None) -> Lane:
@@ -350,16 +356,17 @@ def own_lane_base(target: str | None) -> Lane:
     return known[OWN_LANE_BASES[target]]
 
 
-def own_lane_entry(own: OwnLane) -> dict[str, str | bool]:
-    """The own lane as an entry of the own-lanes matrix: its three words alone when it names no
-    target, as before targets were; else its target, its id, and the image and the setup of the
-    lane it shares."""
-    entry: dict[str, str | bool] = {'library': own.library, 'lane': own.lane,
-                                    'directory': own.directory}
-    if own.target is None:
-        return entry
+def own_lane_entry(own: OwnLane) -> dict[str, object]:
+    """The own lane as an entry of the own-lanes matrix: its library, its lane and its
+    directories; its target and its id when it names one; and, for every entry, the name of its
+    job and the image and the setup of the lane it shares, which the job reads from here alone."""
     base = own_lane_base(own.target)
-    return {**entry, 'platform': own.target, 'id': own.id, 'os': base.os, 'wasm': base.wasm}
+    entry: dict[str, object] = {'library': own.library, 'lane': own.lane,
+                                'directories': list(own.directories)}
+    if own.target is not None:
+        entry.update(platform=own.target, id=own.id)
+    entry.update(name=own.name, os=base.os, wasm=base.wasm)
+    return entry
 
 
 def own_lanes(user_config: Path, library: str | None) -> list[OwnLane]:
@@ -374,25 +381,30 @@ def own_lanes(user_config: Path, library: str | None) -> list[OwnLane]:
         try:
             own_lane_base(own.target)
         except Failure as failure:
-            raise Failure(f'{own.library} declares its own lane {own.lane} in {own.directory} on '
-                          f'{own.target}, which the CI cannot set up yet: {failure}', 2) from None
+            raise Failure(f'{own.library} declares its own lane {own.lane} in '
+                          f'{" and ".join(own.directories)} on {own.target}, which the CI cannot '
+                          f'set up yet: {failure}', 2) from None
     return lanes
 
 
 def parsed_own_lane(text: str) -> OwnLane:
     """The OwnLane of an entry of the own-lanes matrix, given as JSON, read again from its words
-    as `b2 declared-lanes` prints them, so that each is checked as the listing checks it."""
+    as `b2 declared-lanes` prints them, a line per directory, so that each is checked as the
+    listing checks it."""
     try:
         entry = json.loads(text)
-        words = [entry['library'], entry['lane'], entry['directory']]
-        if 'platform' in entry:
-            words.append(entry['platform'])
-        if not all(isinstance(word, str) for word in words):
+        words = [entry['library'], entry['lane']]
+        directories = entry['directories']
+        target = [entry['platform']] if 'platform' in entry else []
+        if not isinstance(directories, list) or not directories:
+            raise TypeError('directories that are not a list of them')
+        if not all(isinstance(word, str) for word in (*words, *directories, *target)):
             raise TypeError('a word that is not a string')
     except (json.JSONDecodeError, KeyError, TypeError) as error:
         raise Failure(f'the own lane is not an entry of the matrix own-lanes writes: {error}',
                       2) from None
-    lanes = parsed_own_lanes(' '.join(words))
+    lanes = parsed_own_lanes('\n'.join(' '.join([*words, directory, *target])
+                                       for directory in directories))
     if len(lanes) != 1:
         raise Failure(f'the own lane {text} is not one entry of the matrix own-lanes writes', 2)
     return lanes[0]
@@ -474,15 +486,15 @@ def lane_command(lane: Lane, user_config: Path, xml: Path, extra: list[str]) -> 
 
 def own_lane_command(own: OwnLane, user_config: Path, xml: Path | None,
                      extra: list[str]) -> list[str]:
-    """The own lane's command: b2, from scratch, on <directory>//<lane>; with Clang 18 when it
-    names no target, and otherwise with the toolset and the options of the lane it shares,
-    writing xml, as that lane does."""
+    """The own lane's command: b2, from scratch, on <directory>//<lane> for each of its
+    directories; with Clang 18 when it names no target, and otherwise with the toolset and the
+    options of the lane it shares, writing xml, as that lane does."""
     base = own_lane_base(own.target)
     if own.target is None:
         return ['b2', f'--user-config={user_config}', '-a', f'toolset={base.toolset}', *extra,
-                own.request]
+                *own.requests]
     return ['b2', f'--user-config={user_config}', '-a', '--dump-tests', f'--out-xml={xml}',
-            f'toolset={base.toolset}', *base.options, *extra, own.request]
+            f'toolset={base.toolset}', *base.options, *extra, *own.requests]
 
 
 def run_b2(label: str, command: list[str]) -> int:
@@ -535,7 +547,7 @@ def run_own_lane(own: OwnLane, user_config: Path, out_dir: Path, extra: list[str
     """Runs the own lane, and returns its exit status."""
     register(resolved(own_lane_base(own.target)), user_config)
     if own.target is None:
-        label = f'own lane {own.request}'
+        label = f'own lane {" ".join(own.requests)}'
         status = run_b2(label, own_lane_command(own, user_config, None, extra))
         if status != 0:
             raise Failure(f'{label}: b2 exited {status}')

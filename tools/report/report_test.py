@@ -561,11 +561,10 @@ def test_a_lane_is_what_its_name_says(root: Path) -> None:
 
 
 def test_an_own_lane_is_named_after_its_target_and_library(root: Path) -> None:
-    # An own lane on a target is named <target>.<library>.<directory>.<lane>, its directory under
-    # libs/<library>/ with its slashes as dots: never a lane's name, so its column stands beside
-    # the target's own. It is counted as any lane is: its tests appear in the matrix under its
-    # name, and its failure fails the report.
-    own = 'wasip2.component_demo.test.served'
+    # An own lane on a target is named <target>.<library>.<lane>: never a lane's name, so its
+    # column stands beside the target's own. It is counted as any lane is: its tests appear in the
+    # matrix under its name, and its failure fails the report.
+    own = 'wasip2.component_demo.served'
     out = root / 'report'
     result = report(out, ('wasip2', sample('wasip2-pass')), (own, sample('wasip2-served')))
     assert result.returncode == 0, outcome(result)
@@ -579,7 +578,7 @@ def test_an_own_lane_is_named_after_its_target_and_library(root: Path) -> None:
     assert title.endswith('or when a lane of its own runs it.'), title
     assert matrix(out / 'component_demo.html').verdict('answers', own) == 'pass'
     # Its header may wrap after each dot, as a lane's wraps at a hyphen.
-    assert 'wasip2.<wbr>component_demo.<wbr>test.<wbr>served' in (out / 'index.html').read_text()
+    assert 'wasip2.<wbr>component_demo.<wbr>served' in (out / 'index.html').read_text()
     check_pages(out)
     result = report(root / 'fails', (own, sample('wasip2-served-failure')))
     assert result.returncode == 1, outcome(result)
@@ -589,13 +588,13 @@ def test_an_own_lane_is_named_after_its_target_and_library(root: Path) -> None:
     # names is the only one whose tests it lists.
     served = sample('wasip2-served')
     refused = {
-        'wasip3.component_demo.test.served': (
+        'wasip3.component_demo.served': (
             served, 'built with clang-darwin-wasip2, which builds for wasip2'),
-        'native.component_demo.test.served': (
+        'native.component_demo.served': (
             served, 'built with clang-darwin-wasip2, which builds for wasip2'),
-        'wasip2.demo.test.served': (
+        'wasip2.demo.served': (
             served, 'an own lane of demo, and lists the tests of component_demo'),
-        'wasip2.demo.example.served': (
+        'wasip2.demo.http': (
             sample('wasip2-skipped-library'), 'an own lane of demo, and lists the tests of '
             'nativeonly'),
     }
@@ -606,7 +605,7 @@ def test_an_own_lane_is_named_after_its_target_and_library(root: Path) -> None:
         assert f'the lane {name} is {named}' in result.stderr, (name, outcome(result))
         assert not out.exists(), name
     # A name whose first word is no target is a toolset directory's, checked as before.
-    result = report(root / 'out-other', ('wasm.component_demo.test.served', served))
+    result = report(root / 'out-other', ('wasm.component_demo.served', served))
     assert result.returncode == 2, outcome(result)
     assert 'name it clang-darwin-wasip2, after the directory b2 builds its toolset in' in (
         result.stderr), outcome(result)

@@ -1173,10 +1173,9 @@ never the verdict.
 (`gcc-14`, `gcc-15`, `clang-linux-18`, `clang-darwin-21`, `msvc-14.3`). The
 CI names a native lane after its directory, and a wasm or emscripten lane
 after its target. An own lane on a target (below) is named
-`<target>.<library>.<directory>.<lane>`, its directory under
-`libs/<library>/` with its slashes as dots: `wasip2.wasi.test.http`. No
-toolset directory begins with a target and a dot, so that name is never a
-lane's, and its column stands beside the target's own. The report checks
+`<target>.<library>.<lane>`, whichever directories declare it:
+`wasip2.wasi.http`. No toolset directory begins with a target and a dot, so
+that name is never a lane's, and its column stands beside the target's own. The report checks
 every name against the toolset directory the file records: a lane named
 after a target must be built for it, an own lane must be built for the
 target its name begins with and list the tests of the library it names
@@ -1206,11 +1205,12 @@ lanes, which build only its test and example directories' other programs.
   is its verdict. It writes no XML, and is no column of the report.
 - **An own lane that names targets** is the line `<library> <lane>
   <directory> <target>` once per target, and runs on each as that target's
-  lane runs, from scratch, with `--dump-tests` and `--out-xml`: its tests
-  reach the report, in a column of its own (above). wasi's served tests and
-  served examples, the components wasmtime serves (`webcpp.serve`,
-  `webcpp.serve-script`), are its lanes `http`, in `test/` and in
-  `example/`, on wasip2 and wasip3:
+  lane runs, from scratch, with `--dump-tests` and `--out-xml`, in every
+  directory of the library that declares a lane of that name on that target,
+  in one b2 run: its tests reach the report, in a column of its own (above).
+  wasi's served tests and served examples, the components wasmtime serves
+  (`webcpp.serve`, `webcpp.serve-script`), are its lanes `http`, in `test/`
+  and in `example/`, on wasip2 and wasip3, run as one own lane on each:
 
   ```
   webcpp.lane http
@@ -1219,7 +1219,7 @@ lanes, which build only its test and example directories' other programs.
   ```
 
   ```
-  b2 -a --dump-tests --out-xml=wasip2.wasi.test.http.xml toolset=clang-wasip2 testing.launcher=wasmtime libs/wasi/test//http
+  b2 -a --dump-tests --out-xml=wasip2.wasi.http.xml toolset=clang-wasip2 testing.launcher=wasmtime libs/wasi/example//http libs/wasi/test//http
   ```
 
   Built for a target it does not name, natively for one, such a lane stops,
@@ -1293,12 +1293,14 @@ jobs:
   no lane fails the plan by name: the CI gets an emscripten lane when emsdk
   is pinned (chapter 13). Then `matrix.py own-lanes [--library <name>]`
   runs `b2 declared-lanes -d0` and prints the JSON matrix of the own lanes
-  of that library, or of every library: an entry `{library, lane,
-  directory}` for an own lane that names no target, and one per target for
-  one that names targets, which adds `platform`, its target, `id`, its name
-  in the report, and the `os` and `wasm` of the lane whose setup it shares,
-  the target's own, and the oracle's Clang 18 for native. An own lane on
-  emscripten fails the plan, by name.
+  of that library, or of every library, one entry per library, lane and
+  target: `{library, lane, directories}`, every directory that declares the
+  lane there, for an own lane that names no target, and one per target for
+  one that names targets, which adds `platform`, its target, and `id`, its
+  name in the report; every entry has `name`, its job's, and the `os` and
+  `wasm` of the lane whose setup it shares, the target's own, and the
+  oracle's Clang 18 for native and for none, which the job reads from it
+  alone. An own lane on emscripten fails the plan, by name.
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
@@ -1319,21 +1321,22 @@ jobs:
   embed-manifest-via=linker --abbreviate-paths`; b2 abbreviates each word of
   a toolset directory, and `msvc-14.3` and `msvc-14.5` are their own
   abbreviations, which `tools/ci/matrix_test.py` checks with b2's own rule.
-- **own lanes,** one job each, which runs `matrix.py own-lane <entry>`: it
-  registers the lane's toolset, prints its b2 command and runs it. A library
-  that declares no own lane, as xactor, has no such job.
-  - One that names no target, `Own lane (<library>, <lane>, <directory>)`,
-    on Linux x86-64 (ubuntu-24.04): the Boost action, the Node action, and
-    `b2 -a toolset=clang-18 <directory>//<lane>` (an oracle lane checks
+- **own lanes,** one job per entry, named and placed as the entry says
+  (`name`, `os`), which runs `matrix.py own-lane <entry>`: it registers the
+  lane's toolset, prints its b2 command and runs it, on the lane in each of
+  its directories. A library that declares no own lane, as xactor, has no
+  such job.
+  - One that names no target, `Own lane (<library>, <lane>)`, on Linux
+    x86-64 (ubuntu-24.04): the Boost action, the Node action, and
+    `b2 -a toolset=clang-18 <directory>//<lane> ...` (an oracle lane checks
     Boost, chapter 5), whose exit status is the lane's verdict.
-  - One that names a target, `Own lane (<library>, <lane>, <directory>,
-    <target>)`, on its entry's image: the Boost action and what the target's
-    lane installs, the same steps by their YAML anchors (`&wasi-sdk`,
-    `&wasmtime`, `&wit-bindgen`, `&wasi-wit`), so that a step added to a WASI
-    lane is added to it too; then
-    `b2 -a --dump-tests --out-xml=<id>.xml toolset=<toolset> [<options>]
-    <directory>//<lane>`, and it uploads `<id>.xml` as a lane uploads its
-    XML, the artifact `lane-<id>`.
+  - One that names a target, `Own lane (<library>, <lane>, <target>)`, on its
+    entry's image: the Boost action and what the target's lane installs, the
+    same steps by their YAML anchors (`&wasi-sdk`, `&wasmtime`,
+    `&wit-bindgen`, `&wasi-wit`), so that a step added to a WASI lane is
+    added to it too; then `b2 -a --dump-tests --out-xml=<id>.xml
+    toolset=<toolset> [<options>] <directory>//<lane> ...`, and it uploads
+    `<id>.xml` as a lane uploads its XML, the artifact `lane-<id>`.
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
   Intel macOS), `clang++-18`, Node, wit-bindgen and the WASI WIT (wasi's
   reference parses its bindings), `b2 -a libs/<library>/doc`, or for the

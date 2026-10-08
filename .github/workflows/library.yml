@@ -28,12 +28,13 @@
 #               --out-xml=<lane>.xml for one toolset, and uploads the XML. With --out-xml, b2
 #               exits 0 even when a test fails: the report gives the verdict. A wasip2 or
 #               wasip3 lane installs wasi-sdk, wasmtime, wit-bindgen and the WASI WIT first.
-#   own-lanes   one job per own lane and target it runs on. One that names no target, as an
-#               oracle, runs on Linux x86-64 with Node and Clang 18, b2 -a <directory>//<lane>, and
-#               its exit status is its verdict. One that names a target, as wasi's served tests,
-#               is set up as that target's lane is, runs b2 -a --dump-tests --out-xml with its
-#               toolset, and uploads the XML, which the report reads as a lane's. A library that
-#               declares none, as xactor, has no such job.
+#   own-lanes   one job per own lane of a library and target it runs on, which runs the lane
+#               in every directory that declares it there. One that names no target, as an
+#               oracle, runs on Linux x86-64 with Node and Clang 18, b2 -a <directory>//<lane>,
+#               and its exit status is its verdict. One that names a target, as wasi's served
+#               tests and examples, is set up as that target's lane is, runs b2 -a --dump-tests
+#               --out-xml with its toolset, and uploads the XML, which the report reads as a
+#               lane's. A library that declares none, as xactor, has no such job.
 #   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64,
 #               and wit-bindgen and the WASI WIT, for a reference that parses a component's
 #               bindings; the index is built with -sWEBCPP_INDEX=site, its links where the site
@@ -197,24 +198,21 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # A library's own lane. One that names no target, such as an oracle, compiles nothing, but its
-  # targets inherit the requirements of the library's test project, the library's target among
-  # them, and with it the Jamroot's check of Boost, so the job has Boost and a toolset, Clang 18,
-  # as the docs job does; and Node, whose npm cache the action keys on every oracle's lock file.
-  # One that names a target, such as wasi's served tests on wasip2, installs what that target's
-  # lane installs (its entry's wasm, as a lane's, selects the WASI steps, by their anchors), runs
-  # with its toolset and uploads its XML as a lane does, under its id: wasip2.wasi.test.http. The
-  # job is named by its entry: Own lane (xstate, oracle, libs/xstate/test/oracle), and
-  # Own lane (wasi, http, libs/wasi/test, wasip2).
+  # A library's own lane, on one target or on none, run in every directory that declares it
+  # there. One that names no target, such as an oracle, compiles nothing, but its targets inherit
+  # the requirements of the library's test project, the library's target among them, and with it
+  # the Jamroot's check of Boost, so the job has Boost and a toolset, Clang 18, as the docs job
+  # does; and Node, whose npm cache the action keys on every oracle's lock file. One that names a
+  # target, such as wasi's served tests and examples on wasip2, installs what that target's lane
+  # installs (its entry's wasm, as a lane's, selects the WASI steps, by their anchors), runs with
+  # its toolset and uploads its XML as a lane does, under its id: wasip2.wasi.http. The job's
+  # name and image are its entry's, which tools/ci/matrix.py writes: Own lane (xstate, oracle)
+  # and Own lane (wasi, http, wasip2).
   own-lanes:
-    name: >-
-      ${{ matrix.platform
-      && format('Own lane ({0}, {1}, {2}, {3})', matrix.library, matrix.lane, matrix.directory,
-      matrix.platform)
-      || format('Own lane ({0}, {1}, {2})', matrix.library, matrix.lane, matrix.directory) }}
+    name: ${{ matrix.name }}
     needs: plan
     if: needs.plan.outputs.has-own-lanes == 'true'
-    runs-on: ${{ matrix.os || 'ubuntu-24.04' }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false

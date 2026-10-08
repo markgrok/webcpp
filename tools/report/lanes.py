@@ -14,8 +14,8 @@ lists it whether or not the lane built it; an example by the <name>.output that 
 compares. A lane is one toolset: the directory b2 names after it, in which every program of the
 lane is built. A lane is named after the target that toolset builds for (native, emscripten,
 wasip2, wasip3), or after that directory (clang-darwin-21, gcc-15). A library's own lane on a
-target, which webcpp.lane declares, is named <target>.<library>.<rest> (wasip2.wasi.test.http):
-its toolset builds for that target, and it lists the tests of that library alone.
+target, which webcpp.lane declares, is named <target>.<library>.<lane> (wasip2.wasi.http): its
+toolset builds for that target, and it lists the tests of that library alone.
 
 The paths in a file are those of the machine that ran the lane, a CI runner as often as not, and
 are never opened: they are matched as text, a backslash read as a slash.

@@ -165,9 +165,13 @@ def test_own_lanes_of_every_library_and_of_one(root):
         'import webcpp ;\n'
         'alias twins ;\n'
         'webcpp.lane oracle : twins ;\n')
-    alpha = [{'library': 'alpha', 'lane': 'browser', 'directory': 'libs/alpha/example/browser'},
-             {'library': 'alpha', 'lane': 'http', 'directory': 'libs/alpha/test'}]
-    beta = [{'library': 'beta', 'lane': 'oracle', 'directory': 'libs/beta/test/oracle'}]
+    # Every entry names its job and its image, which the job reads from here alone.
+    alpha = [{'library': 'alpha', 'lane': 'browser', 'directories': ['libs/alpha/example/browser'],
+              'name': 'Own lane (alpha, browser)', 'os': 'ubuntu-24.04', 'wasm': False},
+             {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
+              'name': 'Own lane (alpha, http)', 'os': 'ubuntu-24.04', 'wasm': False}]
+    beta = [{'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
+             'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False}]
     assert own_lanes(root) == alpha + beta
     assert own_lanes(root, '--library', 'beta') == beta
     assert own_lanes(root, '--library', 'demo') == []
@@ -195,8 +199,9 @@ def test_own_lanes_of_every_library_and_of_one(root):
 
 
 def test_own_lanes_on_targets(root):
-    # A lane that names targets is an entry per target, which says what the job sets up and the
-    # name of the XML it writes; a lane that names none keeps its entry of three words, exactly.
+    # A lane that names targets is an entry per target, one job, which runs it in every directory
+    # of the library that declares it there, and says what the job sets up and the name of the
+    # XML it writes: <target>.<library>.<lane>.
     boost_only(root)
     harness.add_library(root, 'alpha',
                         'import webcpp ;\n'
@@ -207,28 +212,37 @@ def test_own_lanes_on_targets(root):
     (root / 'libs/alpha/example').mkdir()
     (root / 'libs/alpha/example/Jamfile').write_text(
         'import webcpp ;\n'
+        'webcpp.targets native wasip2 ;\n'
         'webcpp.example page.cpp ;\n'
-        'webcpp.lane http : page.output : native ;\n')
+        'webcpp.lane http : page.output : native wasip2 ;\n')
     harness.add_library(root, 'beta', 'import webcpp ;\n', {})
     (root / 'libs/beta/test/oracle').mkdir()
     (root / 'libs/beta/test/oracle/Jamfile').write_text(
         'import webcpp ;\n'
         'alias twins ;\n'
         'webcpp.lane oracle : twins ;\n')
-    alpha = [{'library': 'alpha', 'lane': 'http', 'directory': 'libs/alpha/example',
-              'platform': 'native', 'id': 'native.alpha.example.http', 'os': 'ubuntu-24.04',
-              'wasm': False},
-             {'library': 'alpha', 'lane': 'http', 'directory': 'libs/alpha/test',
-              'platform': 'wasip2', 'id': 'wasip2.alpha.test.http', 'os': 'ubuntu-24.04',
-              'wasm': True},
-             {'library': 'alpha', 'lane': 'http', 'directory': 'libs/alpha/test',
-              'platform': 'wasip3', 'id': 'wasip3.alpha.test.http', 'os': 'ubuntu-24.04',
-              'wasm': True}]
-    assert own_lanes(root) == alpha + [
-        {'library': 'beta', 'lane': 'oracle', 'directory': 'libs/beta/test/oracle'}]
+    alpha = [{'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/example'],
+              'platform': 'native', 'id': 'native.alpha.http', 'name': 'Own lane (alpha, http, '
+              'native)', 'os': 'ubuntu-24.04', 'wasm': False},
+             {'library': 'alpha', 'lane': 'http',
+              'directories': ['libs/alpha/example', 'libs/alpha/test'], 'platform': 'wasip2',
+              'id': 'wasip2.alpha.http', 'name': 'Own lane (alpha, http, wasip2)',
+              'os': 'ubuntu-24.04', 'wasm': True},
+             {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
+              'platform': 'wasip3', 'id': 'wasip3.alpha.http', 'name': 'Own lane (alpha, http, '
+              'wasip3)', 'os': 'ubuntu-24.04', 'wasm': True}]
+    beta = {'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
+            'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False}
+    assert own_lanes(root) == [*alpha, beta]
     assert own_lanes(root, '--library', 'alpha') == alpha
     assert run(root, 'own-lanes', '--library', 'beta').stdout == (
-        '{"include":[{"library":"beta","lane":"oracle","directory":"libs/beta/test/oracle"}]}\n')
+        '{"include":[{"library":"beta","lane":"oracle","directories":["libs/beta/test/oracle"],'
+        '"name":"Own lane (beta, oracle)","os":"ubuntu-24.04","wasm":false}]}\n')
+    # Each entry is read back as the lane it is, and runs in each of its directories.
+    for entry in alpha:
+        own = matrix.parsed_own_lane(json.dumps(entry))
+        assert own_lane_entry_of(own) == entry, (own, entry)
+        assert own.requests == [f'{directory}//http' for directory in entry['directories']]
     # A target the job cannot set up yet fails the listing by name, rather than run natively;
     # the own lanes of another library are still listed.
     harness.add_library(root, 'gamma',
@@ -247,6 +261,11 @@ def test_own_lanes_on_targets(root):
     assert own_lanes(root, '--library', 'alpha') == alpha
 
 
+def own_lane_entry_of(own: matrix.OwnLane) -> dict:
+    """The entry of the own-lanes matrix of own, as own-lanes prints it."""
+    return json.loads(json.dumps(matrix.own_lane_entry(own)))
+
+
 def test_an_own_lanes_command(root):
     config = root / 'config.jam'
     oracle = matrix.parsed_own_lanes('beta oracle libs/beta/test/oracle')[0]
@@ -255,12 +274,15 @@ def test_an_own_lanes_command(root):
         'b2', f'--user-config={config}', '-a', 'toolset=clang-18', '--build-dir=bin/x',
         'libs/beta/test/oracle//oracle']
     # On a target, as that target's lane runs: its toolset and options, and the XML the report
-    # reads.
-    served = matrix.parsed_own_lanes('alpha http libs/alpha/test wasip2')[0]
-    xml = Path('bin/ci/wasip2.alpha.test.http.xml')
-    assert matrix.own_lane_command(served, config, xml, []) == [
+    # reads; in each directory that declares it there.
+    served = matrix.parsed_own_lanes('alpha http libs/alpha/test wasip2\n'
+                                     'alpha http libs/alpha/example wasip2')
+    assert len(served) == 1, served
+    xml = Path('bin/ci/wasip2.alpha.http.xml')
+    assert matrix.own_lane_command(served[0], config, xml, []) == [
         'b2', f'--user-config={config}', '-a', '--dump-tests', f'--out-xml={xml}',
-        'toolset=clang-wasip2', 'testing.launcher=wasmtime', 'libs/alpha/test//http']
+        'toolset=clang-wasip2', 'testing.launcher=wasmtime', 'libs/alpha/example//http',
+        'libs/alpha/test//http']
     # The lane the job sets up for each target runs on the own-lanes job's image, and the native
     # one is the oracle's Clang 18.
     for target, lane_id in (('native', 'clang-18'), ('wasip2', 'wasip2'), ('wasip3', 'wasip3')):
@@ -275,37 +297,37 @@ def test_an_own_lane_on_a_target_writes_its_xml_and_the_report_merges_it(root):
     # wasi-sdk where the CI's action installs it, which the lane's toolset is registered against.
     (root / '.local/wasi-sdk').symlink_to((matrix.ROOT / '.local/wasi-sdk').resolve())
     entry = own_lanes(root, '--library', 'demo')
-    assert [lane['id'] for lane in entry] == ['wasip2.demo.test.served'], entry
+    assert [lane['id'] for lane in entry] == ['wasip2.demo.served'], entry
     output = root / 'github-output'
     output.write_text('')
     result = run(root, 'own-lane', json.dumps(entry[0]), '--', '--build-dir=bin/own',
                  github_output=output)
     assert result.returncode == 0, (result.returncode, result.stdout[-4000:], result.stderr)
-    xml = root.resolve() / 'bin/ci/wasip2.demo.test.served.xml'
-    printed = (f'own lane wasip2.demo.test.served: b2 '
+    xml = root.resolve() / 'bin/ci/wasip2.demo.served.xml'
+    printed = (f'own lane wasip2.demo.served: b2 '
                f'{shlex.quote(f"--user-config={config.resolve()}")} -a --dump-tests '
                f'{shlex.quote(f"--out-xml={xml}")} toolset=clang-wasip2 '
                'testing.launcher=wasmtime --build-dir=bin/own libs/demo/test//served\n')
     assert result.stdout.startswith(printed), (printed, result.stdout[:2000])
-    assert output.read_text().splitlines() == ['lane=wasip2.demo.test.served',
+    assert output.read_text().splitlines() == ['lane=wasip2.demo.served',
                                                f'xml={xml.as_posix()}'], output.read_text()
     lanes = root / 'downloaded'
-    (lanes / 'lane-wasip2.demo.test.served').mkdir(parents=True)
-    xml.rename(lanes / 'lane-wasip2.demo.test.served' / xml.name)
+    (lanes / 'lane-wasip2.demo.served').mkdir(parents=True)
+    xml.rename(lanes / 'lane-wasip2.demo.served' / xml.name)
     own = json.dumps({'include': entry})
     report = run(root, 'report', '--plan', '{"include":[]}', '--own-lanes', own, '--lanes',
                  str(lanes), '--out', str(root / 'report'))
     # The lane is a column of the matrix under its own name, and its test passed there.
     assert report.returncode == 0, (report.returncode, report.stdout, report.stderr)
     page = (root / 'report/demo.html').read_text()
-    assert 'data-lane="wasip2.demo.test.served"' in page, page[:2000]
+    assert 'data-lane="wasip2.demo.served"' in page, page[:2000]
     # An own lane on a target that wrote no XML fails the report by name, as a lane does.
-    (lanes / 'lane-wasip2.demo.test.served' / xml.name).unlink()
+    (lanes / 'lane-wasip2.demo.served' / xml.name).unlink()
     report = run(root, 'report', '--plan', '{"include":[]}', '--own-lanes', own, '--lanes',
                  str(lanes), '--out', str(root / 'report-missing'))
     assert report.returncode == 2, (report.returncode, report.stdout, report.stderr)
-    assert ('the lane wasip2.demo.test.served (Own lane (demo, served, libs/demo/test, wasip2)) '
-            'wrote no XML') in report.stderr, report.stderr
+    assert ('the lane wasip2.demo.served (Own lane (demo, served, wasip2)) wrote no XML') in (
+        report.stderr), report.stderr
 
 
 def test_a_lane_is_named_by_the_compiler_version(root):

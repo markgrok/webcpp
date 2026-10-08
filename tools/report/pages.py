@@ -308,7 +308,7 @@ def lane_header(lane: Lane) -> str:
     toolset = ''
     if lane.toolset is not None and lane.toolset.lower() != lane.name.lower():
         toolset = f'<span class="toolset">{e(lane.toolset)}</span>'
-    # An own lane's name, wasip2.wasi.test.http, may wrap after each dot, as a toolset's does at
+    # An own lane's name, wasip2.wasi.http, may wrap after each dot, as a toolset's does at
     # a hyphen; a version's dot, msvc-14.3, stays whole.
     shown = e(lane.name)
     if OWN_LANE.fullmatch(lane.name):
