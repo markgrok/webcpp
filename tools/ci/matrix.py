@@ -58,9 +58,11 @@ job uploads, and fails only when b2 cannot build at all, as a lane does.
 register adds the toolsets of the lanes named by id to the user-config.jam, in their order, the
 first being b2's default toolset: what the CI's tools job builds the tests of the tools with. A
 WASI lane's toolset is the region of tools/ci/wasi-sdk.jam between `# tag::<target>[]` and
-`# end::<target>[]`, read as this module loads, with wasi-sdk's directory, quoted, in place of
-$(wasi-sdk): the lines the documentation shows. A wasi-sdk.jam without them stops every command,
-naming the file and the tag.
+`# end::<target>[]`, after its region wasi-sdk, which names wasi-sdk's directory and gives it to
+the build as WASI_SDK, read as this module loads, with wasi-sdk's directory, quoted, in place of
+/path/to/wasi-sdk and of $(wasi-sdk): the lines the documentation shows. Each block of lines, the
+regions apart, is added once. A wasi-sdk.jam without them stops every command, naming the file
+and the tag.
 
 report merges what the lanes of the matrix MATRIX wrote under DIR, one directory per lane,
 lane-<id>/<lane>.xml (as the CI downloads the lanes' artifacts), with tools/report/report.py into
@@ -123,8 +125,8 @@ class Lane:
     # major version of the compiler `detect` names.
     lane: str
     toolset: str
-    # The lines that register the toolset in user-config.jam. {wasi_sdk} is wasi-sdk's absolute
-    # directory, quoted.
+    # The lines that register the toolset in user-config.jam, in blocks an empty line apart, each
+    # added once. {wasi_sdk} is wasi-sdk's absolute directory, quoted.
     using: str
     # The compiler whose major version is {version}, or nothing.
     detect: str = ''
@@ -143,19 +145,33 @@ class Failure(Exception):
         self.status = status
 
 
-def toolset_lines(target: str) -> str:
-    """The lines of WASI_SDK_JAM that register target's toolset, with {wasi_sdk} in place of
-    $(wasi-sdk)."""
+# The directory the region wasi-sdk of WASI_SDK_JAM names, which register writes wasi-sdk's own in
+# place of.
+PLACEHOLDER = '/path/to/wasi-sdk'
+
+
+def region_lines(tag: str, needed: str, what: str) -> str:
+    """The lines of WASI_SDK_JAM's region tag, which must hold needed and say what, with
+    {wasi_sdk} in place of PLACEHOLDER and of $(wasi-sdk)."""
     try:
         text = WASI_SDK_JAM.read_text()
     except OSError as error:
         raise Failure(f'cannot read {WASI_SDK_JAM}: {error.strerror}', 2) from error
-    found = re.search(rf'^# tag::{target}\[\]\n(.*?)^# end::{target}\[\]$', text,
+    found = re.search(rf'^# tag::{tag}\[\]\n(.*?)^# end::{tag}\[\]$', text,
                       re.MULTILINE | re.DOTALL)
-    if found is None or '$(wasi-sdk)' not in found.group(1):
-        raise Failure(f'{WASI_SDK_JAM} holds no lines tag::{target}[] to end::{target}[] that '
-                      f'register clang-{target} against $(wasi-sdk)', 2)
-    return found.group(1).rstrip('\n').replace('$(wasi-sdk)', '{wasi_sdk}')
+    if found is None or needed not in found.group(1):
+        raise Failure(f'{WASI_SDK_JAM} holds no lines tag::{tag}[] to end::{tag}[] that {what}', 2)
+    lines = found.group(1).rstrip('\n')
+    return lines.replace(PLACEHOLDER, '{wasi_sdk}').replace('$(wasi-sdk)', '{wasi_sdk}')
+
+
+def toolset_lines(target: str) -> str:
+    """The lines that register target's toolset: the region wasi-sdk of WASI_SDK_JAM, then the
+    region target, an empty line between the two blocks, with {wasi_sdk} in place of wasi-sdk's
+    directory."""
+    sdk = region_lines('wasi-sdk', PLACEHOLDER, f'name wasi-sdk\'s directory, {PLACEHOLDER}')
+    toolset = region_lines(target, '$(wasi-sdk)', f'register clang-{target} against $(wasi-sdk)')
+    return f'{sdk}\n\n{toolset}'
 
 
 # Read as the module loads: a wasi-sdk.jam that does not hold them stops it, naming the file and
@@ -434,14 +450,20 @@ def holds(text: str, lines: str) -> bool:
 
 
 def register(lane: Lane, user_config: Path) -> None:
-    """Adds the lane's using lines to user_config, unless it holds those lines already."""
+    """Adds each block of the lane's using lines, an empty line apart, to user_config, unless it
+    holds those lines already: the region wasi-sdk, which two WASI lanes share, is added once."""
     text = user_config.read_text() if user_config.is_file() else ''
-    if holds(text, lane.using):
+    added = text
+    for block in lane.using.split('\n\n'):
+        if holds(added, block):
+            continue
+        if added and not added.endswith('\n'):
+            added += '\n'
+        added += f'{block}\n'
+    if added == text:
         return
-    if text and not text.endswith('\n'):
-        text += '\n'
     user_config.parent.mkdir(parents=True, exist_ok=True)
-    user_config.write_text(f'{text}{lane.using}\n')
+    user_config.write_text(added)
 
 
 def lane_command(lane: Lane, user_config: Path, xml: Path, extra: list[str]) -> list[str]:

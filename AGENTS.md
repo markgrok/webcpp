@@ -162,6 +162,7 @@ until webcpp bundles the toolchains (chapter 13). b2 reads
 using clang ;      # or gcc, or msvc: the native toolset
 using boost : 1.92 : <include>/opt/homebrew/opt/boost/include <library>/opt/homebrew/opt/boost/lib ;
 local wasi-sdk = /path/to/wasi-sdk ;
+modules.poke : WASI_SDK : $(wasi-sdk) ;
 using clang : wasip2 : $(wasi-sdk)/bin/clang++
   : <cflags>--target=wasm32-wasip2 <cxxflags>--target=wasm32-wasip2
     <linkflags>--target=wasm32-wasip2
@@ -172,9 +173,12 @@ using clang : wasip3 : $(wasi-sdk)/bin/clang++
     <archiver>$(wasi-sdk)/bin/llvm-ar <ranlib>$(wasi-sdk)/bin/llvm-ranlib ;
 ```
 
-The last three are the regions `wasi-sdk`, `wasip2` and `wasip3` of
-`tools/ci/wasi-sdk.jam`, which the CI writes a lane's toolset from and wasi's
-page includes, so that neither drifts from the other.
+The lines from `local wasi-sdk` on are the regions `wasi-sdk`, `wasip2` and
+`wasip3` of `tools/ci/wasi-sdk.jam`, which the CI writes a lane's toolset
+from and wasi's page includes, so that neither drifts from the other. The
+region `wasi-sdk` also gives the build wasi-sdk's directory as `WASI_SDK`,
+the one a component that a script builds (`webcpp.serve-script`) is built
+with.
 
 **The tools of a component** are looked up only when b2 generates a world's
 bindings (on `clang-wasip2` or `clang-wasip3`, or for the explicit
@@ -189,9 +193,12 @@ build stops, naming it and every place it looked:
   `.local/wasi-wit/p3`;
 - wasmtime: `testing.launcher=wasmtime` runs the one on `PATH`; a served
   test's is `-sWASMTIME=<path>`, else `wasmtime` on `PATH`, looked up when
-  the test runs, which fails naming it.
+  the test runs, which fails naming it;
+- wasi-sdk, for a component that a script builds: `-sWASI_SDK=<dir>`, which
+  the region `wasi-sdk` above gives, else `.local/wasi-sdk`, a directory
+  that holds `bin/clang++`.
 
-A `user-config.jam` may set any of the three as `-s` does, with
+A `user-config.jam` may set any of them as `-s` does, with
 `modules.poke : WIT_BINDGEN : <path> ;`.
 
 When Boost cannot be used, the build stops before it compiles anything and
@@ -207,14 +214,16 @@ needs: `.local/user-config.jam`, `.local/wasi-sdk/`, `.local/mrdocs/`,
 actions install them too (chapter 9). A tool the build looks up itself is
 taken from the path its `-s` option gives, else from `.local/`, else from
 `PATH`: MrDocs (`-sMRDOCS`), wit-bindgen and the WIT (above); wasi-sdk is
-where the `using clang` lines of `user-config.jam` name it.
+where the `using clang` lines of `user-config.jam` name it, and, for a
+script's component, `-sWASI_SDK` (above).
 `tools/lint/compile_commands.py` runs b2 with `.local/user-config.jam`, else
 with the file `$WEBCPP_USER_CONFIG` names, else with b2's own search. The
 tests of the build and of the tools read `.local/user-config.jam`, else the
 file `$WEBCPP_USER_CONFIG` names, and stop with an error when neither
 exists (`tools/test/harness.py`); a test that needs wit-bindgen and the WIT
-links `.local/wit-bindgen` and `.local/wasi-wit`, or the directories
-`$WIT_BINDGEN_ROOT` and `$WASI_WIT_ROOT` name, into its scratch copy, and
+links `.local/wit-bindgen`, `.local/wasi-wit` and `.local/wasi-sdk`, or the
+directories `$WIT_BINDGEN_ROOT`, `$WASI_WIT_ROOT` and `$WASI_SDK` name, into
+its scratch copy, and
 one that needs MrDocs `.local/mrdocs`, or `$MRDOCS_ROOT`. The doc build
 finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when
 told: `b2 --user-config=.local/user-config.jam ...`.
@@ -1046,7 +1055,7 @@ webcpp.serve-script <name> : <script> : <stem> : <targets> * ;
 | --- | --- | --- |
 | `webcpp.wit-bindings` | | the target `<name>`, the C bindings wit-bindgen generates for the world `<world>` of `<world-file>`, renamed `<rename>` (`--rename-world`), for the WASI version `<version>`, `p2` or `p3`, with the arguments given: on that version's toolset alone (`clang-wasip2`, `clang-wasip3`) its usage requirements put their directory on the include path and link `<rename>.c` and `<rename>_component_type.o`, and elsewhere they add nothing, so a native build needs no wit-bindgen. The explicit target `<name>-headers` puts the directory on the include path on any toolset, for a native parse such as the reference (chapter 7). The bindings are generated while b2 computes a target's properties, in a dry run too, under `<build-dir>/generated/<library>/<name>/`, and again only when the world file, the WIT, wit-bindgen's version or an argument changed, compared by content. A name declared twice in a library stops the build, naming both |
 | `webcpp.serve` | the transcript of the answers to the requests of `<stem>.requests` equals `<stem>.expected` | builds `<source>` as a reactor component that exports an HTTP handler, for its own targets, which may be only wasip2 and wasip3, else for those of its Jamfile that are, linking `tools/throw_exception.cpp` where it is built without exceptions; `tools/component/serve.py` serves it with `wasmtime serve` (`-S cli` on wasip2, `-S cli,p3 -W component-model-async` on wasip3) on a port the system chooses, sends each request on a connection of its own, and stops wasmtime in every outcome. A test of b2's, which `--dump-tests` lists and `--out-xml` records, so the report sees it fail (as a run). It runs in an own lane, never in the ordinary ones (Lanes, below) |
-| `webcpp.serve-script` | as `webcpp.serve`, with the requests and the transcript of `<stem>` | the component is built by the shell script `<script>`, run as `sh <script> <p2\|p3> <component>` with `WASI_SDK`, `WIT_BINDGEN` and `WASI_WIT` (the WIT of the lane's version) in its environment, the tools b2 found: a build by hand that a page shows, run as written. It runs at every build |
+| `webcpp.serve-script` | as `webcpp.serve`, with the requests and the transcript of `<stem>` | the component is built by the shell script `<script>`, run as `sh <script> <p2\|p3> <component>` with `WASI_SDK` (wasi-sdk's directory, chapter 1), `WIT_BINDGEN` and `WASI_WIT` (the WIT of the lane's version) in its environment, the tools b2 found: a build by hand that a page shows, run as written. It runs at every build |
 
 `<stem>.requests` holds one request per line, `<METHOD> <target>`.
 The transcript holds, per request, the curl command that sends it after

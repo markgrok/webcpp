@@ -102,6 +102,7 @@ wasm32-wasip2 and wasm32-wasip3, register two clang toolsets against
 wasi-sdk 34 in `~/user-config.jam`:
 
     local wasi-sdk = /path/to/wasi-sdk ;
+    modules.poke : WASI_SDK : $(wasi-sdk) ;
     using clang : wasip2 : $(wasi-sdk)/bin/clang++
       : <cflags>--target=wasm32-wasip2 <cxxflags>--target=wasm32-wasip2
         <linkflags>--target=wasm32-wasip2

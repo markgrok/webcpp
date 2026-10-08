@@ -569,11 +569,21 @@ def by_hand(root):
         jamfile.write('webcpp.serve-script by_hand : by_hand.sh : answers ;\n')
 
 
+def without_wasi_sdk_given(root):
+    """Leaves out of the scratch superproject root's user-config.jam the WASI_SDK it gives, as the
+    region wasi-sdk of tools/ci/wasi-sdk.jam does, so that the build looks for wasi-sdk where it
+    looks when none is given."""
+    config = root / '.local/user-config.jam'
+    config.write_text(re.sub(r'^modules\.poke : WASI_SDK :.*\n', '', config.read_text(),
+                             flags=re.MULTILINE))
+
+
 def test_a_script_builds_a_served_component(root):
     # webcpp.serve-script serves what a script builds, with the tools b2 found: wasi-sdk's
-    # directory, from the lane's compiler, wit-bindgen and the WIT of the lane's version, and
-    # checks its answers as webcpp.serve does.
+    # directory, wit-bindgen and the WIT of the lane's version, and checks its answers as
+    # webcpp.serve does. wasi-sdk is where none is given here, .local/wasi-sdk.
     harness.link_wasi_tools(root)
+    without_wasi_sdk_given(root)
     by_hand(root)
     wasmtime = linked_wasmtime(root)
     lanes = harness.run_lanes(root, {
@@ -591,7 +601,7 @@ def test_a_script_builds_a_served_component(root):
         components = built_in(root, 'by_hand.wasm', version)
         assert len(components) == 1 and components[0].read_bytes()[:8] == COMPONENT, components
         given = built_in(root, 'by_hand.wasm.given', version)[0].read_text().splitlines()
-        assert (Path(given[0]) / 'bin/clang++').is_file(), given
+        assert Path(given[0]) == root.resolve() / '.local/wasi-sdk', given
         assert Path(given[1]).resolve() == (root / '.local/wit-bindgen/wit-bindgen').resolve()
         assert Path(given[2]).resolve() == (root / f'.local/wasi-wit/p{version}').resolve()
     assert not left(root), left(root)
@@ -603,9 +613,40 @@ def test_a_script_builds_a_served_component(root):
     result = harness.run_b2(root, '-a', WASIP2, wasmtime, f'{TEST}//by_hand')
     harness.expect(result, False)
     assert 'by_hand' not in passed(result), result.stdout[-4000:]
+    harness.replace(root / TEST / 'by_hand.sh',
+                    '"$WASI_SDK/bin/clang++" --target=wasm32-wasip1',
+                    '"$WASI_SDK/bin/clang++" --target=wasm32-wasi$version')
+    # wasi-sdk is the directory -sWASI_SDK gives, or a user-config.jam, as the region wasi-sdk of
+    # tools/ci/wasi-sdk.jam does, never one read from b2's toolset; else .local/wasi-sdk.
+    elsewhere = root / 'another wasi-sdk'
+    elsewhere.symlink_to((root / '.local/wasi-sdk').resolve())
+    for given_by in ('command line', 'user-config'):
+        arguments = [f'-sWASI_SDK={elsewhere}'] if given_by == 'command line' else []
+        if given_by == 'user-config':
+            config = root / '.local/user-config.jam'
+            config.write_text(config.read_text() + f'modules.poke : WASI_SDK : "{elsewhere}" ;\n')
+        result = harness.run_b2(root, '-a', '--build-dir=bin/given', WASIP2, wasmtime,
+                                *arguments, f'{TEST}//by_hand')
+        harness.expect(result, True, '**passed**')
+        given = [path for path in built_in(root, 'by_hand.wasm.given', 2)
+                 if (root / 'bin/given') in path.parents]
+        assert len(given) == 1, given
+        assert given[0].read_text().splitlines()[0] == str(elsewhere), (given_by, given)
+    without_wasi_sdk_given(root)
+    # A wasi-sdk given that holds no clang++, and none given and none at .local/wasi-sdk, stop the
+    # build, naming every place it looked.
+    where = 'It is looked for at -sWASI_SDK=<dir>, which a user-config.jam may give'
+    result = harness.run_b2(root, '-a', WASIP2, wasmtime, f'-sWASI_SDK={root / "nothing"}',
+                            f'{TEST}//by_hand')
+    harness.expect(result, False, 'webcpp.serve-script by_hand in libs/component_demo/test/Jamfile',
+                   f'-sWASI_SDK={root / "nothing"} holds no bin/clang++', where)
+    (root / '.local/wasi-sdk').unlink()
+    result = harness.run_b2(root, '-a', WASIP2, wasmtime, f'{TEST}//by_hand')
+    harness.expect(result, False, 'no -sWASI_SDK=<dir> was given, and there is none at '
+                   f'{(root / ".local/wasi-sdk").resolve()}')
     # Natively, it is built nowhere, and asks for no tool.
     nowhere = ('-sWIT_BINDGEN=/nonexistent', '-sWASI_WIT_P2=/nonexistent',
-               '-sWASI_WIT_P3=/nonexistent', '-sWASMTIME=/nonexistent')
+               '-sWASI_WIT_P3=/nonexistent', '-sWASMTIME=/nonexistent', '-sWASI_SDK=/nonexistent')
     result = harness.run_b2(root, '-a', *nowhere, TEST)
     harness.expect(result, True)
     assert 'by_hand' not in passed(result), result.stdout[-4000:]

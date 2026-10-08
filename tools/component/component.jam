@@ -79,10 +79,14 @@
 # the commands a page shows for a build by hand, which the test then runs as
 # written. The script is run with sh as `<script> <p2|p3> <component>`, and
 # writes the component there; its environment gives it the tools b2 found
-# for the lane, WASI_SDK (wasi-sdk's directory, the one of the lane's
-# compiler), WIT_BINDGEN and WASI_WIT (the WIT of the lane's version), each
-# looked up as webcpp.wit-bindings looks them up. The script runs at every
-# build, since what it reads is its own business.
+# for the lane, WASI_SDK (wasi-sdk's directory), WIT_BINDGEN and WASI_WIT
+# (the WIT of the lane's version), the last two looked up as
+# webcpp.wit-bindings looks them up. wasi-sdk is -sWASI_SDK=<dir>, which a
+# user-config.jam gives with modules.poke as the region wasi-sdk of
+# tools/ci/wasi-sdk.jam does, the region that names the directory its
+# toolsets are registered against; else .local/wasi-sdk. It must hold
+# bin/clang++, or the build stops, naming every place it looked. The script
+# runs at every build, since what it reads is its own business.
 #
 # This file is loaded as the module webcpp-component, beside webcpp-doc and
 # webcpp-oracle. Each of its rules receives first where its Jamfile is, as
@@ -99,7 +103,6 @@ import modules ;
 import os ;
 import path ;
 import project ;
-import property-set ;
 import regex ;
 import set ;
 import testing ;
@@ -513,25 +516,48 @@ rule serve-script ( found + : name : script : stem : only * )
 type.register WEBCPP_BUILD_SCRIPT : sh ;
 generators.register-standard webcpp-component.build-by-script : WEBCPP_BUILD_SCRIPT : EXE ;
 
-# The tools of the lane, from properties: wasi-sdk, the directory two levels
-# above the compiler that b2's clang toolset was registered with for the
-# lane (the toolset of the platform b2 runs on, clang-linux or clang-darwin,
-# keeps it in CONFIG_COMMAND), wit-bindgen and the WIT of the lane's version.
+# wasi-sdk: -sWASI_SDK=<dir>, or a user-config.jam's modules.poke, as the
+# region wasi-sdk of tools/ci/wasi-sdk.jam gives it, else .local/wasi-sdk;
+# a directory that holds bin/clang++.
+local rule wasi-sdk ( key )
+{
+    local installed = [ path.native $(.root)/.local/wasi-sdk ] ;
+    local what = "wasi-sdk, whose compilers $(.user.$(key)) builds its component with, was"
+        "not found:" ;
+    local where = "It is looked for at -sWASI_SDK=<dir>, which a user-config.jam may give"
+        "with modules.poke as the region wasi-sdk of tools/ci/wasi-sdk.jam does, else at"
+        "$(installed)." ;
+    local given = [ given WASI_SDK ] ;
+    if $(given)
+    {
+        if ! [ CHECK_IF_FILE $(given[1])/bin/clang++ ]
+        {
+            errors.user-error $(what) "-sWASI_SDK=$(given[2]) holds no bin/clang++." $(where) ;
+        }
+        return $(given[1]) ;
+    }
+    if ! [ CHECK_IF_FILE $(installed)/bin/clang++ ]
+    {
+        errors.user-error $(what) "no -sWASI_SDK=<dir> was given, and there is none at"
+            "$(installed). Install wasi-sdk 34 there, or give its directory with"
+            "-sWASI_SDK=<dir>, or in user-config.jam with the region wasi-sdk of"
+            "tools/ci/wasi-sdk.jam." ;
+    }
+    return $(installed) ;
+}
+
+# The tools of the lane, from properties: wasi-sdk, wit-bindgen and the WIT
+# of the lane's version.
 rule build-by-script ( targets * : sources * : properties * )
 {
     local key = [ feature.get-values <webcpp-served> : $(properties) ] ;
     local version = [ version-of $(properties) ] ;
-    local platform = [ feature.get-values <toolset-clang:platform> : $(properties) ] ;
-    toolset.set-target-variables clang-$(platform) $(targets)
-      : [ property-set.create $(properties) ] ;
-    local compiler = [ on $(targets[1]) return $(CONFIG_COMMAND) ] ;
-    if ! $(version) || ! $(compiler)
+    if ! $(version)
     {
-        errors.user-error "$(.user.$(key)): its component is built only by the clang toolsets"
-            "of wasip2 and wasip3, registered with the path of wasi-sdk's clang++" ;
+        errors.user-error "$(.user.$(key)): its component is built only for wasip2 and"
+            "wasip3, with toolset=clang-wasip2 or toolset=clang-wasip3" ;
     }
-    local bin = $(compiler[1]:D) ;
-    WASI_SDK on $(targets) = $(bin:D) ;
+    WASI_SDK on $(targets) = [ wasi-sdk $(key) ] ;
     WIT_BINDGEN on $(targets) = [ wit-bindgen $(key) ] ;
     WASI_WIT on $(targets) = [ wit $(key) : $(version) ] ;
     VERSION on $(targets) = $(version) ;

@@ -371,32 +371,55 @@ def test_register_writes_the_lanes_toolsets_in_order(root):
     assert lines[1] == 'using clang : 18 : clang++-18 ;', lines
     # wasi-sdk's directory is one word of Jam, quoted, though the scratch superproject's path holds
     # a space: a lane registered there builds (test_an_own_lane_on_a_target_writes_its_xml...).
-    assert lines[2] == (f'using clang : wasip2 : "{root.resolve().as_posix()}/'
-                        '.local/wasi-sdk"/bin/clang++'), lines
-    assert lines[-1].endswith(' ;') and not any(line.endswith(' ;') for line in lines[2:-1]), lines
+    # The build is given it as WASI_SDK too.
+    wasi_sdk = f'"{root.resolve().as_posix()}/.local/wasi-sdk"'
+    assert lines[2:5] == [f'local wasi-sdk = {wasi_sdk} ;',
+                          f'modules.poke : WASI_SDK : {wasi_sdk} ;',
+                          f'using clang : wasip2 : {wasi_sdk}/bin/clang++'], lines
+    assert lines[-1].endswith(' ;') and not any(line.endswith(' ;') for line in lines[4:-1]), lines
     unknown = run(root, 'register', 'clang-99', '--user-config', str(config))
     assert unknown.returncode == 2, (unknown.returncode, unknown.stderr)
     assert 'no lane clang-99; the lanes are gcc-14, gcc-15' in unknown.stderr, unknown.stderr
 
 
+def region(jam: Path, tag: str) -> str:
+    """The lines of jam between `# tag::<tag>[]` and `# end::<tag>[]`."""
+    return jam.read_text().split(f'# tag::{tag}[]\n')[1].split(f'# end::{tag}[]')[0]
+
+
 def test_the_wasm_toolsets_come_from_wasi_sdk_jam(root):
-    # tools/ci/wasi-sdk.jam holds the lines that register each WASI toolset against $(wasi-sdk),
-    # each between `# tag::<target>[]` and `# end::<target>[]`, and the documentation shows them
-    # from there; register writes them with wasi-sdk's directory in place of $(wasi-sdk).
+    # tools/ci/wasi-sdk.jam holds the lines that name wasi-sdk's directory and give it to the
+    # build as WASI_SDK, and those that register each WASI toolset against $(wasi-sdk), each
+    # between `# tag::<target>[]` and `# end::<target>[]`, and the documentation shows them from
+    # there; register writes the first, once, and a lane's, with wasi-sdk's directory in place of
+    # /path/to/wasi-sdk and of $(wasi-sdk).
     jam = root / 'tools/ci/wasi-sdk.jam'
     wasi_sdk = f'"{root.resolve().as_posix()}/.local/wasi-sdk"'
+    sdk = region(jam, 'wasi-sdk')
+    assert sdk == ('local wasi-sdk = /path/to/wasi-sdk ;\n'
+                   'modules.poke : WASI_SDK : $(wasi-sdk) ;\n'), sdk
+    sdk = sdk.replace('/path/to/wasi-sdk', wasi_sdk).replace('$(wasi-sdk)', wasi_sdk)
+    regions = {}
     for target in ('wasip2', 'wasip3'):
-        region = jam.read_text().split(f'# tag::{target}[]\n')[1].split(f'# end::{target}[]')[0]
-        assert region.startswith(f'using clang : {target} : $(wasi-sdk)/bin/clang++\n'), region
-        assert f'<cxxflags>--target=wasm32-{target}' in region, region
+        regions[target] = region(jam, target)
+        assert regions[target].startswith(f'using clang : {target} : $(wasi-sdk)/bin/clang++\n'), (
+            regions[target])
+        assert f'<cxxflags>--target=wasm32-{target}' in regions[target], regions[target]
+        regions[target] = regions[target].replace('$(wasi-sdk)', wasi_sdk)
         config = boost_only(root)
         before = config.read_text()
         for _ in range(2):
             result = run(root, 'register', target, '--user-config', str(config))
             assert result.returncode == 0, (result.returncode, result.stderr)
         # Once, after what the file held.
-        assert config.read_text() == before + region.replace('$(wasi-sdk)', wasi_sdk), (
-            config.read_text())
+        assert config.read_text() == before + sdk + regions[target], config.read_text()
+    # Two WASI lanes share the lines of wasi-sdk, written once.
+    config = boost_only(root)
+    before = config.read_text()
+    result = run(root, 'register', 'wasip2', 'wasip3', '--user-config', str(config))
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert config.read_text() == before + sdk + regions['wasip2'] + regions['wasip3'], (
+        config.read_text())
     # The file is read, not a copy of it: a flag added there is registered.
     harness.replace(jam, '<linkflags>--target=wasm32-wasip2',
                     '<linkflags>--target=wasm32-wasip2 <linkflags>-Wl,--probe')
