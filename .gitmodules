@@ -4,3 +4,6 @@
 [submodule "libs/xstate"]
 	path = libs/xstate
 	url = ../xstate.git
+[submodule "libs/pratt"]
+	path = libs/pratt
+	url = ../pratt.git
