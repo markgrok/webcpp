@@ -370,6 +370,33 @@ def start_b2(root, *arguments):
                             start_new_session=True)
 
 
+def run_lanes(root, lanes):
+    """Runs one b2 per lane of lanes, {name: its arguments}, at once, and returns what each that
+    ended gave, by name, in order, as a CompletedProcess.
+
+    root/bin is made first. Each b2 makes the directories of its build directory as it opens the
+    log of its configuration checks, and b2 makes a directory by asking whether it is there and
+    then making it (path.makedirs): two that start at once on a root without bin can both find
+    it missing, and the one whose MAKEDIR comes second fails with "Could not create directory
+    'bin'". A lane that fails stops the others, session and all, so that none still runs, and
+    writes into root, when the case asserts and its root is removed.
+    """
+    (root / 'bin').mkdir(exist_ok=True)
+    started = {name: start_b2(root, *arguments) for name, arguments in lanes.items()}
+    ended = {}
+    try:
+        for name, process in started.items():
+            output, _ = process.communicate(timeout=harness.TIMEOUT)
+            ended[name] = subprocess.CompletedProcess(process.args, process.returncode, output)
+            if process.returncode != 0:
+                break
+    finally:
+        for process in started.values():
+            if process.poll() is None:
+                harness.stop_session(process)
+    return ended
+
+
 def built_in(root, name, version):
     """The files called name that a build for the WASI version, 2 or 3, wrote under root/bin."""
     return [path for path in (root / 'bin').rglob(name) if f'wasip{version}' in str(path)]
@@ -386,14 +413,13 @@ def test_served_component_green_on_wasip2_and_wasip3(root):
     wasmtime = linked_wasmtime(root)
     # Two lanes at once, each in a build directory of its own: two wasmtimes serve at the same
     # time, each on a port of its own.
-    lanes = {version: start_b2(root, '-a', '-d+2', f'--build-dir=bin/lane-wasip{version}',
-                               f'toolset=clang-wasip{version}', wasmtime, TEST)
-             for version in (2, 3)}
-    for version, process in lanes.items():
-        output, _ = process.communicate(timeout=harness.TIMEOUT)
-        assert process.returncode == 0, (version, output[-4000:])
-        assert passed(subprocess.CompletedProcess([], 0, output)) == {
-            'bindings', 'answers', *ALONE_WASI}, output[-4000:]
+    lanes = run_lanes(root, {version: ('-a', '-d+2', f'--build-dir=bin/lane-wasip{version}',
+                                       f'toolset=clang-wasip{version}', wasmtime, TEST)
+                             for version in (2, 3)})
+    for version, result in lanes.items():
+        output = result.stdout
+        assert result.returncode == 0, (version, output[-4000:])
+        assert passed(result) == {'bindings', 'answers', *ALONE_WASI}, output[-4000:]
         served = built_in(root, 'answers.served', version)
         assert len(served) == 1, served
         assert served[0].read_bytes() == SERVED_EXPECTED.read_bytes()
@@ -586,14 +612,14 @@ def test_a_script_builds_a_served_component(root):
     harness.link_wasi_tools(root)
     by_hand(root)
     wasmtime = linked_wasmtime(root)
-    lanes = {version: start_b2(root, '-a', f'--build-dir=bin/lane-wasip{version}',
-                               f'toolset=clang-wasip{version}', wasmtime, TEST)
-             for version in (2, 3)}
-    for version, process in lanes.items():
-        output, _ = process.communicate(timeout=harness.TIMEOUT)
-        assert process.returncode == 0, (version, output[-4000:])
-        assert passed(subprocess.CompletedProcess([], 0, output)) == {
-            'bindings', 'answers', 'by_hand', *ALONE_WASI}, output[-4000:]
+    lanes = run_lanes(root, {version: ('-a', f'--build-dir=bin/lane-wasip{version}',
+                                       f'toolset=clang-wasip{version}', wasmtime, TEST)
+                             for version in (2, 3)})
+    for version, result in lanes.items():
+        output = result.stdout
+        assert result.returncode == 0, (version, output[-4000:])
+        assert passed(result) == {'bindings', 'answers', 'by_hand', *ALONE_WASI}, (
+            output[-4000:])
         served = built_in(root, 'by_hand.served', version)
         assert len(served) == 1, served
         assert served[0].read_bytes() == SERVED_EXPECTED.read_bytes()
