@@ -152,15 +152,76 @@ def test_npm_ci_runs_again_only_when_the_lockfile_changes(root):
     result = harness.run_b2(root, LANE)
     harness.expect(result, True)
     assert not NPM_CI.search(result.stdout), result.stdout[-4000:]
-    # A lockfile newer than the stamp npm ci left installs again.
+    # A lockfile newer than the stamp the install left runs the install again, which finds the
+    # packages of that lockfile installed already, under .node-modules/, and keeps them.
+    oracle = root / ORACLE
+    installs = sorted((oracle / '.node-modules').iterdir())
     stamps = sorted((root / 'bin').rglob('node-modules.stamp'))
     assert len(stamps) == 1, stamps
-    lockfile = root / ORACLE / 'package-lock.json'
+    lockfile = oracle / 'package-lock.json'
     later = stamps[0].stat().st_mtime + 10
     os.utime(lockfile, (later, later))
     result = harness.run_b2(root, LANE)
     harness.expect(result, True)
     assert NPM_CI.search(result.stdout), result.stdout[-4000:]
+    assert sorted((oracle / '.node-modules').iterdir()) == installs, installs
+    # A package.json or lockfile whose content changed installs anew, and the old install goes.
+    harness.replace(oracle / 'package.json', 'with no dependency.', 'with no dependency at all.')
+    os.utime(lockfile, (later + 10, later + 10))
+    result = harness.run_b2(root, LANE)
+    harness.expect(result, True)
+    now = sorted((oracle / '.node-modules').iterdir())
+    assert len(now) == 2 and now != installs, (installs, now)
+    assert (oracle / 'node_modules').resolve().parent == now[1].resolve(), now
+
+
+# A stand-in for npm, first on PATH, that does what npm ci does to the directory it runs in,
+# slowly: it removes node_modules, waits a second, and makes it again with the package the
+# lockfile pins, failing, as npm ci does with ENOTEMPTY, when another made it meanwhile; it counts
+# its runs in the file NPM_RUNS names.
+SLOW_NPM = """#!{python}
+import os
+import shutil
+import sys
+import time
+from pathlib import Path
+
+assert sys.argv[1] == 'ci', sys.argv
+with open(os.environ['NPM_RUNS'], 'a') as runs:
+    runs.write(os.getcwd() + '\\n')
+shutil.rmtree('node_modules', ignore_errors=True)
+time.sleep(1)
+try:
+    Path('node_modules/pinned').mkdir(parents=True)
+except FileExistsError:
+    print('npm error code ENOTEMPTY')
+    sys.exit(1)
+"""
+
+
+def test_installs_at_once_share_the_packages(root):
+    # Two b2 runs at once that each install the original's packages, as two lanes started
+    # together do, each in a build directory of its own: neither fails, npm ci runs once for
+    # the lockfile, and the packages are linked at node_modules from .node-modules/.
+    tools = root / 'slow tools'
+    tools.mkdir()
+    (tools / 'npm').write_text(SLOW_NPM.format(python=sys.executable))
+    (tools / 'npm').chmod(0o755)
+    environment = {'PATH': f'{tools}{os.pathsep}{os.environ["PATH"]}',
+                   'NPM_RUNS': str(root / 'npm runs')}
+    for round in range(3):
+        ended = harness.run_lanes(root, {
+            name: ('-a', f'--build-dir=bin/install-{round}-{name}', f'{ORACLE}//node-modules')
+            for name in ('a', 'b')}, env_extra=environment)
+        for name, result in ended.items():
+            assert result.returncode == 0, (round, name, result.stdout[-4000:])
+        assert len(ended) == 2, ended
+    assert len((root / 'npm runs').read_text().splitlines()) == 1, (root / 'npm runs').read_text()
+    oracle = root / ORACLE
+    installs = sorted(path.name for path in (oracle / '.node-modules').iterdir())
+    assert len(installs) == 2 and installs[0] == '.lock', installs
+    assert (oracle / 'node_modules').is_symlink(), oracle / 'node_modules'
+    assert (oracle / 'node_modules/pinned').is_dir(), oracle / 'node_modules'
 
 
 def test_expected_directory_is_guarded(root):
@@ -308,6 +369,7 @@ CASES = [
     test_update_expected_rewrites_cases,
     test_update_expected_refuses_agreeing_twin,
     test_npm_ci_runs_again_only_when_the_lockfile_changes,
+    test_installs_at_once_share_the_packages,
     test_expected_directory_is_guarded,
     test_failing_script_leaves_update_red,
     test_declared_lanes_lists_the_oracle,

@@ -76,6 +76,8 @@ webcpp/
                       doc-check.py, libraries.py, counts.py, the Asciidoctor.js extensions, the
                       style
     example/          run_example.py, which runs an example and compares its output
+    node/             install.py, which installs the Node packages of the documentation, an
+                      oracle and the lint once per lockfile, and its test
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
     test/             the tests of the Jamroot, webcpp.jam, the oracle's rules and the doc build,
                       their harness, and the fixture libraries demo and oracle_demo
@@ -107,7 +109,7 @@ libs/<name>/
   AGENTS.md                  only what is specific to this library
   LICENSE_1_0.txt
   LICENSE-<ORIGIN>.txt       the original's notice, for a port that derives from its code
-  .gitignore                 doc/html/ at least, and node_modules/ with an oracle
+  .gitignore                 doc/html/ at least, and node_modules and .node-modules/ with an oracle
   .gitattributes
   .github/workflows/ci.yml   calls the superproject's library.yml (chapter 9)
 ```
@@ -283,9 +285,11 @@ owner's:
    library is, how to build and test it inside the superproject, where its
    page is published, its licence), `AGENTS.md` (only what is specific to it,
    with a link to this file as `../../AGENTS.md`), `.gitattributes`, and a
-   `.gitignore` that holds at least `doc/html/`, and `node_modules/` for a
-   library with an oracle: the superproject's own `.gitignore` names only its
-   top-level `doc/html/`.
+   `.gitignore` that holds at least `doc/html/`, and for a library with an
+   oracle `node_modules`, the link to the installed packages, which a pattern
+   with a slash would miss, and `.node-modules/`, where `tools/node/install.py`
+   installs them: the superproject's own `.gitignore` names only its top-level
+   `doc/html/`.
 7. **CI.** `.github/workflows/ci.yml`, which calls the superproject's
    reusable workflow (chapter 9), as `libs/xactor/.github/workflows/ci.yml`
    does:
@@ -400,7 +404,7 @@ webcpp.lane oracle : twins cases-machines cases-actors ;
 
 | Rule | What it declares |
 | --- | --- |
-| `webcpp.original <word> + ;` | how a program of the original's language runs, once and first; and the target `node-modules`, which installs what `package-lock.json` beside the Jamfile pins with `npm ci`, again when the lockfile changes |
+| `webcpp.original <word> + ;` | how a program of the original's language runs, once and first; and the target `node-modules`, which installs what `package-lock.json` beside the Jamfile pins with `npm ci`, through `tools/node/install.py`: once per lockfile under `.node-modules/`, linked at `node_modules`, so that runs at once never install over each other |
 | `webcpp.twins <examples> : <twins> : <suffix> : <extra-word> * ;` | the target `twins`: `twins.py` runs the twin `<twins>/<path><suffix>` of every program `<examples>/<path>.cpp`, at any depth, with the original's words and the extra words, and compares what it prints with the program's `.expected`, or with the twin's own `.expected` for a difference, which must then differ from the program's. Declared once per library: the page shows and counts its twins (chapter 8) |
 | `webcpp.cases <name> : <script> : <cases> : <expected> ;` | the target `cases-<name>`: the original runs `<script> <cases> <output>` into the build directory, and `compare.py` finds the output equal to `<expected>`, file by file and byte by byte. The Jamfile stops loading at a cases directory that does not exist, and at an expected directory whose removal would take the oracle's directory or the cases |
 | `webcpp.lane <name> : <target> + ;` | an own lane of the library, the alias `<name>` over the targets, which `b2 declared-lanes` lists and the CI runs (chapter 9). Only a Jamfile under the library's `test/` or `example/` declares one |

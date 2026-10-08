@@ -108,10 +108,12 @@ def commit(directory: Path, message: str, name: str = 'webcpp lint test') -> Non
 
 
 def pyright_installed() -> Path:
-    """The node_modules of tools/lint, which npm ci installs once, here, for every case."""
+    """The node_modules of tools/lint, which tools/node/install.py installs once, here, for every
+    case."""
     modules = harness.ROOT / 'tools/lint/node_modules'
     if not (modules / '.bin/pyright').exists():
-        subprocess.run(['npm', 'ci', '--no-audit', '--no-fund'], cwd=modules.parent, check=True)
+        subprocess.run([sys.executable, str(harness.ROOT / 'tools/node/install.py'),
+                        str(modules.parent)], check=True)
     return modules
 
 

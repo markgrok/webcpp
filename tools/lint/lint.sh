@@ -44,8 +44,9 @@
 # analyse every file once; the CI runs them as N jobs.
 #
 # Pyright is pinned in tools/lint/package.json and package-lock.json, and installed by npm ci
-# into tools/lint/node_modules the first time the lint runs, or when the pin changes. Node is a
-# prerequisite.
+# the first time the lint runs, or when the pin changes, through tools/node/install.py: under
+# tools/lint/.node-modules/, linked at tools/lint/node_modules, so that two lints at once never
+# install over each other. Node is a prerequisite.
 #
 # Usage: tools/lint/lint.sh --clang-format <path> --clang-tidy <path> [--shard K/N]
 # Exit 0 when every rule passes, 1 when one fails (each named on a line `lint: failed: <rule>`),
@@ -520,11 +521,11 @@ pinned="$(version_of tools/lint/package.json pyright)"
 installed="$(version_of tools/lint/node_modules/pyright/package.json 2>/dev/null || true)"
 pyright_ready=1
 if [ "${installed}" != "${pinned}" ]; then
-    printf 'installing Pyright %s with npm ci in tools/lint\n' "${pinned}"
+    printf 'installing Pyright %s with npm ci for tools/lint\n' "${pinned}"
     if ! command -v npm >/dev/null 2>&1; then
         pyright_ready=0
         fail 'npm is not on PATH; Node is a prerequisite of the lint'
-    elif ! (cd tools/lint && npm ci --no-audit --no-fund --loglevel=error); then
+    elif ! python3 tools/node/install.py tools/lint; then
         pyright_ready=0
         fail 'npm ci could not install Pyright in tools/lint'
     fi

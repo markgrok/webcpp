@@ -13,7 +13,7 @@ AsciiDoc could read as markup, &lowbar; for _ and &hyphen; for -, and links insi
 The page must show the characters MrDocs read, the ASCII hyphen among them, and keep those links;
 and a listing that is plain code must show what it holds, a character reference included.
 
-Asciidoctor.js comes from tools/doc/node_modules, which install.py installs and links.
+Asciidoctor.js comes from tools/doc/node_modules, which tools/node/install.py installs and links.
 """
 
 from __future__ import annotations
@@ -45,7 +45,8 @@ PART = '<wbr class="part">'
 def installed() -> None:
     """Installs tools/doc's packages as the doc build does, with install.py, which does nothing
     when they are there."""
-    subprocess.run([sys.executable, str(HERE / 'install.py'), str(HERE)], check=True)
+    subprocess.run([sys.executable, str(HERE.parent / 'node/install.py'), str(HERE)],
+                   check=True)
 
 
 def convert(text: str) -> str:

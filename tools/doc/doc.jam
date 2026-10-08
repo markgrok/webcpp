@@ -71,7 +71,7 @@
 # PATH; clang++, which reads the headers for doc_comments.py, is
 # -sCLANG=<path>, else clang++ on PATH; a path given may hold a space. When
 # one is not there, the build stops, naming it and where it was looked for.
-# Node runs Asciidoctor.js, which tools/doc/install.py installs with npm ci
+# Node runs Asciidoctor.js, which tools/node/install.py installs with npm ci
 # from package-lock.json, once per lockfile under tools/doc/.node-modules/, and
 # links at tools/doc/node_modules, so that doc builds at once share it.
 #
@@ -559,13 +559,13 @@ actions rendered-check
 rule install-packages ( targets * : sources * : properties * )
 {
     PYTHON on $(targets) = $(.python) ;
-    SCRIPT on $(targets) = [ path.native $(.here)/install.py ] ;
+    SCRIPT on $(targets) = [ path.native $(.root)/tools/node/install.py ] ;
     HERE on $(targets) = [ path.native $(.here) ] ;
 }
 
 # Installs the packages package-lock.json pins, from npm's cache when it holds
 # them, once per lockfile and never over an install in use, and links
-# node_modules to them (install.py); the stamp says it ran.
+# node_modules to them (tools/node/install.py); the stamp says it ran.
 actions install-packages
 {
     set -e

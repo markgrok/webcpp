@@ -356,7 +356,8 @@ def test_doc_builds_at_once_share_the_packages(root):
             assert result.returncode == 0, (round, name, result.stdout[-4000:])
         assert len(ended) == 3, ended
     assert (root / PAGE).is_file()
-    installs = sorted((root / 'tools/doc/.node-modules').iterdir())
+    installs = sorted(path for path in (root / 'tools/doc/.node-modules').iterdir()
+                      if path.name != '.lock')
     assert len(installs) == 1, installs
     link = root / 'tools/doc/node_modules'
     assert link.is_symlink() and link.resolve() == (installs[0] / 'node_modules').resolve(), link

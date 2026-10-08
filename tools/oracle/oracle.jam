@@ -33,8 +33,10 @@
 # holding it or one inside it.
 #
 # Every target is explicit, so that only a request by name, or a lane that
-# names it (webcpp.lane), runs Node: `b2 test` never does. npm ci runs again
-# when package-lock.json is newer than its stamp. Node and npm are looked for
+# names it (webcpp.lane), runs Node: `b2 test` never does. The install runs
+# again when package-lock.json is newer than its stamp, and then installs only
+# when the lockfile's content changed: tools/node/install.py installs once per
+# lockfile under .node-modules/ beside it and links node_modules there. Node and npm are looked for
 # on PATH only when an oracle target runs, and the build stops, naming the
 # one that is missing. The targets compile nothing, so they leave the
 # Jamroot's check of Boost out.
@@ -67,6 +69,8 @@ if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 
 .twins-runner = [ path.native $(.here)/twins.py ] ;
 .compare = [ path.native $(.here)/compare.py ] ;
+# The installer of Node packages that the documentation and the lint share.
+.installer = [ path.native [ path.join [ path.parent $(.here) ] node/install.py ] ] ;
 
 # The oracle Jamfile a target belongs to, by its directory relative to the
 # superproject, which keys what this module records of it; and the cases a
@@ -289,16 +293,19 @@ rule npm-ci ( targets * : sources * : properties * )
     local key = [ feature.get-values <webcpp-oracle> : $(properties) ] ;
     on-path node : $(key) ;
     on-path npm : $(key) ;
+    PYTHON on $(targets) = $(.python) ;
+    INSTALLER on $(targets) = $(.installer) ;
     HERE on $(targets) = [ path.native $(.location.$(key)) ] ;
 }
 
-# Installs the packages package-lock.json pins into node_modules, from npm's
-# cache when it holds them, then touches the stamp, which is absolute.
+# Installs the packages package-lock.json pins, from npm's cache when it holds
+# them, once per lockfile under .node-modules/ beside it, and links
+# node_modules there (tools/node/install.py), so that two runs at once never
+# install over each other; then touches the stamp, which is absolute.
 actions npm-ci
 {
     set -e
-    cd "$(HERE)"
-    npm ci --no-audit --no-fund --prefer-offline
+    "$(PYTHON)" "$(INSTALLER)" "$(HERE)"
     touch "$(<)"
 }
 
