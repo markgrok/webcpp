@@ -59,54 +59,51 @@ def user_config(root: Path) -> Path:
                        'and WEBCPP_USER_CONFIG is not set')
 
 
-def run_b2(root: Path, *args: str, env_extra: dict | None = None, stdin: int | None = None,
-           timeout: float = TIMEOUT) -> subprocess.CompletedProcess:
-    """Runs b2 in root and returns what it printed, stdout and stderr together, in stdout.
-
-    env_extra adds variables to b2's environment after CPATH and its kin are removed; a value
-    of None removes that variable instead. stdin is b2's standard input, a file descriptor,
-    else this process's own. A byte that is not UTF-8, which b2 passes on from a test's output,
-    is read as U+FFFD. b2 runs in a session of its own: a run that outlasts timeout, or is
-    interrupted, is stopped with stop_session, and the exception that ended it,
-    subprocess.TimeoutExpired or KeyboardInterrupt, is raised again.
-    """
+def b2_environment(env_extra: Mapping[str, str | None] | None = None) -> dict[str, str]:
+    """The environment every b2 of the harness runs in: this process's, without CPATH and its kin,
+    with env_extra's variables added, a value of None removing its variable instead."""
     env = {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
     for name, value in (env_extra or {}).items():
         if value is None:
             env.pop(name, None)
         else:
             env[name] = value
-    command = ['b2', f'--user-config={user_config(root)}', *args]
-    with subprocess.Popen(command, cwd=root, env=env, stdin=stdin, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, text=True, errors='replace',
-                          start_new_session=True) as process:
+    return env
+
+
+def start_b2(root: Path, *args: str, env_extra: Mapping[str, str | None] | None = None,
+             stdin: int | None = None) -> subprocess.Popen:
+    """b2 started in root, in the environment of b2_environment(env_extra), in a session of its
+    own, without waiting; what it prints, stdout and stderr together, is read from its stdout, a
+    byte that is not UTF-8, which b2 passes on from a test's output, as U+FFFD. stdin is b2's
+    standard input, a file descriptor, else this process's own."""
+    return subprocess.Popen(['b2', f'--user-config={user_config(root)}', *args], cwd=root,
+                            env=b2_environment(env_extra), stdin=stdin, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, errors='replace',
+                            start_new_session=True)
+
+
+def run_b2(root: Path, *args: str, env_extra: Mapping[str, str | None] | None = None,
+           stdin: int | None = None, timeout: float = TIMEOUT) -> subprocess.CompletedProcess:
+    """Runs b2 in root, started as start_b2 starts it, and returns what it printed, stdout and
+    stderr together, in stdout. A run that outlasts timeout, or is interrupted, is stopped with
+    stop_session, and the exception that ended it, subprocess.TimeoutExpired or
+    KeyboardInterrupt, is raised again."""
+    with start_b2(root, *args, env_extra=env_extra, stdin=stdin) as process:
         try:
             output, _ = process.communicate(timeout=timeout)
         except BaseException:
             stop_session(process)
             raise
-    return subprocess.CompletedProcess(command, process.returncode, output)
+    return subprocess.CompletedProcess(process.args, process.returncode, output)
 
 
 # What names a lane of run_lanes: its version, its name.
 Lane = TypeVar('Lane', bound=Hashable)
 
 
-def start_b2(root: Path, *args: str, env_extra: dict | None = None) -> subprocess.Popen:
-    """b2 started in root, in a session of its own, as run_b2 starts it, without waiting;
-    env_extra is run_b2's."""
-    env = {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
-    for name, value in (env_extra or {}).items():
-        if value is None:
-            env.pop(name, None)
-        else:
-            env[name] = value
-    return subprocess.Popen(['b2', f'--user-config={user_config(root)}', *args], cwd=root,
-                            env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, errors='replace', start_new_session=True)
-
-
-def run_lanes(root: Path, lanes: Mapping[Lane, Sequence[str]], env_extra: dict | None = None,
+def run_lanes(root: Path, lanes: Mapping[Lane, Sequence[str]],
+              env_extra: Mapping[str, str | None] | None = None,
               timeout: float = TIMEOUT) -> dict[Lane, subprocess.CompletedProcess]:
     """Runs one b2 per lane of lanes, {name: its arguments}, at once, and returns what each gave,
     by name, in the order they ended.

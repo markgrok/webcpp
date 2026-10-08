@@ -9,7 +9,7 @@
 leaves none of its actions running. b2 gives each action a process group of its own, so killing
 b2's group alone would leave them running. Lanes run at once start on a bin that exists, and a
 lane that fails stops the others, with what they started. Run with the names of some cases to run
-only those."""
+only those. b2 gets one environment, without CPATH and its kin, however it is started."""
 
 from __future__ import annotations
 
@@ -152,7 +152,49 @@ def test_lanes_start_on_bin_and_a_failure_stops_the_others(root):
         raise AssertionError(f'the child {child} of the stopped lane outlived it')
 
 
+# A b2 that prints the variables of its environment that a case names in SHOWN, one per line,
+# NAME=value, or NAME unset.
+ENVIRONMENT_B2 = """#!{python}
+import os
+for name in os.environ['SHOWN'].split():
+    print(f'{{name}}={{os.environ[name]}}' if name in os.environ else f'{{name}} unset')
+"""
+
+
+def test_every_b2_gets_one_environment(root):
+    # b2 runs without CPATH and its kin, which the Jamroot refuses, and with what env_extra adds,
+    # a value of None removing its variable: b2_environment makes that environment, and run_b2,
+    # start_b2 and so run_lanes give b2 that one.
+    tools = root / 'fake tools'
+    tools.mkdir()
+    (tools / 'b2').write_text(ENVIRONMENT_B2.format(python=sys.executable))
+    (tools / 'b2').chmod(0o755)
+    shown = 'CPATH C_INCLUDE_PATH WEBCPP_KEPT WEBCPP_REMOVED WEBCPP_ADDED'
+    extra = {'PATH': f'{tools}{os.pathsep}{os.environ["PATH"]}', 'SHOWN': shown,
+             'WEBCPP_REMOVED': None, 'WEBCPP_ADDED': 'added'}
+    saved = dict(os.environ)
+    os.environ.update(CPATH='/somewhere', C_INCLUDE_PATH='/elsewhere', WEBCPP_KEPT='kept',
+                      WEBCPP_REMOVED='removed')
+    try:
+        environment = harness.b2_environment(extra)
+        printed = [harness.run_b2(root, env_extra=extra).stdout]
+        started = harness.start_b2(root, env_extra=extra)
+        printed.append(started.communicate()[0])
+        printed += [result.stdout for result in harness.run_lanes(root, {'lane': ()},
+                                                                  env_extra=extra).values()]
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+    assert {name: environment.get(name) for name in shown.split()} == {
+        'CPATH': None, 'C_INCLUDE_PATH': None, 'WEBCPP_KEPT': 'kept', 'WEBCPP_REMOVED': None,
+        'WEBCPP_ADDED': 'added'}, environment
+    expected = ('CPATH unset\nC_INCLUDE_PATH unset\nWEBCPP_KEPT=kept\nWEBCPP_REMOVED unset\n'
+                'WEBCPP_ADDED=added\n')
+    assert printed == [expected] * 3, printed
+
+
 CASES = [
+    test_every_b2_gets_one_environment,
     test_a_timeout_stops_every_action,
     test_lanes_start_on_bin_and_a_failure_stops_the_others,
 ]
