@@ -358,6 +358,27 @@ def test_compile_database_reads_what_only_wasi_builds(root):
         assert text in completed.stdout, (text, completed.stdout[-6000:])
 
 
+def test_an_aggregate_no_units_options_compile_names_each(root):
+    add_component_demo(root)
+    # A third public header that compiles alone only with a macro of its own: the aggregate,
+    # which includes every header, compiles with the options of none of the three headers-alone
+    # units, and the database names each unit's object with its first error.
+    write(root, 'libs/component_demo/include/webcpp/component_demo/planted.hpp',
+          '#ifndef WEBCPP_PLANTED\n#error "planted.hpp needs WEBCPP_PLANTED"\n#endif\n')
+    append(root, 'libs/component_demo/test/Jamfile',
+           'webcpp.headers-alone component_demo : ../include : component_demo/planted.hpp\n'
+           '  : <define>WEBCPP_PLANTED : wasip2 wasip3 ;\n')
+    completed = compile_database(root)
+    assert completed.returncode == 1, completed.stdout[-6000:]
+    said = completed.stdout[completed.stdout.index('its aggregate translation unit'):]
+    for unit, error in (('alone-component_demo', 'planted.hpp needs WEBCPP_PLANTED'),
+                        ('alone-component_demo-planted', 'builds for wasip2 or wasip3'),
+                        ('alone-component_demo-world', 'planted.hpp needs WEBCPP_PLANTED')):
+        named = re.search(rf'^- \S*/{unit}\.test/\S*/{unit}\.o: .*{re.escape(error)}', said,
+                          re.MULTILINE)
+        assert named, (unit, error, said[-6000:])
+
+
 def test_wasm_compiler_not_from_wasi_sdk_fails_by_name(root):
     prepare(root)
     add_component_demo(root)
@@ -1134,6 +1155,7 @@ CASES = [
     test_no_library_passes,
     test_compile_database_lists_what_b2_builds,
     test_compile_database_reads_what_only_wasi_builds,
+    test_an_aggregate_no_units_options_compile_names_each,
     test_wasm_compiler_not_from_wasi_sdk_fails_by_name,
     test_a_failed_check_of_the_database_runs_the_other_rules,
     test_clang_format,

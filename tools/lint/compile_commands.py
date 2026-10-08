@@ -289,14 +289,23 @@ def aggregate_command(root: str, library: str, target: str, units: list[list[str
     candidates = list(distinct.values())
     if len(candidates) == 1:
         return candidates[0]
-    said = ''
+    refusals = []
     for command in candidates:
         said = compiles_aggregate(root, command, source)
         if not said:
             return command
+        refusals.append(f'- {output_of(command)}: {first_error(said)}')
     raise Failure(f'libs/{library}: its aggregate translation unit, which includes every public '
                   f'header, compiles with the options of none of its headers-alone translation '
-                  f'units on {target}; the last said:\n{said}')
+                  f'units on {target}; with the options of each unit, the first error:\n'
+                  + '\n'.join(refusals))
+
+
+def first_error(said: str) -> str:
+    """The first line of what a compiler said that names an error, else its first line."""
+    lines = [line for line in said.splitlines() if line.strip()]
+    errors = [line for line in lines if 'error:' in line]
+    return (errors or lines or ['the compiler failed'])[0]
 
 
 def aggregate_entries(root: str, library: str,
