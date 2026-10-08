@@ -16,22 +16,34 @@ import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import harness
 
-# A test that writes its pid to PID_FILE, then waits far longer than any case.
+# A test that, when SLEEPS names a variable of its environment, writes its pid to PID_FILE, then
+# waits far longer than any case; without it, it passes at once.
 SLEEPER = ('#include <cstdio>\n'
+           '#include <cstdlib>\n'
            '#include <unistd.h>\n'
            '\n'
            'int main() {\n'
+           '    if (std::getenv("SLEEPS") == nullptr) {\n'
+           '        return 0;\n'
+           '    }\n'
            '    std::FILE* file = std::fopen("PID_FILE", "w");\n'
            '    std::fprintf(file, "%d\\n", static_cast<int>(getpid()));\n'
            '    std::fclose(file);\n'
            '    sleep(600);\n'
            '}\n')
 
-# Long enough for b2 to build the sleeper and start it, on a loaded machine too.
+# The variable that makes the sleeper sleep.
+SLEEPS = 'WEBCPP_HARNESS_TEST_SLEEPS'
+
+# Long enough for b2 to start the sleeper, already built, on a loaded machine too.
 TIMEOUT = 20
+
+# What b2 writes when it runs a test, which a later run reads as the test already passed.
+RUN_RECORDS = ('.output', '.run', '.test')
 
 
 def alive(pid: int) -> bool:
@@ -46,15 +58,32 @@ def alive(pid: int) -> bool:
     return True
 
 
+def forget_the_run(root: Path) -> None:
+    """Removes what records that the sleeper ran, so that the next b2 run runs it again, without
+    building it again."""
+    records = [path for path in (root / 'bin').rglob('sleeper*')
+               if path.is_file() and path.suffix in RUN_RECORDS]
+    assert records, f'b2 recorded no run of the sleeper under {root / "bin"}'
+    for path in records:
+        path.unlink()
+
+
 def test_a_timeout_stops_every_action(root):
+    """The sleeper is built in a first run, which has no timeout, so that the timeout of the
+    second covers starting it alone, and a slow compiler cannot make the case fail."""
     pid_file = root / 'sleeper.pid'
     harness.add_library(root, 'sleeper',
                         'import webcpp ;\n'
                         '\n'
                         'webcpp.run sleeper : sleeper.cpp ;\n',
-                        {'sleeper.cpp': SLEEPER.replace('PID_FILE', str(pid_file))})
+                        {'sleeper.cpp': SLEEPER.replace('SLEEPS', SLEEPS)
+                                               .replace('PID_FILE', str(pid_file))})
+    built = harness.run_b2(root, 'libs/sleeper/test', env_extra={SLEEPS: None})
+    harness.expect(built, True, '**passed**')
+    forget_the_run(root)
     try:
-        result = harness.run_b2(root, 'libs/sleeper/test', timeout=TIMEOUT)
+        result = harness.run_b2(root, 'libs/sleeper/test', env_extra={SLEEPS: '1'},
+                                timeout=TIMEOUT)
     except subprocess.TimeoutExpired:
         pass
     else:
