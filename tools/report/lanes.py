@@ -53,7 +53,8 @@ SEVERITY = list(KINDS)
 # The kind of a test that expects a step to fail, when that step succeeded.
 SUCCEEDED = {'compile': 'compiled', 'link': 'linked', 'run': 'ran'}
 
-# The targets a program is built for (tools/webcpp.jam), which a lane may be named after.
+# The targets a program is built for (tools/target.jam), which a lane may be named after, and
+# the CI knows (tools/ci/matrix.py): spelled here alone.
 TARGETS = ('native', 'emscripten', 'wasip2', 'wasip3')
 
 EMPTY = 'the lane built no test and no example'
@@ -69,10 +70,13 @@ CDATA = re.compile(r'(<([A-Za-z][\w.-]*)[^<>]*>)<!\[CDATA\[(.*?)\]\]>(</\2>)', r
 # The characters XML 1.0 does not allow, which a program can print.
 NOT_XML = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f' + chr(0xFFFE) + chr(0xFFFF) + ']')
 
-# The name of an own lane on a target: <target>.<library>.<rest>, the rest its directory under
-# libs/<library>/ and its name (tools/ci/matrix.py). No toolset directory begins with a target and
-# a dot, so the name is never a lane's.
-OWN_LANE = re.compile(r'(native|emscripten|wasip2|wasip3)\.([a-z][a-z0-9_]*)\.(.+)')
+def own_lane_name(targets: tuple[str, ...]) -> re.Pattern[str]:
+    """The name of an own lane on one of targets: <target>.<library>.<lane> (tools/ci/matrix.py).
+    No toolset directory begins with a target and a dot, so the name is never a lane's."""
+    return re.compile(rf'({"|".join(map(re.escape, targets))})\.([a-z][a-z0-9_]*)\.(.+)')
+
+
+OWN_LANE = own_lane_name(TARGETS)
 
 # A toolset the command line names: "toolset=clang-wasip2", as b2 records its arguments.
 COMMAND_TOOLSET = re.compile(r'"-{0,2}toolset=([^"]*)"')

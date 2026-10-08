@@ -60,6 +60,17 @@ def planned(root: Path, *arguments: str) -> list[dict]:
     return json.loads(lines[0])['include']
 
 
+def test_the_targets_are_spelled_once(_):
+    # The CI's targets are the report's, lanes.py's TARGETS, which the name of an own lane begins
+    # with: a target added there is known to both.
+    import lanes
+    assert matrix.TARGETS is lanes.TARGETS, (matrix.TARGETS, lanes.TARGETS)
+    patched = (*lanes.TARGETS, 'wasip9')
+    assert lanes.own_lane_name(patched).fullmatch('wasip9.demo.http')
+    assert not lanes.own_lane_name(lanes.TARGETS).fullmatch('wasip9.demo.http')
+    assert lanes.OWN_LANE.pattern == lanes.own_lane_name(lanes.TARGETS).pattern
+
+
 def test_plan_of_one_library(root):
     lanes = planned(root, '--library', 'demo')
     assert [lane['id'] for lane in lanes] == NATIVE + ['wasip2', 'wasip3'], lanes
@@ -516,6 +527,7 @@ def test_the_report_names_a_planned_lane_that_wrote_nothing(root):
 
 
 CASES = [
+    test_the_targets_are_spelled_once,
     test_plan_of_one_library,
     test_plan_with_no_toolset_configured,
     test_plan_of_every_library,

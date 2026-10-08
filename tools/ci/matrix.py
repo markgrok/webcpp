@@ -93,6 +93,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 REPORT = ROOT / 'tools/report/report.py'
 
+# The targets a library may declare, which the report spells: tools/report/lanes.py's TARGETS.
+sys.path.insert(0, str(ROOT / 'tools/report'))
+from lanes import TARGETS  # noqa: E402
+
 COMPILER_PATHS = ('CPATH', 'CPLUS_INCLUDE_PATH', 'C_INCLUDE_PATH')
 
 # Where tools/ci/actions/wasi-sdk installs wasi-sdk, as the README installs it.
@@ -213,10 +217,6 @@ LANES = (
     wasm_lane('wasip3'),
 )
 
-# The targets tools/webcpp.jam knows, which a library may declare.
-KNOWN = ('native', 'emscripten', 'wasip2', 'wasip3')
-
-
 def environment() -> dict[str, str]:
     """This process's environment without the variables the Jamroot refuses."""
     return {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
@@ -258,7 +258,7 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
         pairs = [(name, target) for name, target in pairs if name == library]
     if not pairs:
         raise Failure('no library declares a target: there is nothing to build', 2)
-    unknown = sorted({target for _, target in pairs if target not in KNOWN})
+    unknown = sorted({target for _, target in pairs if target not in TARGETS})
     if unknown:
         raise Failure(f'b2 declared-targets names targets the CI does not know: '
                       f'{", ".join(unknown)}', 2)
@@ -335,9 +335,9 @@ def parsed_own_lanes(text: str) -> list[OwnLane]:
         if under is None or '/..' in directory or '/./' in f'{directory}/':
             raise Failure(f'b2 declared-lanes printed {line!r}, whose directory is not in '
                           f'libs/{library}/test or libs/{library}/example', 2)
-        if target is not None and target not in KNOWN:
+        if target is not None and target not in TARGETS:
             raise Failure(f'b2 declared-lanes printed {line!r}: {target} is not a target; the '
-                          f'targets are {", ".join(KNOWN)}', 2)
+                          f'targets are {", ".join(TARGETS)}', 2)
         lanes.append(OwnLane(library, lane, directory, target))
     return lanes
 
