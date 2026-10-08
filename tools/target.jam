@@ -1,0 +1,44 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The targets a program is built for, and the target the toolset of a build
+# builds for: what tools/webcpp.jam builds each program for, and what
+# tools/component/component.jam reads a component's WASI version from, so
+# that a toolset is told apart in one place. It is loaded as the module
+# webcpp-target, which both load.
+import feature ;
+
+# The targets, each a word a library's webcpp.targets may name.
+.known = native emscripten wasip2 wasip3 ;
+
+rule known ( )
+{
+    return $(.known) ;
+}
+
+# The target the toolset of properties builds for: emscripten for b2's
+# emscripten, wasip2 and wasip3 for b2's clang registered under those
+# versions, and native for any other. It reads only <toolset> and its
+# version, which the build request sets.
+rule target-of ( properties * )
+{
+    local toolset = [ feature.get-values <toolset> : $(properties) ] ;
+    if $(toolset) = emscripten
+    {
+        return emscripten ;
+    }
+    if $(toolset) = clang
+    {
+        # A switch, since `in` holds for an empty list: a clang without a
+        # version is native.
+        switch [ feature.get-values <toolset-clang:version> : $(properties) ]
+        {
+            case wasip2 : return wasip2 ;
+            case wasip3 : return wasip3 ;
+        }
+    }
+    return native ;
+}

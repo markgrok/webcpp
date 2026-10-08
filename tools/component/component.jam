@@ -119,19 +119,21 @@ feature.feature webcpp-bindings : : free incidental ;
 .wit-variable.p2 = WASI_WIT_P2 ;
 .wit-variable.p3 = WASI_WIT_P3 ;
 
-# The WASI version the toolset of properties builds for, p2 or p3, as
-# tools/webcpp.jam's target-of reads it: only <toolset> and its version.
-# Nothing for any other toolset.
+# The targets and the target of a toolset, tools/target.jam, which
+# tools/webcpp.jam loads too.
+modules.load webcpp-target : target.jam : [ path.native [ path.parent $(.here) ] ] ;
+import webcpp-target ;
+
+# The WASI version of each WASI target.
+.version-of.wasip2 = p2 ;
+.version-of.wasip3 = p3 ;
+
+# The WASI version the toolset of properties builds for, p2 or p3, from the
+# target tools/target.jam reads from it. Nothing for any other toolset.
 local rule version-of ( properties * )
 {
-    if [ feature.get-values <toolset> : $(properties) ] = clang
-    {
-        switch [ feature.get-values <toolset-clang:version> : $(properties) ]
-        {
-            case wasip2 : return p2 ;
-            case wasip3 : return p3 ;
-        }
-    }
+    local target = [ webcpp-target.target-of $(properties) ] ;
+    return $(.version-of.$(target)) ;
 }
 
 # The superproject's build directory, absolute: bin, or the directory

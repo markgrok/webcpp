@@ -67,6 +67,8 @@ webcpp/
   doc/                the index page (index.adoc, Jamfile)
   tools/
     webcpp.jam        the Jamfile API (chapter 9): webcpp.targets, webcpp.run, ...
+    target.jam        the targets, and the target a toolset builds for, which webcpp.jam and
+                      component.jam both read
     throw_exception.cpp  what Boost calls in place of a throw, built without exceptions
     boost_json.cpp    Boost.JSON's definitions, built as /webcpp//boost_json (chapter 2)
     boost_test_runner.cpp  Boost.Test's header-only framework, for webcpp.boost-test (chapter 9)
