@@ -1213,6 +1213,12 @@ lanes, which build only its test and example directories' other programs.
   b2 -a --dump-tests --out-xml=wasip2.wasi.test.http.xml toolset=clang-wasip2 testing.launcher=wasmtime libs/wasi/test//http
   ```
 
+  Built for a target it does not name, natively for one, such a lane stops,
+  naming itself, its targets and the toolset to give (`webcpp.lane http in
+  libs/wasi/test/Jamfile runs on wasip2 wasip3, and this build is for
+  native: give toolset=clang-wasip2 or toolset=clang-wasip3, with
+  testing.launcher=wasmtime`), rather than build nothing and read green.
+
   A served program always runs so: `b2 declared-lanes` stops, naming it,
   when no lane of its Jamfile names it (`webcpp.serve answers.cpp in
   libs/web/test/Jamfile is in no own lane; name it in a webcpp.lane that

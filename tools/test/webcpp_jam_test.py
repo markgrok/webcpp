@@ -14,11 +14,12 @@ its globs match, with requirements and targets of its own, and a header two call
 that matches none refused; a compile-diagnostic test passes only on the error it states, and is
 skipped on a toolset that is not clang; `b2 declared-targets` lists what each library declares; a
 lane of a library's own is listed once per target it runs on, which must be one its Jamfile
-declares, what it names leaves the ordinary lanes, and every served program runs in one on every
-target it is served on; a Boost.Test suite is built and run natively only, its framework always with
-exceptions; Boost.JSON's definitions link on every target; and every program sees C++20, the wasip2
-one alone without exceptions. Each case builds a scratch superproject with the fixture library demo.
-Run with the names of some cases to run only those."""
+declares, what it names leaves the ordinary lanes, a build of it for another target stops by name,
+and every served program runs in one on every target it is served on; a Boost.Test suite is
+built and run natively only, its framework always with exceptions; Boost.JSON's definitions link
+on every target; and every program sees C++20, the wasip2 one alone without exceptions. Each case
+builds a scratch superproject with the fixture library demo. Run with the names of some cases to
+run only those."""
 
 from __future__ import annotations
 
@@ -386,6 +387,24 @@ def test_a_lanes_programs_leave_the_ordinary_lanes(root):
     assert passed(lanes['wasip2']) == WASM_DEMO - served, passed(lanes['wasip2'])
     assert passed(lanes['native lane']) == served, passed(lanes['native lane'])
     assert passed(lanes['wasip2 lane']) == served, passed(lanes['wasip2 lane'])
+
+
+def test_a_lane_built_for_another_target_fails_by_name(root):
+    # A lane that names its targets runs only on them: built for another, natively here, it would
+    # build nothing and pass, so it fails, naming the lane, its targets and the toolset to give.
+    # A lane that names none, as an oracle's, runs on any toolset.
+    jamfile = root / 'libs/demo/test/Jamfile'
+    jamfile.write_text(jamfile.read_text() + 'webcpp.lane served : pass : wasip2 wasip3 ;\n'
+                       + 'webcpp.lane plain : fails ;\n')
+    harness.expect(harness.run_b2(root, 'libs/demo/test//served'), False,
+                   'webcpp.lane served in libs/demo/test/Jamfile runs on wasip2 wasip3, and '
+                   'this build is for native: give toolset=clang-wasip2 or toolset=clang-wasip3, '
+                   'with testing.launcher=wasmtime')
+    harness.expect(harness.run_b2(root, '-a', '--build-dir=bin/wasip2', *WASIP2,
+                                  'libs/demo/test//served'), True, '**passed**')
+    harness.expect(harness.run_b2(root, '--build-dir=bin/wasip3', 'toolset=clang-wasip3',
+                                  'libs/demo/test//plain'), True)
+    harness.expect(harness.run_b2(root, 'libs/demo/test//plain'), True, '**passed**')
 
 
 def served_library(root, lanes):
@@ -853,6 +872,7 @@ CASES = [
     test_a_lane_on_targets_is_listed_once_per_target,
     test_a_lane_runs_only_on_targets_its_jamfile_declares,
     test_a_lanes_programs_leave_the_ordinary_lanes,
+    test_a_lane_built_for_another_target_fails_by_name,
     test_every_served_program_runs_in_an_own_lane,
     test_example_mismatch_fails_naming_the_program,
     test_example_reads_its_input,

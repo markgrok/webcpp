@@ -77,6 +77,10 @@ feature.feature webcpp-targets : : free incidental ;
 # webcpp/<library>/<name>.hpp.
 feature.feature webcpp-include : : free incidental ;
 
+# The lane an own lane's alias is, <directory>/<name>, which lane-target
+# reads.
+feature.feature webcpp-lane : : free incidental ;
+
 # What links tools/throw_exception.cpp, the handler Boost calls in place of
 # a throw, into a program built without exceptions: every program on
 # wasip2, whose toolset the Jamroot builds without them, and any other whose
@@ -500,7 +504,8 @@ local rule load-jamfiles ( directories * )
 # for lanes, and the CI runs it with Clang 18, its exit status its verdict; a
 # lane that names targets as one line "<library> <name> <directory>
 # <target>" per target, which the CI runs as that target's lane runs, and
-# reports. Each target is one of its Jamfile's webcpp.targets, which must
+# reports; a build of it for another target stops, naming the toolset to
+# give. Each target is one of its Jamfile's webcpp.targets, which must
 # come before it (native when there are none). A served program is named by
 # such a lane on every target it is served on, which lanes checks. Only a
 # Jamfile under the library's test or example directory, which lanes loads,
@@ -537,7 +542,17 @@ rule lane ( name : b2-targets + : targets * )
                 "lanes; a lane names main targets of the Jamfile that declares it" ;
         }
     }
-    alias $(name) : $(b2-targets) ;
+    if $(targets)
+    {
+        local key = $(found[3])/$(name) ;
+        .lane-targets.$(key) = $(targets) ;
+        .lane-shown.$(key) = "webcpp.lane $(name) in $(found[4])" ;
+        alias $(name) : $(b2-targets) : <webcpp-lane>$(key) <conditional>@webcpp%lane-target ;
+    }
+    else
+    {
+        alias $(name) : $(b2-targets) ;
+    }
     $(found[1]).mark-target-as-explicit $(name) $(b2-targets) ;
     if $(targets)
     {
@@ -550,6 +565,34 @@ rule lane ( name : b2-targets + : targets * )
     else
     {
         .lanes += "$(library[1]) $(name) $(found[3])" ;
+    }
+}
+
+# What a lane is built with on each target, as a message names it.
+.toolset-of.native = "a native toolset" ;
+.toolset-of.emscripten = toolset=emscripten ;
+.toolset-of.wasip2 = toolset=clang-wasip2 ;
+.toolset-of.wasip3 = toolset=clang-wasip3 ;
+
+# The conditional requirement of a lane that names its targets: a build for
+# another target, which would build none of its programs, or those it also
+# builds there, and read green, stops, naming the lane, its targets and the
+# toolset to give.
+rule lane-target ( properties * )
+{
+    local key = [ feature.get-values <webcpp-lane> : $(properties) ] ;
+    local target = [ webcpp-target.target-of $(properties) ] ;
+    local targets = $(.lane-targets.$(key)) ;
+    if ! $(target) in $(targets)
+    {
+        local launcher ;
+        if [ set.intersection $(targets) : wasip2 wasip3 ]
+        {
+            launcher = ", with testing.launcher=wasmtime" ;
+        }
+        local toolsets = $(.toolset-of.$(targets)) ;
+        errors.user-error "$(.lane-shown.$(key)) runs on $(targets:J= ), and this build is for"
+            "$(target): give $(toolsets:J= or )$(launcher)" ;
     }
 }
 
