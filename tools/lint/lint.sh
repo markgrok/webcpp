@@ -666,9 +666,12 @@ else
 fi
 
 # 18. A library's changelog and a version's release notes keep the form of AGENTS.md chapter
-#     11: their sections and regions, and every line a bullet that starts with a verb of the
-#     list, or with *Breaking change:* and then one, with no cross-reference, at most ten per
-#     library and version (tools/release/changelog.py, through tools/lint/rules.py).
+#     11: their sections and regions, and every line a bullet, read as Asciidoctor reads a
+#     list, that starts with a verb of the list, or with *Breaking change:* and then one, holds
+#     at most 30 words and no cross-reference, at most ten per library and version
+#     (tools/release/changelog.py, through tools/lint/rules.py). What a line says, internal
+#     changes left out, about ten words, the most important first and a deprecation naming its
+#     replacement, is the reviewer's to read.
 rule 'changelog form'
 if python3 tools/lint/rules.py changelog < "${work_directory}/files"; then
     printf 'every changelog keeps its form\n'

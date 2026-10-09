@@ -45,8 +45,9 @@ import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path, PurePosixPath
 
+# tools/release, whose changelog.py the rule changelog reads, imported by that rule alone so
+# that a fault of it fails no other rule.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'release'))
-import changelog  # noqa: E402  (tools/release, put on the path above)
 
 Finding = tuple[str, int, str]
 
@@ -638,6 +639,8 @@ def include_boundaries(paths: list[str]) -> Iterator[Finding]:
 def changelog_lines(path: str, text: str) -> Iterator[Finding]:
     """A library's changelog and a version's release notes keep AGENTS.md chapter 11's form, each
     line of them a bullet in it (tools/release/changelog.py)."""
+    import changelog
+
     for line, message in changelog.file_findings(path, text):
         yield path, line, message
 

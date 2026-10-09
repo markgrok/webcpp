@@ -19,12 +19,19 @@ the paragraph IN_PREPARATION while the version is in preparation, then SECTIONS,
 [#webcpp-<a-b-c>-<slug>] and == <title>, each holding its entries in alphabetical order, or the
 paragraph None.
 
-A line is a bullet: "* " at the start of a line, then the lines after it up to a blank line,
-the next bullet or the region's end, which continue it. It starts with one of VERBS, or with
-"*Breaking change:* " and then one of VERBS, whose first letter may be lower case, and holds no
-cross-reference, <<...>> or xref:, since the index page shows it too. A library's version holds
-at most MOST of them; the sections of release notes have no such limit. Outside its regions, a
-library's changelog holds no text after its first section.
+A line is a bullet, read as Asciidoctor reads a list: "* " at the start of a line, indented or
+not, then the lines after it up to a blank line, the next bullet or the region's end, which
+continue it; a comment line is dropped, and a nested list (**, -, ., 1., a., term::), a block
+(+, ----, [source] and the like) or a directive (include::, ifdef::) inside a region fails. It
+starts with one of VERBS, or with "*Breaking change:* " and then one of VERBS, whose first
+letter may be lower case, holds the prefix nowhere else, holds at most WORDS words, and holds no
+cross-reference, <<...>>, xref: or link:#, since the index page shows it too. A library's
+version holds at most MOST of them; the sections of release notes have no such limit. Outside
+its regions, a library's changelog holds no bullet, and no text after its first section.
+
+What no rule reads is the reviewer's: that a line says what a user sees, internal changes left
+out; about ten words, under the ceiling; the most important line first, and a breaking change
+before the rest; and a deprecation that names its replacement.
 """
 
 from __future__ import annotations
@@ -36,6 +43,7 @@ from pathlib import PurePosixPath
 VERBS = ('Added', 'Changed', 'Deprecated', 'Fixed', 'Improved', 'Removed', 'Updated')
 BREAKING = '*Breaking change:* '
 MOST = 10
+WORDS = 30
 NONE = 'None.'
 IN_PREPARATION = ["In preparation: no tag names this version yet, and its libraries' entries",
                   'are their changelogs\' "Unreleased" sections.']
@@ -56,6 +64,21 @@ UPDATED = re.compile(r'\[#webcpp-(?P<anchor>[\d-]+)-(?P<name>' + NAME + r')\]\n'
                      r'include::\{webcpp-root\}/libs/(?P=name)/doc/changelog\.adoc'
                      r'\[tag=(?P<tag>[\w.]+)\]')
 
+# How Asciidoctor reads a line inside a list item: a bullet of the list, an item of a nested
+# list, a term of a description list, a block's delimiter or attribute line, a directive, and a
+# comment, which it drops.
+BULLET = re.compile(r'[ \t]*\*[ \t]+(\S.*)')
+NESTED_ITEM = re.compile(r'[ \t]*(\*{2,5}|-|\u2022{1,5}|\.{1,5}|\d+\.|[a-zA-Z]\.|[IVXivx]+\)'
+                         r'|<(?:\d+|\.)>)[ \t]+\S')
+DESCRIPTION = re.compile(r'(?!//)[ \t]*\S.*?(?::{2,4}|;;)(?:$|[ \t])')
+BLOCK = re.compile(r"(?:/{4,}|={4,}|-{4,}|--|\.{4,}|\*{4,}|_{4,}|\+{4,}|[|,:!]={3,}|`{3}.*|\+"
+                   r"|\[(?:|[\w.#%{,\"'].*)\]"
+                   r"|(?:include|ifdef|ifndef|ifeval|endif)::.*)[ \t]*")
+COMMENT = re.compile(r'//(?!//)')
+# A cross-reference as Asciidoctor finds one, in a code span too, once its passthroughs are out.
+CROSS_REFERENCE = re.compile(r'<<[\w#/.:{].*?>>|\bxref:[\w#/.:{][^\s\[]*\[|\blink:#[^\s\[]*\[')
+PASSTHROUGH = re.compile(r'\+[^+]*\+')
+
 Finding = tuple[int, str]
 
 
@@ -66,6 +89,7 @@ class Bullet:
 
     line: int
     text: str
+    lines: int = 1
 
 
 @dataclass
@@ -95,22 +119,40 @@ class Notes:
 
 
 def bullets(lines: list[str], first: int) -> tuple[list[Bullet], list[Finding]]:
-    """The bullets of lines, the first of which is the file's line first, and each line that
-    belongs to none."""
+    """The bullets of lines, the first of which is the file's line first, as Asciidoctor reads
+    them, and each line that belongs to none: text outside a bullet, and a nested list, a block
+    or a directive, whose lines up to the next bullet or blank line are its own."""
     found: list[Bullet] = []
     findings: list[Finding] = []
-    open_bullet = False
+    state = 'outside'
     for number, line in enumerate(lines, first):
-        if line.startswith('* '):
-            found.append(Bullet(number, line[2:].strip()))
-            open_bullet = True
-        elif not line.strip():
-            open_bullet = False
-        elif open_bullet:
+        bullet = BULLET.fullmatch(line)
+        if not line.strip():
+            state = 'outside'
+        elif COMMENT.match(line):
+            continue
+        elif bullet is not None:
+            found.append(Bullet(number, bullet.group(1).strip()))
+            state = 'bullet'
+        elif BLOCK.fullmatch(line) or NESTED_ITEM.match(line) or \
+                (state == 'bullet' and DESCRIPTION.match(line)):
+            findings.append((number, 'a line of a changelog is a bullet at the margin, "* ", with '
+                                     f'no nested list, block, attribute or directive: {line}'))
+            state = 'nested'
+        elif state == 'bullet':
             found[-1].text += ' ' + line.strip()
-        else:
+            found[-1].lines += 1
+        elif state == 'outside':
             findings.append((number, f'not a line of a changelog, which starts with "* ": {line}'))
     return found, findings
+
+
+def cross_references(bullet: Bullet) -> list[Finding]:
+    """A cross-reference the line holds, which the index page, showing it too, would break."""
+    if CROSS_REFERENCE.search(PASSTHROUGH.sub('', bullet.text)) is None:
+        return []
+    return [(bullet.line, 'a line holds no cross-reference, <<...>>, xref: or link:#: the index '
+                          'page shows it too')]
 
 
 def line_findings(bullet: Bullet) -> list[Finding]:
@@ -124,15 +166,28 @@ def line_findings(bullet: Bullet) -> list[Finding]:
     elif bullet.text.split(' ', 1)[0] not in VERBS:
         findings.append((bullet.line, f'a line starts with {BREAKING.strip()} or one of '
                                       f'{", ".join(VERBS)}: {bullet.text}'))
-    if '<<' in bullet.text or 'xref:' in bullet.text:
-        findings.append((bullet.line, 'a line holds no cross-reference, <<...>>: the index page '
-                                      'shows it too'))
-    return findings
+    after = bullet.text[len(BREAKING):] if bullet.text.startswith(BREAKING) else bullet.text
+    if BREAKING.strip() in after:
+        findings.append((bullet.line, f'{BREAKING.strip()} comes first in a line: {bullet.text}'))
+    words = len(bullet.text.split())
+    if words > WORDS:
+        findings.append((bullet.line, f'a line holds at most {WORDS} words, and this one holds '
+                                      f'{words}: {bullet.text}'))
+    return findings + cross_references(bullet)
+
+
+def section_starts(lines: list[str], index: int) -> bool:
+    """Whether a section of a library's changelog, [#<anchor>] and === <title>, starts at
+    lines[index]."""
+    return ANCHOR.fullmatch(lines[index]) is not None and index + 1 < len(lines) and \
+        lines[index + 1].startswith('=== ')
 
 
 def read_region(lines: list[str], index: int) -> tuple[str | None, int, int, list[Finding]]:
     """The region that starts at lines[index], after blank lines: its tag, the index of its
-    first line and of its end line, and what is wrong with it."""
+    first line and of the line after its last, and what is wrong with it. A region without its
+    end runs up to another region's end or start, the next section or the end of the file, so
+    that its lines are read still."""
     while index < len(lines) and not lines[index].strip():
         index += 1
     start = REGION_START.fullmatch(lines[index]) if index < len(lines) else None
@@ -140,12 +195,14 @@ def read_region(lines: list[str], index: int) -> tuple[str | None, int, int, lis
         return None, index, index, [(index + 1, 'a section holds its lines between '
                                                 '// tag::<name>[] and // end::<name>[]')]
     tag = start.group(1)
-    for end in range(index + 1, len(lines)):
+    end = index + 1
+    while end < len(lines) and not section_starts(lines, end):
         if REGION_END.fullmatch(lines[end]) or REGION_START.fullmatch(lines[end]):
             if lines[end] == f'// end::{tag}[]':
                 return tag, index + 1, end, []
             break
-    return tag, index + 1, index + 1, [(index + 1, f'the region {tag} has no // end::{tag}[]')]
+        end += 1
+    return tag, index + 1, end, [(index + 1, f'the region {tag} has no // end::{tag}[]')]
 
 
 def expected(library: str, title: str) -> tuple[str, str] | None:
@@ -167,18 +224,23 @@ def parse_changelog(text: str, library: str) -> tuple[list[Region], list[Finding
     if start is None:
         return [], [(1, 'a changelog opens, after its notice, with ' + ', '.join(head))]
     found: list[Region] = []
-    findings: list[Finding] = []
+    findings: list[Finding] = [
+        (number, f'a changelog holds nothing but its notice before [appendix]: {line}')
+        for number, line in enumerate(lines[:start], 1)
+        if line.strip() and not line.startswith('//')]
     index = start + 3
     sections = False
     while index < len(lines):
         anchor = ANCHOR.fullmatch(lines[index])
-        if anchor is None or index + 1 == len(lines) or not lines[index + 1].startswith('=== '):
-            if lines[index].startswith('='):
+        if anchor is None or not section_starts(lines, index):
+            line = lines[index]
+            if line.startswith('='):
                 findings.append((index + 1, 'a section of a changelog is [#<anchor>] and '
-                                            f'=== <title>: {lines[index]}'))
-            elif sections and lines[index].strip():
+                                            f'=== <title>: {line}'))
+            elif (sections and line.strip() and not COMMENT.match(line)) or \
+                    BULLET.fullmatch(line) or NESTED_ITEM.match(line):
                 findings.append((index + 1, 'a changelog holds its lines inside the regions of '
-                                            f'its sections: {lines[index]}'))
+                                            f'its sections: {line}'))
             index += 1
             continue
         sections = True
@@ -198,7 +260,7 @@ def parse_changelog(text: str, library: str) -> tuple[list[Region], list[Finding
         body, body_faults = bullets(lines[first:end], first + 1)
         findings += body_faults
         found.append(Region(title, tag, index + 2, body))
-        index = end + 1
+        index = end
     titles = [region.title for region in found]
     if not titles or titles[0] != 'Unreleased' or titles.count('Unreleased') != 1:
         findings.append((start + 1, 'a changelog has one section "Unreleased", first'))
@@ -247,12 +309,15 @@ def parse_notes(text: str, version: str) -> tuple[Notes, list[Finding]]:
         findings.append((title + 2, 'between the title and New Libraries, release notes hold the '
                                     'paragraph "In preparation: ..." or nothing'))
     bodies: dict[str, tuple[int, list[str]]] = {}
-    for position, (index, found, _) in enumerate(heads):
+    for position, (index, found, name) in enumerate(heads):
         end = heads[position + 1][0] if position + 1 < len(heads) else len(lines)
-        bodies[found.removeprefix(f'webcpp-{anchor}-')] = (index + 3, lines[index + 2:end])
+        slug = found.removeprefix(f'webcpp-{anchor}-')
+        bodies[slug] = (index + 3, lines[index + 2:end])
+        if slug != 'updated-libraries' and not any(line.strip() for line in bodies[slug][1]):
+            findings.append((index + 2, f'{name} holds its entries, or the paragraph {NONE}'))
 
     def is_none(slug: str) -> bool:
-        return [line for line in bodies[slug][1] if line.strip()] == [NONE]
+        return [line for line in bodies[slug][1] if line.strip()] in ([NONE], [])
 
     def listed(slug: str, pattern: re.Pattern[str]) -> list[tuple[str, str]]:
         if is_none(slug):
@@ -265,6 +330,7 @@ def parse_notes(text: str, version: str) -> tuple[Notes, list[Finding]]:
             if match is None:
                 findings.append((item.line, f'not a line of {slug}: {item.text}'))
             else:
+                findings.extend(cross_references(item))
                 entries.append((match.group('name'), match.group('what')))
         return entries
 
@@ -290,12 +356,16 @@ def parse_notes(text: str, version: str) -> tuple[Notes, list[Finding]]:
     if not is_none('compilers-tested'):
         lanes, faults = bullets(bodies['compilers-tested'][1], bodies['compilers-tested'][0])
         findings += faults
+        findings += [(lane.line, f'a lane of Compilers tested is one line: {lane.text}')
+                     for lane in lanes if lane.lines > 1]
         notes.compilers = [lane.text for lane in lanes]
     for slug, names in (('new-libraries', [name for name, _ in notes.new]),
                         ('updated-libraries', [name for name, _ in notes.updated]),
                         ('removed-libraries', [name for name, _ in notes.removed])):
         if names != sorted(names):
             findings.append((bodies[slug][0], f'{slug} lists its libraries in alphabetical order'))
+        elif len(set(names)) != len(names):
+            findings.append((bodies[slug][0], f'{slug} lists each library once'))
     return notes, findings
 
 
