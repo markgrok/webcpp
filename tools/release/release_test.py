@@ -23,7 +23,9 @@ import sys
 import tarfile
 import tempfile
 import time
-from collections.abc import Callable
+import types
+import zlib
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import changelog
@@ -82,6 +84,12 @@ def run_main(*arguments: str) -> tuple[int, str, str]:
     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
         status = release.main(list(arguments))
     return status, output.getvalue(), error.getvalue()
+
+
+def run_whats_new(root: Path, version: release.Version) -> list[str]:
+    """release.whats_new, which prints the file it writes, run without printing it."""
+    with contextlib.redirect_stdout(io.StringIO()):
+        return release.whats_new(root, version)
 
 
 def commit_bytes(tree: scratch.Tree, library: str | None, path: str, data: bytes) -> None:
@@ -535,7 +543,7 @@ def test_whats_new_skeleton(directory: Path) -> None:
     tree.commit_file('doc/releases/0.1.0.adoc', scratch.notes_text(
         '0.1.0', new=('alpha', 'beta', 'config'),
         tools=('* Added `b2 dist`, which packages a release, for {cpp}20.',)))
-    assert release.whats_new(tree.root, V010) == []
+    assert run_whats_new(tree.root, V010) == []
     written = tree.root / 'doc/releases/0.1.0.whats-new.md'
     text = written.read_text(encoding='utf-8')
     assert text.startswith('# webcpp 0.1.0\n\nwebcpp 0.1.0 is out.\n\n## New libraries\n'), text
@@ -544,7 +552,7 @@ def test_whats_new_skeleton(directory: Path) -> None:
     assert '<!-- At most five highlights' in text and '{' not in text and 'link:' not in text
     assert 'https://webcpporg.github.io/webcpp/#webcpp-0-1-0' in text
     try:
-        release.whats_new(tree.root, V010)
+        run_whats_new(tree.root, V010)
     except release.Failure as failure:
         assert 'doc/releases/0.1.0.whats-new.md exists, and is never written over' in str(failure)
     else:
@@ -561,7 +569,7 @@ def test_whats_new_lists_updated_libraries(directory: Path) -> None:
         '* Added `z`.', '* Updated the page.')))
     tree.commit_file('doc/releases/0.2.0.adoc',
                      scratch.notes_text('0.2.0', updated=(('alpha', 'unreleased'),)))
-    release.whats_new(tree.root, V020)
+    run_whats_new(tree.root, V020)
     text = (tree.root / 'doc/releases/0.2.0.whats-new.md').read_text(encoding='utf-8')
     assert ('- **alpha**: **Breaking change:** removed `x`; use `y`. Fixed a crash '
             '([#3](https://github.com/webcpporg/alpha/issues/3)). Added `z`.\n') in text, text
@@ -573,7 +581,7 @@ def test_whats_new_highlights_are_checked(directory: Path) -> None:
     # What's new is committed here before each check, as the release procedure commits it once
     # its highlights are filled.
     tree = scratch.make_tree(directory)
-    release.whats_new(tree.root, V010)
+    run_whats_new(tree.root, V010)
     written = tree.root / 'doc/releases/0.1.0.whats-new.md'
     skeleton = written.read_text(encoding='utf-8')
     tree.commit_file('doc/releases/0.1.0.whats-new.md', skeleton)
@@ -625,7 +633,7 @@ def test_whats_new_names_unreadable_files(directory: Path) -> None:
     tree = scratch.make_tree(directory)
     (tree.root / 'doc/releases/0.1.0.adoc').unlink()
     try:
-        release.whats_new(tree.root, V010)
+        run_whats_new(tree.root, V010)
     except release.Failure as failure:
         assert str(failure) == ('doc/releases/0.1.0.adoc does not exist: open it from '
                                 'tools/release/template.adoc'), failure
@@ -633,7 +641,7 @@ def test_whats_new_names_unreadable_files(directory: Path) -> None:
         raise AssertionError('whats-new read release notes that do not exist')
     (tree.root / 'doc/releases/0.1.0.adoc').write_bytes(b'\xff\n')
     try:
-        release.whats_new(tree.root, V010)
+        run_whats_new(tree.root, V010)
     except release.Broken as broken:
         assert str(broken).startswith('doc/releases/0.1.0.adoc cannot be read: '), broken
     else:
@@ -646,14 +654,14 @@ def test_whats_new_names_unreadable_files(directory: Path) -> None:
     log = tree.library('alpha') / 'doc/changelog.adoc'
     log.unlink()
     try:
-        release.whats_new(tree.root, V020)
+        run_whats_new(tree.root, V020)
     except release.Broken as broken:
         assert str(broken).startswith('libs/alpha/doc/changelog.adoc cannot be read: '), broken
     else:
         raise AssertionError('whats-new read a changelog that does not exist')
     log.write_bytes(b'\xff\n')
     try:
-        release.whats_new(tree.root, V020)
+        run_whats_new(tree.root, V020)
     except release.Broken as broken:
         assert str(broken).startswith('libs/alpha/doc/changelog.adoc cannot be read: '), broken
     else:
@@ -675,7 +683,7 @@ def test_whats_new_highlight_markers_must_start_a_line(directory: Path) -> None:
     # reader's rendered Markdown would never read it as one either (a code span or a link
     # caption, not a bold bullet).
     tree = scratch.make_tree(directory)
-    release.whats_new(tree.root, V010)
+    run_whats_new(tree.root, V010)
     written = tree.root / 'doc/releases/0.1.0.whats-new.md'
     skeleton = written.read_text(encoding='utf-8')
 
@@ -721,7 +729,7 @@ def test_whats_new_leading_text_is_named_by_its_own_line(directory: Path) -> Non
     # itself begins, not the Highlights section's own first line (or any line of its
     # placeholder comment).
     tree = scratch.make_tree(directory)
-    release.whats_new(tree.root, V010)
+    run_whats_new(tree.root, V010)
     written = tree.root / 'doc/releases/0.1.0.whats-new.md'
     text = written.read_text(encoding='utf-8')
     marker = 'the owner approves them before the tag. -->\n\n'
@@ -744,7 +752,7 @@ def test_whats_new_highlights_grammar_is_a_whitelist(directory: Path) -> None:
     # highlight, a continuation, or refused, naming the file and the line - rather than by
     # hunting for the marker pattern wherever it might appear.
     tree = scratch.make_tree(directory)
-    release.whats_new(tree.root, V010)
+    run_whats_new(tree.root, V010)
     written = tree.root / 'doc/releases/0.1.0.whats-new.md'
     skeleton = written.read_text(encoding='utf-8')
 
@@ -807,7 +815,7 @@ class Highlights:
 
     def __init__(self, directory: Path) -> None:
         self.tree = scratch.make_tree(directory)
-        release.whats_new(self.tree.root, V010)
+        run_whats_new(self.tree.root, V010)
         self.skeleton = (self.tree.root / WHATS_NEW).read_text(encoding='utf-8')
         # The line of the placeholder comment, which a body replaces: its first line's number.
         self.first = self.skeleton[:self.skeleton.index('<!--')].count('\n') + 1
@@ -1152,19 +1160,28 @@ def test_whats_new_five_highlights_with_continuations_check_clean(directory: Pat
     assert case.check(case.text(release.HIGHLIGHTS, '', *five).replace('\n', '\r\n')) == []
 
 
+def run_dist(root: Path, version: release.Version, out: Path) -> None:
+    """Runs dist, which prints the two files it writes, and nothing else."""
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        release.dist(root, version, out)
+    archive = out / f'webcpp-{version.name}.tar.gz'
+    assert printed.getvalue() == f'{archive}\n{archive}.txt\n', printed.getvalue()
+
+
 def test_dist_is_reproducible(directory: Path) -> None:
     tree = scratch.make_tree(directory)
-    release.dist(tree.root, V010, directory / 'out one')
+    run_dist(tree.root, V010, directory / 'out one')
     first = (directory / 'out one/webcpp-0.1.0.tar.gz').read_bytes()
     time.sleep(1.1)
-    release.dist(tree.root, V010, directory / 'out two')
+    run_dist(tree.root, V010, directory / 'out two')
     assert (directory / 'out two/webcpp-0.1.0.tar.gz').read_bytes() == first
     # The same commits and pages at another path, every page's time changed.
     other = directory / 'another place'
     shutil.copytree(tree.root, other, symlinks=True)
     for page in other.rglob('index.html'):
         os.utime(page, (0, 0))
-    release.dist(other, V010, directory / 'out three')
+    run_dist(other, V010, directory / 'out three')
     assert (directory / 'out three/webcpp-0.1.0.tar.gz').read_bytes() == first
     digest, name = (directory / 'out one/webcpp-0.1.0.tar.gz.txt').read_text().split()
     assert (digest, name) == (hashlib.sha256(first).hexdigest(), 'webcpp-0.1.0.tar.gz')
@@ -1175,7 +1192,7 @@ def test_dist_is_reproducible(directory: Path) -> None:
 def test_dist_leaves_out_dot_files_and_what_git_does_not_track(directory: Path) -> None:
     tree = scratch.make_tree(directory)
     scratch.write(tree.root / 'bin/dist/old.tar.gz', 'ignored\n')
-    release.dist(tree.root, V010, directory / 'out')
+    run_dist(tree.root, V010, directory / 'out')
     with tarfile.open(directory / 'out/webcpp-0.1.0.tar.gz') as archive:
         members = {member.name.removeprefix('webcpp-0.1.0/'): member
                    for member in archive.getmembers()}
@@ -1220,7 +1237,8 @@ GZIP_HEADER = b'\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff'
 def dist_refusal(root: Path, version: release.Version, out: Path) -> str:
     """What dist refuses to archive root for, which it must; it writes nothing."""
     try:
-        release.dist(root, version, out)
+        with contextlib.redirect_stdout(io.StringIO()):
+            release.dist(root, version, out)
     except release.Failure as failure:
         assert not out.exists(), out
         return str(failure)
@@ -1236,7 +1254,7 @@ def member_bytes(archive: tarfile.TarFile, member: tarfile.TarInfo) -> bytes:
 
 def test_dist_fixes_every_field(directory: Path) -> None:
     # A name whose UTF-8 is not ASCII; names a collating locale orders otherwise than their code
-    # points; a link; pages under a directory, with a dot file, and modes of their own.
+    # points; a link; pages with modes of their own.
     tree = scratch.make_tree(directory)
     commit_bytes(tree, None, 'doc/caf\u00e9.txt', 'caf\u00e9\n'.encode())
     commit_bytes(tree, None, 'Zeta.txt', b'zeta\n')
@@ -1250,11 +1268,9 @@ def test_dist_fixes_every_field(directory: Path) -> None:
         scratch.git(tree.root, 'commit', '-q', '-m', 'link')
     finally:
         del os.environ['GIT_COMMITTER_DATE']
-    scratch.write(tree.root / 'doc/html/images/logo.svg', '<svg/>\n')
-    scratch.write(tree.root / 'doc/html/.buildinfo', 'built\n')
-    (tree.root / 'doc/html/images/logo.svg').chmod(0o755)
+    (tree.root / 'doc/html/index.html').chmod(0o755)
     (tree.library('alpha') / 'doc/html/index.html').chmod(0o600)
-    release.dist(tree.root, V010, directory / 'out')
+    run_dist(tree.root, V010, directory / 'out')
     data = (directory / 'out/webcpp-0.1.0.tar.gz').read_bytes()
     assert data[:10] == GZIP_HEADER, data[:10]
     # One gzip member, whole: its CRC and its size are checked.
@@ -1281,9 +1297,8 @@ def test_dist_fixes_every_field(directory: Path) -> None:
         link = members['link']
         assert (link.issym(), link.linkname, link.mode) == (True, 'README.md', 0o777)
         assert member_bytes(archive, members['README.md']) == b'# webcpp\n'
-    assert members['doc/html/images/logo.svg'].mode == 0o644
+    assert members['doc/html/index.html'].mode == 0o644
     assert members['libs/alpha/doc/html/index.html'].mode == 0o644
-    assert 'doc/html/.buildinfo' not in members
 
 
 def test_dist_ignores_the_environment(directory: Path) -> None:
@@ -1292,7 +1307,7 @@ def test_dist_ignores_the_environment(directory: Path) -> None:
     # and a gzip that fail on the path, and git configured to change line ends.
     tree = scratch.make_tree(directory)
     commit_bytes(tree, None, 'doc/caf\u00e9.txt', 'caf\u00e9\n'.encode())
-    release.dist(tree.root, V010, directory / 'here')
+    run_dist(tree.root, V010, directory / 'here')
     expected = (directory / 'here/webcpp-0.1.0.tar.gz').read_bytes()
     # A checkout that writes CRLF line ends, which git, so configured, finds equal to HEAD's.
     (tree.root / 'README.md').unlink()
@@ -1383,11 +1398,152 @@ def test_dist_names_what_is_not_utf8(directory: Path) -> None:
                         '--cacheinfo', entry % blob], capture_output=True, check=True)
         scratch.git(tree.root, 'commit', '-q', '-m', 'not UTF-8')
         try:
-            release.members_of(tree.root)
+            refused = '\n'.join(release.repository_refusals(tree.root, ['alpha', 'beta', 'config']))
         except release.Broken as broken:
-            assert fault in str(broken), broken
-        else:
-            raise AssertionError(f'{fault}: archived')
+            refused = str(broken)
+        assert fault in refused, (fault, refused)
+
+
+# The SHA-256 of the tar, and of the .tar.gz, dist writes for test_dist_bytes_are_pinned's tree:
+# a change of the tar's layout, of the deflate, its level or window, of the gzip header, or of
+# the files scratch.py writes, changes them. Measured with CPython 3.14.7 and zlib 1.2.12.
+PINNED_TAR = '341b4d80d576b0564352a362de2f686ccc93dd081a610b0947fd3062b95a5673'
+PINNED_TAR_GZ = '4bfb87ee8104db83db1cd6e60127f6e1c80c86e5c95e7215cb88a6b7c2e8686f'
+
+
+def test_dist_bytes_are_pinned(directory: Path) -> None:
+    # The scratch tree, every commit at one time, with a path of over 255 bytes, a name that is
+    # not ASCII, a link whose target is 121 bytes and 100 KiB that do not repeat.
+    os.environ['GIT_COMMITTER_DATE'] = '2001-02-03T04:05:06+0000'
+    try:
+        tree = scratch.make_tree(directory)
+        long_directory = '/'.join(['d' * 60] * 3)
+        commit_bytes(tree, None, f'{long_directory}/{"f" * 90}.txt', b'long\n')
+        commit_bytes(tree, None, 'doc/caf\u00e9.txt', 'caf\u00e9\n'.encode())
+        commit_bytes(tree, None, 'data.bin', b''.join(hashlib.sha256(i.to_bytes(4, 'big')).digest()
+                                                    for i in range(3200)))
+        (tree.root / 'long-link').symlink_to('/'.join(['d' * 60] * 2))
+        scratch.git(tree.root, 'add', 'long-link')
+        scratch.git(tree.root, 'commit', '-q', '-m', 'long-link')
+    finally:
+        del os.environ['GIT_COMMITTER_DATE']
+    run_dist(tree.root, V010, directory / 'out')
+    data = (directory / 'out/webcpp-0.1.0.tar.gz').read_bytes()
+    found = hashlib.sha256(gzip.decompress(data)).hexdigest(), hashlib.sha256(data).hexdigest()
+    assert found == (PINNED_TAR, PINNED_TAR_GZ), found
+
+
+@contextlib.contextmanager
+def zlib_as(**changes: object) -> Iterator[None]:
+    """release's zlib with changes: another version, zlib-ng's own attribute, another deflate."""
+    fake = types.SimpleNamespace(**{name: getattr(zlib, name) for name in dir(zlib)
+                                    if not name.startswith('_')})
+    for name, value in changes.items():
+        setattr(fake, name, value)
+    setattr(release, 'zlib', fake)
+    try:
+        yield
+    finally:
+        setattr(release, 'zlib', zlib)
+
+
+def test_dist_refuses_a_deflate_other_than_zlib(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    out = directory / 'out'
+
+    def fast(level: int, method: int, wbits: int) -> object:
+        return zlib.compressobj(level - 8, method, wbits)
+
+    for changes, version in (({'ZLIB_RUNTIME_VERSION': '1.3.1.zlib-ng'}, '1.3.1.zlib-ng'),
+                             ({'ZLIBNG_VERSION': '2.2.5'}, zlib.ZLIB_RUNTIME_VERSION),
+                             ({'compressobj': fast}, zlib.ZLIB_RUNTIME_VERSION)):
+        with zlib_as(**changes):
+            status, output, error = run_main('dist', '--root', str(tree.root), '--version',
+                                             '0.1.0', '--out', str(out))
+        assert (status, output) == (2, ''), (changes, status, output)
+        assert error == (f"dist: this Python's zlib, {version}, deflates otherwise than zlib, "
+                         "whose output webcpp's archives are: run dist with a Python linked to "
+                         'zlib\n'), (changes, error)
+        assert not out.exists()
+    # The probe's input, which zlib-ng 2.2.5 deflates otherwise than zlib (18478 bytes against
+    # 18411), where an input of a tenth its size deflates the same: it may not shrink.
+    assert hashlib.sha256(release.probe_input()).hexdigest() == \
+        '1c4f36a1df3f199b7c519344261379f6f7525b40e27ec1973ed0045ed5f1f52f'
+
+
+def test_dist_refuses_files_the_doc_build_does_not_write(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    strays = ('doc/html/index.html~', 'doc/html/.buildinfo',
+              'libs/alpha/doc/html/old/removed-section.html', 'libs/beta/doc/html/images/logo.svg')
+    for stray in strays:
+        scratch.write(tree.root / stray, 'stray\n')
+    refused = dist_refusal(tree.root, V010, directory / 'out')
+    for stray in strays:
+        assert f'{stray} is no page the doc build writes: remove it' in refused, refused
+
+
+def test_dist_refuses_submodules_it_does_not_archive(directory: Path) -> None:
+    # A library's own submodule, and one of the superproject outside libs/: a gitlink, its
+    # directory empty, as a submodule not checked out leaves it.
+    tree = scratch.make_tree(directory)
+    alpha = tree.library('alpha')
+    commit = scratch.git(alpha, 'rev-parse', 'HEAD').strip()
+    for directory_, path in ((alpha, 'third_party/nested'), (tree.root, 'tools/sub')):
+        (directory_ / path).mkdir(parents=True)
+        scratch.git(directory_, 'update-index', '--add', '--cacheinfo', f'160000,{commit},{path}')
+        scratch.git(directory_, 'commit', '-q', '-m', f'{path}: a submodule')
+        if directory_ == alpha:
+            tree.record('alpha')
+    refused = dist_refusal(tree.root, V010, directory / 'out')
+    assert refused.split('\n') == [
+        'tools/sub is a submodule of the superproject outside libs/, which dist does not archive',
+        'libs/alpha/third_party/nested is a submodule of libs/alpha, which dist does not archive',
+    ], refused
+
+
+def test_dist_refuses_links_out_of_the_archive(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    alpha = tree.library('alpha')
+    links = (('escape', '../../../../etc/passwd'), ('absolute', '/etc/passwd'),
+             ('toignore', '.gitignore'), ('doc/hidden', '../.github/workflows/ci.yml'),
+             ('doc/readme', '../README.md'), ('libs/alpha/up', '../../README.md'),
+             ('libs/alpha/doc/header', '../include/webcpp/alpha.hpp'))
+    for path, target in links:
+        (tree.root / path).symlink_to(target)
+        repository = alpha if path.startswith('libs/alpha/') else tree.root
+        scratch.git(repository, 'add', str((tree.root / path).relative_to(repository)))
+    scratch.git(alpha, 'commit', '-q', '-m', 'alpha: links')
+    # Recording alpha commits the superproject's links too.
+    tree.record('alpha')
+    refused = dist_refusal(tree.root, V010, directory / 'out')
+    assert refused.split('\n') == [
+        'absolute is a link to the absolute path /etc/passwd',
+        'doc/hidden is a link to ../.github/workflows/ci.yml, a dot file the archive leaves out',
+        'escape is a link to ../../../../etc/passwd, outside its repository',
+        'toignore is a link to .gitignore, a dot file the archive leaves out',
+        'libs/alpha/up is a link to ../../README.md, outside its repository',
+    ], refused
+
+
+def test_dist_leaves_no_new_file_when_a_write_fails(directory: Path) -> None:
+    # The checksum's temporary cannot be written: the archive and the checksum dist wrote before
+    # stay as they were, and no temporary of its own stays.
+    tree = scratch.make_tree(directory)
+    out = directory / 'out'
+    run_dist(tree.root, V010, out)
+    archive, checksum = out / 'webcpp-0.1.0.tar.gz', out / 'webcpp-0.1.0.tar.gz.txt'
+    before = archive.read_bytes(), checksum.read_bytes()
+    commit_bytes(tree, None, 'README.md', b'# changed\n')
+    (out / 'webcpp-0.1.0.tar.gz.txt.partial').mkdir()
+    try:
+        run_dist(tree.root, V010, out)
+    except release.Broken as broken:
+        assert str(broken).startswith(f'{checksum} cannot be written: '), broken
+    else:
+        raise AssertionError('dist wrote through a directory')
+    assert (archive.read_bytes(), checksum.read_bytes()) == before
+    assert sorted(path.name for path in out.iterdir()) == [
+        'webcpp-0.1.0.tar.gz', 'webcpp-0.1.0.tar.gz.txt', 'webcpp-0.1.0.tar.gz.txt.partial']
 
 
 def git_checkout(root: Path) -> None:
@@ -1554,6 +1710,12 @@ CASES: list[Callable[[Path], None]] = [
     test_dist_refuses_libraries_not_as_recorded,
     test_dist_names_what_it_cannot_read_or_write,
     test_dist_names_what_is_not_utf8,
+    test_dist_bytes_are_pinned,
+    test_dist_refuses_a_deflate_other_than_zlib,
+    test_dist_refuses_files_the_doc_build_does_not_write,
+    test_dist_refuses_submodules_it_does_not_archive,
+    test_dist_refuses_links_out_of_the_archive,
+    test_dist_leaves_no_new_file_when_a_write_fails,
 ]
 
 B2_CASES: list[Callable[[Path], None]] = [

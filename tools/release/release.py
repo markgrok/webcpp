@@ -50,22 +50,28 @@ back once an agent, and then the owner, have written them in its place: at most 
 each "- **<category>**: <sentence>", in the order of CATEGORIES, a category with nothing to say
 left out.
 
-dist writes webcpp-<a.b.c>.tar.gz into the directory --out names, and webcpp-<a.b.c>.tar.gz.txt,
-its sha256sum line: the files the superproject's HEAD records and those each library's HEAD
-records, read from git's objects and never from the working tree, and every built page, the
-index's doc/html and each library's, all under webcpp-<a.b.c>/, no path with a part that starts
-with a dot. It refuses, naming each fault, a change HEAD does not record (named alone, as check
-names it), a version other than version.hpp's, a library that is no checkout of its own, not
-checked out, no submodule at HEAD or at another commit than HEAD records, and a page not built.
-The archive is the same bytes from the same commits and pages wherever, whenever, by whomever
-and under whatever time zone, locale and umask it is written: its members in the order of their
-names' code points, each with the time of the superproject's HEAD commit, owner and group 0 and
-no names, mode 755 for a file git records as executable, 777 for a link and 644 for every other
-file and every page; its gzip header with no name, no time and the operating system unknown.
-No tar or gzip program is run.
+dist writes webcpp-<a.b.c>.tar.gz into the directory --out names, and webcpp-<a.b.c>.tar.gz.txt, its
+sha256sum line: the files the superproject's HEAD records and those each library's HEAD records,
+read from git's objects and never from the working tree, and the pages the doc build writes,
+doc/html/index.html for the index and for each library, all under webcpp-<a.b.c>/, no path with a
+part that starts with a dot. It refuses, naming each fault, a change HEAD does not record (named
+alone, as check names it), a version other than version.hpp's, a library that is no checkout of its
+own, not checked out, no submodule at HEAD or at another commit than HEAD records, a submodule other
+than the libraries' own, libs/<name>, a link whose target is not UTF-8, absolute, outside its
+repository or a dot file, a page not built, and any other file under a doc/html. The archive is the
+same bytes from the same commits and pages wherever, whenever, by whomever and under whatever time
+zone, locale and umask it is written, with any CPython of 3.9 or later linked to zlib: its members
+in the order of their names' code points, each with the time of the superproject's HEAD commit,
+owner and group 0 and no names, mode 755 for a file git records as executable, 777 for a link and
+644 for every other file and every page; its gzip header with no name, no time and the operating
+system unknown, its deflate zlib's at level 9. A Python whose zlib deflates otherwise, zlib-ng among
+them, is refused before anything is read. No tar or gzip program is run. The archive and its
+checksum are written to temporaries first: a fault leaves neither new file.
 
 Exit 0 when nothing is wrong; 1 with each fault on a line of its own, `<command>: <fault>`; 2 on a
-usage error, or when a file it reads is not there, cannot be read or is not UTF-8.
+usage error, when a file it reads is not there, cannot be read or is not UTF-8, when a path git
+records is not UTF-8, and, for dist, when this Python's zlib deflates otherwise or a file it
+writes cannot be written.
 """
 
 from __future__ import annotations
@@ -73,6 +79,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import io
+import posixpath
 import re
 import subprocess
 import sys
@@ -700,28 +707,59 @@ def check(root: Path, version: Version) -> list[str]:
 # compression, and the operating system 255, unknown.
 GZIP_HEADER = b'\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff'
 
+# The SHA-256 of deflate(probe_input()) as zlib writes it, 18411 bytes; zlib-ng 2.2.5 writes
+# 18478. Measured with zlib 1.2.12; the reviewer measured zlib 1.3.1 deflating as 1.2.12 does.
+DEFLATE_PROBE = '68e27757821fd3513da6c7fac9fad5d7403970cce80d17d92dd56b246517c3bd'
 
-def blobs(directory: Path) -> list[tuple[str, str, str]]:
-    """The blobs of the tree at HEAD of the repository directory: each path, git mode and
-    object; its gitlinks left out. A path that is not UTF-8 is Broken, named."""
+
+def probe_input() -> bytes:
+    """93 KB of text, generated, which zlib and zlib-ng deflate otherwise at level 9, as an input
+    of a tenth its size does not; deflated in about 5 ms."""
+    return ''.join(f'{i:06d} {i * i % 9973:04d} {"webcpp" * (i % 7)}\n'
+                   for i in range(3000)).encode()
+
+
+def deflate(data: bytes) -> bytes:
+    """data as raw deflate at the best compression, with the window gzip's member uses."""
+    compressor = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+    return compressor.compress(data) + compressor.flush()
+
+
+def check_deflate() -> None:
+    """An archive is the bytes zlib deflates: a Python linked to another deflate, zlib-ng among
+    them, which Fedora 40 and later and Python 3.14's Windows builds link, writes other bytes
+    for the same tar, and is Broken, named, before anything is read."""
+    version = zlib.ZLIB_RUNTIME_VERSION
+    if 'zlib-ng' in version or hasattr(zlib, 'ZLIBNG_VERSION') or \
+            hashlib.sha256(deflate(probe_input())).hexdigest() != DEFLATE_PROBE:
+        raise Broken(f"this Python's zlib, {version}, deflates otherwise than zlib, whose output "
+                     "webcpp's archives are: run dist with a Python linked to zlib")
+
+
+def blobs(directory: Path) -> tuple[list[tuple[str, str, str]], list[str]]:
+    """The tree at HEAD of the repository directory: each blob's path, git mode and object, and
+    each gitlink's path. A path that is not UTF-8 is Broken, named."""
     listed = subprocess.run(['git', '-C', str(directory), 'ls-tree', '-r', '-z', 'HEAD'],
                             capture_output=True, check=False)
     if listed.returncode != 0:
         error = listed.stderr.decode(errors='replace').strip()
         raise Broken(f'git ls-tree in {directory}: {error}')
     found = []
+    links = []
     for entry in listed.stdout.split(b'\0'):
         if not entry:
             continue
-        meta, path = entry.split(b'\t', 1)
+        meta, raw = entry.split(b'\t', 1)
         mode, kind, name = meta.decode().split()
-        if kind != 'blob':
-            continue
         try:
-            found.append((path.decode('utf-8'), mode, name))
+            path = raw.decode('utf-8')
         except UnicodeDecodeError as error:
-            raise Broken(f'{directory}: the path {path!r} is not UTF-8') from error
-    return found
+            raise Broken(f'{directory}: the path {raw!r} is not UTF-8') from error
+        if kind == 'blob':
+            found.append((path, mode, name))
+        elif kind == 'commit':
+            links.append(path)
+    return found, links
 
 
 def contents(directory: Path, objects: list[str]) -> dict[str, bytes]:
@@ -754,28 +792,15 @@ def hidden(path: str) -> bool:
 
 
 def pages(current: list[str]) -> list[str]:
-    """The page each documentation's build writes: the index's, and each library's."""
+    """The pages the documentation's build writes, each the one file its doc/html holds
+    (tools/doc/doc.jam's install html): the index's, and each library's."""
     return ['doc/html/index.html'] + [f'libs/{name}/doc/html/index.html' for name in current]
 
 
-def dist_refusals(root: Path, version: Version) -> list[str]:
-    """Why the tree cannot be archived as version: a change HEAD does not record, named alone,
-    as check names it; a version other than version.hpp's; a library that is not the commit the
-    superproject records; a page not built."""
-    current = libraries(root)
-    uncommitted = uncommitted_findings(root, current)
-    if uncommitted:
-        return uncommitted
-    refusals = version_findings(root, version)
-    refusals += checkout_findings(root, current, gitlinks(root, 'HEAD'))
-    refusals += [f'{page} is not built: b2 dist builds every page first'
-                 for page in pages(current) if not (root / page).is_file()]
-    return refusals
-
-
-# A member of the archive: its mode, its bytes, and whether it is a link, whose bytes are its
-# target.
-Member = tuple[int, bytes, bool]
+def repositories(root: Path, names: list[str]) -> list[tuple[str, Path]]:
+    """The superproject and the libraries names, each with the prefix of its paths in the
+    superproject."""
+    return [('', root)] + [(f'libs/{name}/', root / 'libs' / name) for name in names]
 
 
 def utf8(data: bytes) -> bool:
@@ -787,34 +812,102 @@ def utf8(data: bytes) -> bool:
     return True
 
 
+def link_refusal(path: str, target: bytes) -> str | None:
+    """Why the link at path, relative to its repository, cannot be archived: a target that is not
+    UTF-8, absolute, outside the repository, or one the archive leaves out as a dot file."""
+    if not utf8(target):
+        return f'{path} is a link whose target is not UTF-8'
+    text = target.decode('utf-8')
+    if text.startswith('/'):
+        return f'{path} is a link to the absolute path {text}'
+    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(path), text))
+    if resolved == '..' or resolved.startswith('../'):
+        return f'{path} is a link to {text}, outside its repository'
+    if hidden(resolved):
+        return f'{path} is a link to {text}, a dot file the archive leaves out'
+    return None
+
+
+def repository_refusals(root: Path, names: list[str]) -> list[str]:
+    """What the superproject's tree and those of the libraries names hold that the archive cannot:
+    a submodule other than the libraries' own, libs/<name>, which it does not archive; a link
+    that link_refusal refuses."""
+    refusals = []
+    for base, directory in repositories(root, names):
+        files, submodules = blobs(directory)
+        for path in submodules:
+            if not base and PurePosixPath(path).parent == PurePosixPath('libs'):
+                continue
+            owner = base.rstrip('/') or 'the superproject outside libs/'
+            refusals.append(f'{base}{path} is a submodule of {owner}, which dist does not archive')
+        links = [(path, name) for path, mode, name in files
+                 if mode == '120000' and not hidden(path)]
+        targets = contents(directory, [name for _, name in links])
+        for path, name in links:
+            refusal = link_refusal(path, targets[name])
+            if refusal is not None:
+                refusals.append(base + refusal)
+    return refusals
+
+
+def page_refusals(root: Path, current: list[str]) -> list[str]:
+    """Each page not built, and each other file under a doc/html, which no build writes there and
+    which a releaser's tree may hold where another's does not."""
+    refusals = []
+    for page in pages(current):
+        if not (root / page).is_file():
+            refusals.append(f'{page} is not built: b2 dist builds every page first')
+        built = (root / page).parent
+        strays = sorted(file.relative_to(root).as_posix() for file in built.rglob('*')
+                        if not file.is_dir() or file.is_symlink())
+        refusals += [f'{path} is no page the doc build writes: remove it' for path in strays
+                     if path != page]
+    return refusals
+
+
+def dist_refusals(root: Path, version: Version) -> list[str]:
+    """Why the tree cannot be archived as version: a change HEAD does not record, named alone,
+    as check names it; a version other than version.hpp's; a library that is not the commit the
+    superproject records; a submodule or a link the archive cannot hold; a page not built, or a
+    file beside the pages."""
+    current = libraries(root)
+    uncommitted = uncommitted_findings(root, current)
+    if uncommitted:
+        return uncommitted
+    refusals = version_findings(root, version)
+    refusals += checkout_findings(root, current, gitlinks(root, 'HEAD'))
+    refusals += repository_refusals(root, [name for name in current if is_checkout(root, name)])
+    refusals += page_refusals(root, current)
+    return refusals
+
+
+# A member of the archive: its mode, its bytes, and whether it is a link, whose bytes are its
+# target.
+Member = tuple[int, bytes, bool]
+
+
 def members_of(root: Path) -> dict[str, Member]:
     """Each file the archive holds, by its path in the superproject: the blobs each repository's
-    HEAD records, and the files of every documentation's doc/html, none with a part that starts
-    with a dot. A page is a document, mode 644, whatever mode its build and the umask left."""
+    HEAD records, none with a part that starts with a dot, and the pages. A page is a document,
+    mode 644, whatever mode its build and the umask left."""
+    current = libraries(root)
     members: dict[str, Member] = {}
-    for base, directory in [('', root)] + [(f'libs/{name}/', root / 'libs' / name)
-                                           for name in libraries(root)]:
-        listed = [entry for entry in blobs(directory) if not hidden(entry[0])]
+    for base, directory in repositories(root, current):
+        listed = [entry for entry in blobs(directory)[0] if not hidden(entry[0])]
         data = contents(directory, [name for _, _, name in listed])
         for path, mode, name in listed:
             link = mode == '120000'
-            if link and not utf8(data[name]):
-                raise Broken(f'{base}{path} is a link whose target is not UTF-8')
             members[base + path] = (0o777 if link else 0o755 if mode == '100755' else 0o644,
                                     data[name], link)
-    for page in pages(libraries(root)):
-        built = (root / page).parent
-        for file in sorted(built.rglob('*')):
-            path = file.relative_to(root).as_posix()
-            if file.is_file() and not hidden(path):
-                members[path] = (0o644, read_bytes(root, path), False)
+    for page in pages(current):
+        members[page] = (0o644, read_bytes(root, page), False)
     return members
 
 
-def archive_bytes(prefix: str, mtime: int, members: dict[str, Member]) -> bytes:
-    """The gzip-compressed tar of members under prefix, in the order of their names' code
-    points, each at mtime, owned by 0:0 without names: a PAX tar, which records a name that is
-    not ASCII, or is long, as UTF-8 and nothing else beside it."""
+def tar_bytes(prefix: str, mtime: int, members: dict[str, Member]) -> bytes:
+    """The tar of members under prefix, in the order of their names' code points, each at mtime,
+    owned by 0:0 without names: a PAX tar, which records a name that is not ASCII, or is long, as
+    UTF-8 and nothing else beside it."""
     packed = io.BytesIO()
     with tarfile.open(fileobj=packed, mode='w', format=tarfile.PAX_FORMAT,
                       encoding='utf-8') as archive:
@@ -832,46 +925,66 @@ def archive_bytes(prefix: str, mtime: int, members: dict[str, Member]) -> bytes:
             else:
                 info.size = len(data)
                 archive.addfile(info, io.BytesIO(data))
-    tar = packed.getvalue()
-    compressor = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
-    deflated = compressor.compress(tar) + compressor.flush()
-    trailer = zlib.crc32(tar).to_bytes(4, 'little') + (len(tar) & 0xFFFFFFFF).to_bytes(4, 'little')
-    return GZIP_HEADER + deflated + trailer
+    return packed.getvalue()
 
 
-def write_bytes(path: Path, data: bytes) -> None:
-    """Writes data at path through a partial file, which never stays; a fault is Broken,
-    naming path."""
-    partial = path.with_name(f'{path.name}.partial')
+def gzipped(data: bytes) -> bytes:
+    """data as one gzip member: GZIP_HEADER, the deflate, and the CRC and size of data."""
+    trailer = zlib.crc32(data).to_bytes(4, 'little') + \
+        (len(data) & 0xFFFFFFFF).to_bytes(4, 'little')
+    return GZIP_HEADER + deflate(data) + trailer
+
+
+def write_files(files: list[tuple[Path, bytes]]) -> None:
+    """Writes each file through a temporary beside it, <name>.partial, then renames each over
+    its file, the last one removed first: a fault while writing leaves no new file, and one
+    while renaming never leaves the last file of an earlier run beside a new first one. No
+    temporary stays; a fault is Broken, naming the file."""
+    written: list[Path] = []
     try:
-        partial.write_bytes(data)
-        partial.replace(path)
-    except OSError as error:
-        raise Broken(f'{path} cannot be written: {error}') from error
+        for path, data in files:
+            partial = path.with_name(f'{path.name}.partial')
+            try:
+                partial.write_bytes(data)
+            except OSError as error:
+                raise Broken(f'{path} cannot be written: {error}') from error
+            written.append(partial)
+        last = files[-1][0]
+        try:
+            last.unlink(missing_ok=True)
+        except OSError as error:
+            raise Broken(f'{last} cannot be written: {error}') from error
+        for partial, (path, _) in zip(written, files):
+            try:
+                partial.replace(path)
+            except OSError as error:
+                raise Broken(f'{path} cannot be written: {error}') from error
     finally:
-        partial.unlink(missing_ok=True)
+        for partial in written:
+            partial.unlink(missing_ok=True)
 
 
 def dist(root: Path, version: Version, out: Path) -> list[str]:
     """Writes webcpp-<version>.tar.gz and its sha256sum file into out: the blobs of the
-    superproject and of every library at the commits recorded, and every built page, under
+    superproject and of every library at the commits recorded, and every page, under
     webcpp-<version>/, no path with a part that starts with a dot; the same bytes from the same
-    commits and pages, wherever and whenever it runs. Everything is read before out is
-    touched."""
+    commits and pages, wherever and whenever it runs, with any CPython of 3.9 or later linked to
+    zlib, as check_deflate requires. Everything is read before out is touched."""
+    check_deflate()
     refusals = dist_refusals(root, version)
     if refusals:
         raise Failure('\n'.join(refusals))
     prefix = f'webcpp-{version.name}'
     mtime = int(git(root, 'log', '-1', '--format=%ct', 'HEAD').strip())
-    data = archive_bytes(prefix, mtime, members_of(root))
+    data = gzipped(tar_bytes(prefix, mtime, members_of(root)))
     try:
         out.mkdir(parents=True, exist_ok=True)
     except OSError as error:
         raise Broken(f'{out} cannot be written: {error}') from error
     target = out / f'{prefix}.tar.gz'
     checksum = out / f'{prefix}.tar.gz.txt'
-    write_bytes(target, data)
-    write_bytes(checksum, f'{hashlib.sha256(data).hexdigest()}  {target.name}\n'.encode())
+    write_files([(target, data),
+                 (checksum, f'{hashlib.sha256(data).hexdigest()}  {target.name}\n'.encode())])
     print(target)
     print(checksum)
     return []

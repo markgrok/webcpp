@@ -725,7 +725,9 @@ notfile whats-new : @whats-new : : <webcpp-boost-check>off ;
 
 # `b2 dist` builds every page, the index's and each library's, then writes
 # bin/dist/webcpp-<version>.tar.gz and its sha256sum file, the same bytes
-# wherever and whenever the same commits and pages are archived.
+# wherever and whenever the same commits and pages are archived, with any
+# CPython of 3.9 or later linked to zlib: dist refuses one linked to zlib-ng
+# or any other deflate.
 rule dist ( targets * : sources * : properties * )
 {
     release-tool $(targets) : $(sources) : $(properties) ;
