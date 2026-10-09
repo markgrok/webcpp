@@ -66,7 +66,9 @@ owner and group 0 and no names, mode 755 for a file git records as executable, 7
 644 for every other file and every page; its gzip header with no name, no time and the operating
 system unknown, its deflate zlib's at level 9. A Python whose zlib deflates otherwise, zlib-ng among
 them, is refused before anything is read. No tar or gzip program is run. The archive and its
-checksum are written to temporaries first: a fault leaves neither new file.
+checksum are written to temporaries first, then each renamed over its file, the archive first: a
+fault while writing, or renaming the archive, leaves both files as they were; one renaming the
+checksum leaves the new archive beside the old checksum, and says so.
 
 Exit 0 when nothing is wrong; 1 with each fault on a line of its own, `<command>: <fault>`; 2 on a
 usage error, when a file it reads is not there, cannot be read or is not UTF-8, when a path git
@@ -935,32 +937,39 @@ def gzipped(data: bytes) -> bytes:
     return GZIP_HEADER + deflate(data) + trailer
 
 
-def write_files(files: list[tuple[Path, bytes]]) -> None:
-    """Writes each file through a temporary beside it, <name>.partial, then renames each over
-    its file, the last one removed first: a fault while writing leaves no new file, and one
-    while renaming never leaves the last file of an earlier run beside a new first one. No
-    temporary stays; a fault is Broken, naming the file."""
-    written: list[Path] = []
+def write_pair(archive: Path, data: bytes, checksum: Path, text: bytes) -> None:
+    """Writes the archive and its checksum, each first to a temporary beside it,
+    <name>.partial, then renames each over its file, the archive first; no file is removed
+    before its own rename replaces it. A fault is Broken, naming the file, and leaves no
+    temporary:
+
+    | Fault | archive | checksum |
+    | writing either temporary | as it was | as it was |
+    | renaming the archive | as it was | as it was |
+    | renaming the checksum | new | as it was, which Broken says does not check it |
+    """
+    partials: list[Path] = []
     try:
-        for path, data in files:
+        for path, content in ((archive, data), (checksum, text)):
             partial = path.with_name(f'{path.name}.partial')
             try:
-                partial.write_bytes(data)
+                partial.write_bytes(content)
             except OSError as error:
                 raise Broken(f'{path} cannot be written: {error}') from error
-            written.append(partial)
-        last = files[-1][0]
+            partials.append(partial)
         try:
-            last.unlink(missing_ok=True)
+            partials[0].replace(archive)
         except OSError as error:
-            raise Broken(f'{last} cannot be written: {error}') from error
-        for partial, (path, _) in zip(written, files):
-            try:
-                partial.replace(path)
-            except OSError as error:
-                raise Broken(f'{path} cannot be written: {error}') from error
+            raise Broken(f'{archive} cannot be written: {error}; it and {checksum.name} are as '
+                         'they were') from error
+        try:
+            partials[1].replace(checksum)
+        except OSError as error:
+            raise Broken(f'{checksum} cannot be written: {error}; {archive.name} is the new '
+                         f'archive, and {checksum.name} is as it was, which does not check it: '
+                         'run dist again') from error
     finally:
-        for partial in written:
+        for partial in partials:
             partial.unlink(missing_ok=True)
 
 
@@ -983,8 +992,8 @@ def dist(root: Path, version: Version, out: Path) -> list[str]:
         raise Broken(f'{out} cannot be written: {error}') from error
     target = out / f'{prefix}.tar.gz'
     checksum = out / f'{prefix}.tar.gz.txt'
-    write_files([(target, data),
-                 (checksum, f'{hashlib.sha256(data).hexdigest()}  {target.name}\n'.encode())])
+    write_pair(target, data, checksum,
+               f'{hashlib.sha256(data).hexdigest()}  {target.name}\n'.encode())
     print(target)
     print(checksum)
     return []

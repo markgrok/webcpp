@@ -1546,6 +1546,62 @@ def test_dist_leaves_no_new_file_when_a_write_fails(directory: Path) -> None:
         'webcpp-0.1.0.tar.gz', 'webcpp-0.1.0.tar.gz.txt', 'webcpp-0.1.0.tar.gz.txt.partial']
 
 
+@contextlib.contextmanager
+def replace_fails_at(call: int) -> Iterator[None]:
+    """Path.replace, which fails with an OSError at its call-th call and works at the others."""
+    original = Path.replace
+    calls = [0]
+
+    def replace(self: Path, target: Path) -> Path:
+        calls[0] += 1
+        if calls[0] == call:
+            raise OSError(5, 'planted failure', str(target))
+        return original(self, target)
+
+    setattr(Path, 'replace', replace)
+    try:
+        yield
+    finally:
+        setattr(Path, 'replace', original)
+
+
+def test_dist_replaces_the_pair_one_rename_at_a_time(directory: Path) -> None:
+    # An old pair in out, then a new commit: the archive's rename fails, and the old pair stays
+    # whole; the checksum's fails, and the archive is new beside the old checksum, which dist
+    # says by name. Neither leaves a temporary.
+    tree = scratch.make_tree(directory)
+    out = directory / 'out'
+    run_dist(tree.root, V010, out)
+    archive, checksum = out / 'webcpp-0.1.0.tar.gz', out / 'webcpp-0.1.0.tar.gz.txt'
+    old = archive.read_bytes(), checksum.read_bytes()
+    commit_bytes(tree, None, 'README.md', b'# changed\n')
+    run_dist(tree.root, V010, directory / 'clean')
+    new = (directory / 'clean/webcpp-0.1.0.tar.gz').read_bytes()
+    assert new != old[0]
+    for call, files, said in (
+            (1, old, f'{archive} cannot be written: [Errno 5] planted failure: '
+                     f"'{archive}'; it and webcpp-0.1.0.tar.gz.txt are as they were"),
+            (2, (new, old[1]), f'{checksum} cannot be written: [Errno 5] planted failure: '
+                               f"'{checksum}'; webcpp-0.1.0.tar.gz is the new archive, and "
+                               'webcpp-0.1.0.tar.gz.txt is as it was, which does not check it: '
+                               'run dist again')):
+        archive.write_bytes(old[0])
+        checksum.write_bytes(old[1])
+        try:
+            with replace_fails_at(call):
+                run_dist(tree.root, V010, out)
+        except release.Broken as broken:
+            assert str(broken) == said, (call, str(broken))
+        else:
+            raise AssertionError(f'call {call}: no rename failed')
+        assert (archive.read_bytes(), checksum.read_bytes()) == files, call
+        assert sorted(path.name for path in out.iterdir()) == [archive.name, checksum.name]
+    # Run again, the pair is new and whole.
+    run_dist(tree.root, V010, out)
+    assert archive.read_bytes() == new
+    assert checksum.read_text().split()[0] == hashlib.sha256(new).hexdigest()
+
+
 def git_checkout(root: Path) -> None:
     """Makes the harness's scratch superproject root a git checkout whose libraries, config and
     demo, are gitlinks, config holding the version.hpp of 0.1.0, with an index and notes of its
@@ -1716,6 +1772,7 @@ CASES: list[Callable[[Path], None]] = [
     test_dist_refuses_submodules_it_does_not_archive,
     test_dist_refuses_links_out_of_the_archive,
     test_dist_leaves_no_new_file_when_a_write_fails,
+    test_dist_replaces_the_pair_one_rename_at_a_time,
 ]
 
 B2_CASES: list[Callable[[Path], None]] = [
