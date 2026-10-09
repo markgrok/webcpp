@@ -37,7 +37,8 @@ check names every fault that keeps the tree from being tagged webcpp-<a.b.c>:
   commit a tag or HEAD records is not in its repository;
 - once doc/releases/<a.b.c>.whats-new.md exists, its section Highlights holds more than its
   five highlights, a highlight is not "- **<category>**: <sentence of at most 20 words>.", its
-  category is not one of CATEGORIES, or the highlights are not in CATEGORIES' order, each once.
+  category is not one of CATEGORIES, the highlights are not in CATEGORIES' order, each once, or
+  a fenced code block opens in the section or above it.
 
 whats-new writes the skeleton of doc/releases/<a.b.c>.whats-new.md from the version's release
 notes, never over a What's new that exists: its own What's new's prose, each new and removed
@@ -438,12 +439,13 @@ HIGHLIGHTS = ('<!-- At most five highlights, each "- **<category>**: <one senten
 # highlight. A highlight: its marker, a category of CATEGORIES verbatim, one space after the
 # colon, then its sentence, which does not start with a space. A continuation of the previous
 # highlight's sentence: indented by exactly two spaces, its own text not starting with a space
-# either. A fence delimiter, ``` with at most three leading spaces, opens or closes a fenced
-# block, every line of which, delimiters included, is refused: a highlight is never read out
-# of one, since a reader's rendered Markdown never shows one as a highlight either.
+# either. A line that opens a fence by CommonMark's rule, at most three spaces, then three
+# backticks or three tildes, then anything, an info string included, refuses every line from it
+# to the section's end, closed or not: a reader's rendered Markdown never shows a highlight out
+# of a fence, and no closing line is looked for, so no spelling of one can let a line count.
 HIGHLIGHT = re.compile(r'- \*\*(?P<category>[^*]*)\*\*: (?P<text>\S.*)')
 CONTINUATION = re.compile(r'  (?P<text>\S.*)')
-FENCE = re.compile(r' {0,3}`{3,}')
+FENCE = re.compile(r' {0,3}(?:```|~~~)')
 
 
 def markdown(text: str) -> str:
@@ -502,8 +504,10 @@ def whats_new_findings(root: Path, version: Version) -> list[str]:
     section ## Highlights, a second named by its line; after its placeholder comment, every
     non-blank line of the section is a highlight or a continuation of one (HIGHLIGHT,
     CONTINUATION), each other line refused, named by its line, as specifically as its own shape
-    allows; at most five highlights, each a category of CATEGORIES, in their order, each once,
-    and one sentence of at most 20 words, these four checked on the highlights alone."""
+    allows; a line opening a fence (FENCE), in the section or above it, refuses each line of the
+    section from it on; at most five highlights, each a category of CATEGORIES, in their order,
+    each once, and one sentence of at most 20 words, these four checked on the highlights
+    alone."""
     relative = f'doc/releases/{version.name}.whats-new.md'
     if not (root / relative).is_file():
         return []
@@ -522,36 +526,41 @@ def whats_new_findings(root: Path, version: Version) -> list[str]:
     body_end = body_start + following.start() if following else len(text)
     # A comment's own example text holds a literal "- **<category>**: ", so it is blanked out
     # character for character before a line is read: its newlines stay, so a line found after
-    # it still carries its true number in the file.
+    # it still carries its true number in the file. A fence is looked for on the lines as
+    # written, since a fence's lines make a comment's opening or closing literal text.
+    written = text[body_start:body_end].split('\n')
     body = re.sub(r'<!--.*?-->',
                   lambda comment: ''.join('\n' if char == '\n' else ' ' for char in
                                           comment.group(0)),
-                  text[body_start:body_end], flags=re.DOTALL)
+                  text[body_start:body_end], flags=re.DOTALL).split('\n')
+    # A fence opened above the section may hold all of it, closed or not.
+    fence = next((number for number, line in enumerate(text[:headings[0]].split('\n'), 1)
+                  if FENCE.match(line)), None)
+    if fence is not None:
+        findings.append(f'{relative}:{fence}: line {fence} opens a fenced code block above ## '
+                        'Highlights, which refuses every line of the section')
 
     items: list[list[object]] = []
     has_open_item = False
-    in_fence = False
-    offset = 0
-    for raw_line in body.split('\n'):
-        number = line_of(body_start + offset)
-        offset += len(raw_line) + 1
-        if not raw_line.strip():
+    for number, (written_line, line) in enumerate(zip(written, body), line_of(body_start)):
+        if fence is None and FENCE.match(written_line):
+            fence = number
+            findings.append(f'{relative}:{number}: line {number} opens a fenced code block in '
+                            "Highlights, which refuses every line to the section's end")
+            continue
+        if fence is not None:
+            if written_line.strip():
+                findings.append(f'{relative}:{number}: line {number} is inside the fenced code '
+                                f'block of line {fence}')
+            continue
+        if not line.strip():
             has_open_item = False
             continue
-        if FENCE.fullmatch(raw_line):
-            in_fence = not in_fence
-            findings.append(f'{relative}:{number}: line {number} is not a highlight: a fence')
-            has_open_item = False
-            continue
-        if in_fence:
-            findings.append(f'{relative}:{number}: line {number} is not a highlight: a fence')
-            has_open_item = False
-            continue
-        if '\t' in raw_line:
+        if '\t' in line:
             findings.append(f'{relative}:{number}: line {number} is not a highlight: a tab')
             has_open_item = False
             continue
-        highlight = HIGHLIGHT.fullmatch(raw_line)
+        highlight = HIGHLIGHT.fullmatch(line)
         if highlight is not None:
             category = highlight.group('category')
             if category not in CATEGORIES:
@@ -562,7 +571,7 @@ def whats_new_findings(root: Path, version: Version) -> list[str]:
             items.append([number, category, highlight.group('text')])
             has_open_item = True
             continue
-        continuation = CONTINUATION.fullmatch(raw_line)
+        continuation = CONTINUATION.fullmatch(line)
         if continuation is not None:
             if not has_open_item:
                 findings.append(f'{relative}:{number}: line {number} is not a highlight: a '
@@ -570,7 +579,7 @@ def whats_new_findings(root: Path, version: Version) -> list[str]:
                 continue
             items[-1][2] = f'{items[-1][2]} {continuation.group("text")}'
             continue
-        if re.match(r' +- \*\*', raw_line):
+        if re.match(r' +- \*\*', line):
             findings.append(f'{relative}:{number}: line {number} is not a highlight: an '
                             'indented marker')
         else:

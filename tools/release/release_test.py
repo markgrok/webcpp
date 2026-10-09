@@ -746,19 +746,7 @@ def test_whats_new_highlights_grammar_is_a_whitelist(directory: Path) -> None:
         tree.commit_file('doc/releases/0.1.0.whats-new.md',
                          re.sub(r'<!--.*?-->', body, skeleton, flags=re.DOTALL))
 
-    # A marker starting its own physical line inside a fenced code block is still never a
-    # highlight: every line of the fence, delimiters and interior alike, is refused, and the
-    # real highlights around it are still correctly counted, two, in order.
-    highlights('- **New libraries**: real one.\n\n'
-              '```\n- **Dependencies**: fake, inside a code fence.\n```\n\n'
-              '- **Developer experience**: real two.')
-    found = release.check(tree.root, V010)
-    expect(found, 'is not a highlight: a fence')
-    # Each of the three lines of the fence (both delimiters and the fake marker between them)
-    # is its own finding, named by its own line, never silently merged into one.
-    assert len([finding for finding in found if 'a fence' in finding]) == 3, found
-    assert not any('at most 5' in finding or 'come in the order' in finding
-                  for finding in found), found
+    # A fenced code block is test_whats_new_a_fence_refuses_the_rest_of_highlights' own case.
     # A marker whose colon is followed by a tab, not a space, is refused outright - it used to
     # be silently merged into the previous highlight's sentence.
     highlights('- **Dependencies**: real one.\n\n'
@@ -802,6 +790,237 @@ def test_whats_new_highlights_grammar_is_a_whitelist(directory: Path) -> None:
     # A category outside ASCII is still read and still named invalid, in full.
     highlights('- **Café**: a category outside ASCII.')
     expect(release.check(tree.root, V010), 'its category is not one of New libraries')
+
+
+WHATS_NEW = 'doc/releases/0.1.0.whats-new.md'
+
+
+class Highlights:
+    """A scratch tree preparing 0.1.0 with its What's new written by whats-new, whose section
+    Highlights a case rewrites, commits and checks, naming each finding exactly by its line."""
+
+    def __init__(self, directory: Path) -> None:
+        self.tree = scratch.make_tree(directory)
+        release.whats_new(self.tree.root, V010)
+        self.skeleton = (self.tree.root / WHATS_NEW).read_text(encoding='utf-8')
+        # The line of the placeholder comment, which a body replaces: its first line's number.
+        self.first = self.skeleton[:self.skeleton.index('<!--')].count('\n') + 1
+
+    def text(self, *lines: str) -> str:
+        """The skeleton with lines in place of the placeholder comment."""
+        return re.sub(r'<!--.*?-->', lambda _: '\n'.join(lines), self.skeleton, count=1,
+                      flags=re.DOTALL)
+
+    def check(self, text: str) -> list[str]:
+        """check's findings once text is the What's new, committed byte for byte."""
+        commit_bytes(self.tree, None, WHATS_NEW, text.encode('utf-8'))
+        return release.check(self.tree.root, V010)
+
+    def at(self, index: int, fault: str = '') -> str:
+        """The finding that line index of a body is not a highlight, for fault, if any."""
+        number = self.first + index
+        return f'{WHATS_NEW}:{number}: line {number} is not a highlight' + (
+            f': {fault}' if fault else '')
+
+    def opens(self, index: int) -> str:
+        number = self.first + index
+        return (f'{WHATS_NEW}:{number}: line {number} opens a fenced code block in Highlights, '
+                "which refuses every line to the section's end")
+
+    def inside(self, index: int, opener: int) -> str:
+        """The finding that line index of a body is inside the fence line opener of the file
+        opens: opener is a line of the file, not of the body."""
+        number = self.first + index
+        return (f'{WHATS_NEW}:{number}: line {number} is inside the fenced code block of line '
+                f'{opener}')
+
+
+ORDER = f'{WHATS_NEW}: the highlights come in the order {", ".join(release.CATEGORIES)}, each once'
+CATEGORY = f'its category is not one of {", ".join(release.CATEGORIES)}'
+
+
+def test_whats_new_a_fence_refuses_the_rest_of_highlights(directory: Path) -> None:
+    # Fix round 4: a line that opens a fence by CommonMark's rule (at most three spaces, then
+    # three backticks or three tildes, then anything) refuses every line from it to the end of
+    # the section, each named by its own line, whether or not the fence is ever closed: nothing
+    # inside a fence ever counts as a highlight, so no count, order or category finding comes
+    # from its lines either.
+    case = Highlights(directory)
+    real, fake = '- **New libraries**: real one.', '- **Dependencies**: fake, inside a fence.'
+    after = '- **Developer experience**: real two, refused all the same.'
+    opener = case.first + 2
+    for fence, closer in (('```', '```'), ('~~~', '~~~'), ('```python', '```'),
+                          ('~~~ text', '~~~'), (' ```', ' ```'), ('  ~~~', '  ~~~'),
+                          ('   ```c++', '   ```'), ('````', '````'), ('```\tpython', '```')):
+        found = case.check(case.text(real, '', fence, fake, closer, '', after))
+        assert found == [case.opens(2), case.inside(3, opener), case.inside(4, opener),
+                         case.inside(6, opener)], (fence, found)
+    # An opener in a continuation's place, two spaces after a highlight, is a fence first.
+    found = case.check(case.text(real, '  ```', '  ' + fake, '  ```', after))
+    assert found == [case.opens(1), case.inside(2, case.first + 1),
+                     case.inside(3, case.first + 1), case.inside(4, case.first + 1)], found
+    # A fence never closed refuses the rest just the same; its blank lines are not named.
+    found = case.check(case.text(real, '```', fake, '', '', after))
+    assert found == [case.opens(1), case.inside(2, case.first + 1),
+                     case.inside(5, case.first + 1)], found
+    # A fence is read on the line as written: an HTML comment that a fence's own lines would
+    # make literal text hides neither the fence nor a line inside it, and a comment inside a
+    # fence is named like any other line there.
+    found = case.check(case.text(real + ' <!--', '```', fake, '-->', '<!-- a comment -->'))
+    assert found == [case.opens(1), case.inside(2, case.first + 1),
+                     case.inside(3, case.first + 1), case.inside(4, case.first + 1)], found
+    # A fence opened above the section, in the New libraries, refuses every line of it: the
+    # section could sit inside that fence, closed or not.
+    library = '- **config**: config, a library, from R.\n'
+    above = case.text(real, after).replace(library, library + '\n```\nan example\n```\n')
+    fenced = above.split('\n').index('```') + 1
+    first = above.split('\n').index(real) + 1
+    found = case.check(above)
+    assert found == [
+        f'{WHATS_NEW}:{fenced}: line {fenced} opens a fenced code block above ## Highlights, '
+        'which refuses every line of the section',
+        f'{WHATS_NEW}:{first}: line {first} is inside the fenced code block of line {fenced}',
+        f'{WHATS_NEW}:{first + 1}: line {first + 1} is inside the fenced code block of line '
+        f'{fenced}'], found
+    # Not a fence: four spaces of indentation, a tab's, two backticks or two tildes. Each such
+    # line is refused on its own, and the highlights after it are still read: the second
+    # highlight here is counted, out of order.
+    for line, fault in (('    ```', ''), ('\t```', 'a tab'), ('``', ''), ('~~', ''),
+                        ('    - **Dependencies**: indented.', 'an indented marker')):
+        found = case.check(case.text('- **Developer experience**: one.', line,
+                                     '- **New libraries**: two.'))
+        assert found == [case.at(1, fault), ORDER], (line, found)
+    # Backticks in a highlight's own sentence open nothing: only a line's start does.
+    assert case.check(case.text('- **Developer experience**: a fence is ```, then ~~~.')) == []
+
+
+def test_whats_new_every_adversarial_input(directory: Path) -> None:
+    # Every input the review and re-reviews 1 to 3 of Task 8 tried, each named by its exact
+    # findings, which check finds on a committed tree: the ones that defeated a round, and the
+    # ones they found correct, so that no round reopens an earlier one.
+    case = Highlights(directory)
+    real = '- **New libraries**: real one.'
+    clean = ('- **New libraries**: five header-only libraries arrive.',
+             '- **Developer experience**: every changelog line is checked.')
+    heading = '## Highlights\n'
+    start, end = case.skeleton.index(heading), case.skeleton.index('Release notes:')
+    second = heading + '\n' + real + '\n\n' + heading
+    second_line = case.skeleton[:start].count('\n') + 5
+    dependencies = ' '.join(f'- **Dependencies**: {word}.' for word in
+                            ('two', 'three', 'four', 'five', 'six', 'seven'))
+    unwrapped = release.HIGHLIGHTS.removeprefix('<!-- ').removesuffix(' -->').split('\n')
+    opener = case.first + 2
+    fenced = (case.opens(2), case.inside(3, opener), case.inside(4, opener),
+              case.inside(6, opener))
+    cases: list[tuple[str, str, list[str]]] = [
+        # The review.
+        ('two markers on one line, one highlight', case.text(
+            '- **New libraries**: five. - **Dependencies**: one.'), []),
+        ('a duplicated category', case.text(
+            '- **Dependencies**: one.', '- **Dependencies**: two.'), [ORDER]),
+        # Re-review 1.
+        ('a marker in a code span', case.text(
+            real, '', '`- **Developer experience**: fake extra credit.`'), [case.at(2)]),
+        ('a marker in a link', case.text(
+            real, '', '[- **Developer experience**: fake.](https://example.com/x)'),
+         [case.at(2)]),
+        ('text before the first highlight, named on its line', case.text(
+            release.HIGHLIGHTS, '', 'Summary of this release:', '', real), [case.at(4)]),
+        ('a marker split across lines', case.text('- **New', 'libraries**: text here.'),
+         [case.at(0), case.at(1)]),
+        ('an empty sentence at the end', case.text(real, '- **Dependencies**: '),
+         [case.at(1)]),
+        ('the placeholder without its comment', case.text(*unwrapped),
+         [case.at(0), case.at(1), case.at(2)]),
+        ('CRLF line endings', case.text(*clean).replace('\n', '\r\n'), []),
+        ('six highlights on six lines', case.text(*(['- **Dependencies**: one.'] * 6)),
+         [f'{WHATS_NEW}: 6 highlights, and there are at most 5', ORDER]),
+        # Re-review 2.
+        ('a backtick fence', case.text(
+            real, '', '```', '- **Dependencies**: fake.', '```', '', clean[1]), list(fenced)),
+        ('a tab after the colon', case.text(
+            '- **Dependencies**: real one.', '', '- **New libraries**:\tfake.'),
+         [case.at(2, 'a tab')]),
+        ('a star in the category', case.text(
+            '- **Dependencies**: real one.', '', '- **New*libraries**: fake.'), [case.at(2)]),
+        ('a second heading', case.skeleton[:start] + second + '\n' + dependencies + '\n\n'
+         + case.skeleton[end:],
+         [f'{WHATS_NEW}:{second_line}: a second ## Highlights heading']),
+        ('another comment wrapping a marker', case.text(
+            real, '<!-- - **Dependencies**: fake. -->'), []),
+        ('a comment never closed', case.text(real, '<!--', '- **Dependencies**: fake.'),
+         [case.at(1)]),
+        ('a tab after the colon, first', case.text('- **New libraries**:\tfake.'),
+         [case.at(0, 'a tab')]),
+        ('a star in the category, first', case.text('- **New*libraries**: fake.'),
+         [case.at(0)]),
+        ('a nested list item', case.text(real, '  - a nested item.'), []),
+        ('no highlights at all', case.text(), []),
+        ('a category outside ASCII', case.text('- **Café**: one.'), [case.at(0, CATEGORY)]),
+        ('a byte order mark', '﻿' + case.text(*clean), []),
+        ('a link holding bold text', case.text(
+            '- **New libraries**: see [**bold link**](https://example.com).'), []),
+        ('five highlights in order', case.text(
+            '- **New libraries**: one.', '- **Performance improvements**: two.',
+            '- **Dependencies**: three.', '- **Security & reliability**: four.',
+            '- **Developer experience**: five.'), []),
+        # Re-review 3.
+        ('a tilde fence', case.text(
+            real, '', '~~~', '- **Dependencies**: fake.', '~~~', '', clean[1]), list(fenced)),
+        ('a fence with an info string', case.text(
+            real, '', '```python', '- **Dependencies**: fake.', '```', '', clean[1]),
+         list(fenced)),
+        ('a comment over several lines', case.text(
+            real, '<!--', '- **Dependencies**: fake.', '-->'), []),
+        ('a fence never closed', case.text(real, '', '```', '- **Dependencies**: fake.'),
+         [case.opens(2), case.inside(3, opener)]),
+        ('trailing spaces', case.text(real + '   '), []),
+        ('bare CR line endings', case.text(*clean).replace('\n', '\r'), []),
+        ('two spaces in the heading', case.text(*clean).replace(heading, '##  Highlights\n'),
+         [f'{WHATS_NEW} has no section ## Highlights']),
+        ('a space after the heading', case.text(*clean).replace(heading, '## Highlights \n'),
+         [f'{WHATS_NEW} has no section ## Highlights']),
+        ('a third-level heading', case.text(*clean).replace(heading, '### Highlights\n'),
+         [f'{WHATS_NEW} has no section ## Highlights']),
+        ('markers under another heading', case.text(
+            real, '', '## Other', '', '- **Dependencies**: one.', '- **Dependencies**: two.'),
+         []),
+        ('a continuation after a blank line', case.text(real, '', '  continued.'),
+         [case.at(2, 'a continuation with no highlight before it')]),
+        ('a no-break space after the colon', case.text('- **New libraries**: one.'),
+         [case.at(0)]),
+        ('a zero-width space in the category', case.text('- **New​ libraries**: one.'),
+         [case.at(0, CATEGORY)]),
+        ('a zero-width joiner before the marker', case.text('‍' + real), [case.at(0)]),
+        ('a fence indented by three spaces', case.text(
+            real, '', '   ```', '- **Dependencies**: fake.', '   ```', '', clean[1]),
+         list(fenced)),
+        ('four spaces are no fence', case.text('    ```', real, '    ```'),
+         [case.at(0), case.at(2)]),
+    ]
+    wrong = []
+    for label, text, expected in cases:
+        found = case.check(text)
+        if found != expected:
+            wrong.append(f'{label}: expected {expected}, found {found}')
+    assert not wrong, '\n'.join(wrong)
+
+
+def test_whats_new_five_highlights_with_continuations_check_clean(directory: Path) -> None:
+    # The legitimate path: five highlights, one per category in CATEGORIES' order, three of
+    # them continued on lines of their own, a blank line between two, and backticks inside a
+    # sentence, check clean.
+    case = Highlights(directory)
+    assert case.check(case.text(
+        '- **New libraries**: config, the version every library reads, arrives.',
+        '  It is header-only.',
+        '- **Performance improvements**: nothing builds slower than in the previous version.',
+        '- **Dependencies**: Boost 1.90 and nothing else,',
+        '  each pinned by its SHA-256.',
+        '',
+        '- **Security & reliability**: every release is signed by its builder.',
+        '- **Developer experience**: `b2 whats-new` writes this page,',
+        '  and the owner approves it.')) == []
 
 
 def git_checkout(root: Path) -> None:
@@ -938,6 +1157,9 @@ CASES: list[Callable[[Path], None]] = [
     test_whats_new_highlight_markers_must_start_a_line,
     test_whats_new_leading_text_is_named_by_its_own_line,
     test_whats_new_highlights_grammar_is_a_whitelist,
+    test_whats_new_a_fence_refuses_the_rest_of_highlights,
+    test_whats_new_every_adversarial_input,
+    test_whats_new_five_highlights_with_continuations_check_clean,
 ]
 
 B2_CASES: list[Callable[[Path], None]] = [
