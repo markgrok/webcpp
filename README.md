@@ -33,9 +33,9 @@ library on every target are published at <https://webcpporg.github.io/>.
 
 ## Prerequisites
 
-- Boost 1.92 or newer, installed, and for a library that links Boost.URL its
-  sources, which `bash tools/ci/actions/boost/install.sh source
-  .local/boost-source` fetches;
+- Boost 1.92 or newer, installed, and for a library that links Boost.URL,
+  Boost.Charconv or Boost.Locale its sources, which `bash
+  tools/ci/actions/boost/install.sh source .local/boost-source` fetches;
 - b2;
 - a C++20 compiler;
 - Python 3.9 or newer, which compares the examples with their expected output

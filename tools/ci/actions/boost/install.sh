@@ -22,7 +22,8 @@
 #                                 for a machine whose Boost has no sources.
 #
 # The headers are installed, and beside them, in <prefix>/source, the sources of Boost's compiled
-# libraries, from which webcpp builds those it needs (the Jamroot's /webcpp//boost_url).
+# libraries, from which webcpp builds those it needs (the Jamroot's /webcpp//boost_url,
+# boost_charconv and boost_locale).
 set -euo pipefail
 
 version=1.92.0

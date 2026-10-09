@@ -8,39 +8,129 @@
 # Boost's sources for every target, static and once per variant, so that a
 # program's own features, exception-handling=off among them, reach them. The
 # sources are the Jamroot's WEBCPP_BOOST_SOURCE, whose version the Jamroot's
-# alias of each library checks before anything is built: /webcpp//boost_url.
-# They are Boost's code, not webcpp's, and compile without webcpp's
-# warnings, as Boost's headers are read as system ones.
+# alias of each library checks before anything is built: /webcpp//boost_url,
+# /webcpp//boost_charconv and /webcpp//boost_locale. They are Boost's code,
+# not webcpp's, and compile without webcpp's warnings, as Boost's headers are
+# read as system ones.
 import errors ;
+import feature ;
+import sequence ;
 
 project /webcpp/boost-libraries
   : source-location $(WEBCPP_BOOST_SOURCE)
   : requirements <warnings>off <warnings-as-errors>off
   ;
 
-# A tree without Boost.URL's sources gets an alias that stops the build
-# naming them, never a lib without sources, which b2 would search for on the
-# system, where a package's own libboost_url may be.
-rule url-sources-missing ( properties * )
+# The library whose sources the tree lacks, which sources-missing names.
+feature.feature webcpp-boost-library : : free incidental ;
+
+rule sources-missing ( properties * )
 {
-    errors.user-error "$(WEBCPP_BOOST_SOURCE)/libs/url/src holds no .cpp file, and"
-        "/webcpp//boost_url is built from them: fill the tree from Boost's source"
-        "archive (`bash tools/ci/actions/boost/install.sh source <dir>`)" ;
+    local name = [ feature.get-values <webcpp-boost-library> : $(properties) ] ;
+    errors.user-error "$(WEBCPP_BOOST_SOURCE)/$(.missing.$(name)), and /webcpp//$(name) is"
+        "built from them: fill the tree from Boost's source archive (`bash"
+        "tools/ci/actions/boost/install.sh source <dir>`)" ;
+}
+
+# compiled <name> : <sources> * : <missing> + : <requirements> * :
+# <usage-requirements> * ; the static library name, built from sources, paths
+# under the tree. Without sources it is an alias that stops a build that uses
+# it, saying of the tree what missing says ("libs/url/src holds no .cpp
+# file"): never a lib without sources, which b2 would search for on the
+# system, where a package's own libboost_url may be.
+rule compiled ( name : sources * : missing + : requirements * : usage-requirements * )
+{
+    if $(sources)
+    {
+        lib $(name) : $(sources) : <link>static $(requirements) : : $(usage-requirements) ;
+    }
+    else
+    {
+        .missing.$(name) = $(missing:J=" ") ;
+        alias $(name) : : <webcpp-boost-library>$(name) <conditional>@sources-missing ;
+    }
+    explicit $(name) ;
+}
+
+# Whether the tree holds every one of paths.
+rule holds ( paths + )
+{
+    if [ sequence.length [ glob $(paths) ] ] = [ sequence.length $(paths) ]
+    {
+        return true ;
+    }
 }
 
 # Boost.URL, with the macros of its own libs/url/build/Jamfile: its sources
 # see BOOST_URL_SOURCE, and it and its users BOOST_URL_STATIC_LINK=1 and
 # BOOST_URL_NO_LIB=1.
-.url = [ glob-tree-ex libs/url/src : *.cpp ] ;
-if $(.url)
+compiled boost_url : [ glob-tree-ex libs/url/src : *.cpp ]
+  : libs/url/src holds no .cpp file
+  : <define>BOOST_URL_SOURCE <define>BOOST_URL_STATIC_LINK=1
+  : <define>BOOST_URL_STATIC_LINK=1 <define>BOOST_URL_NO_LIB=1 ;
+
+# Boost.Charconv, with the macros of its own build/Jamfile: its sources see
+# BOOST_CHARCONV_SOURCE=1, and its users BOOST_CHARCONV_NO_LIB=1. Without
+# GCC's quadmath, so without the __float128 overloads, on every target alike.
+compiled boost_charconv : [ glob libs/charconv/src/*.cpp ]
+  : libs/charconv/src holds no .cpp file
+  : <define>BOOST_CHARCONV_SOURCE=1
+  : <define>BOOST_CHARCONV_NO_LIB=1 ;
+
+# The system's iconv, which macOS keeps in a library of its own; glibc and
+# wasi-libc have it in libc.
+lib iconv : : <name>iconv ;
+
+explicit iconv ;
+
+# Boost.Locale without ICU (~/.buzz/RESEARCH/BOOST_LOCALE_ON_EVERY_TARGET.md
+# measured it): the shared sources of its own build/Jamfile.v2 and its std
+# backend on every target; with them the posix backend and iconv on Linux,
+# macOS and WASI, and the winapi backend on Windows, as Boost configures it
+# there. Refused on emscripten, whose single-threaded build Boost.Thread's
+# mutex rejects, and without exceptions, which Boost.Locale throws
+# unguarded.
+.locale-shared = encoding/codepage shared/date_time shared/format shared/formatting
+    shared/generator shared/iconv_codecvt shared/ids shared/localization_backend
+    shared/message shared/mo_lambda util/codecvt_converter util/default_locale
+    util/encoding util/info util/locale_data util/gregorian std/codecvt std/collate
+    std/converter std/numeric std/std_backend ;
+.locale-posix = posix/collate posix/converter posix/numeric posix/codecvt posix/posix_backend ;
+.locale-winapi = win32/collate win32/converter win32/numeric win32/win_backend win32/lcid ;
+
+rule locale-configuration ( properties * )
 {
-    lib boost_url : $(.url)
-      : <link>static <define>BOOST_URL_SOURCE <define>BOOST_URL_STATIC_LINK=1
-      : : <define>BOOST_URL_STATIC_LINK=1 <define>BOOST_URL_NO_LIB=1 ;
-}
-else
-{
-    alias boost_url : : <conditional>@url-sources-missing ;
+    if <exception-handling>off in $(properties)
+    {
+        errors.user-error "/webcpp//boost_locale needs exceptions: Boost.Locale throws and"
+            "catches without a path for a build without them; build with exceptions, or"
+            "leave Boost.Locale out" ;
+    }
+    if <toolset>emscripten in $(properties)
+    {
+        errors.user-error "Boost.Locale is not built for emscripten: three of its sources"
+            "include <boost/thread/mutex.hpp>, which Boost.Config refuses in a"
+            "single-threaded build (\"Compiler threading support is not turned on\"), and"
+            "webcpp's emscripten is single-threaded" ;
+    }
+    if <target-os>windows in $(properties)
+    {
+        return <source>libs/locale/src/$(.locale-winapi).cpp
+            <define>BOOST_LOCALE_NO_POSIX_BACKEND=1
+            <define>_CRT_SECURE_NO_WARNINGS <define>_SCL_SECURE_NO_WARNINGS ;
+    }
+    return <source>libs/locale/src/$(.locale-posix).cpp
+        <define>BOOST_LOCALE_WITH_ICONV=1 <define>BOOST_LOCALE_NO_WINAPI_BACKEND=1 ;
 }
 
-explicit boost_url ;
+# Every source a target may compile must be in the tree, a backend's too, so
+# that a partial tree stops by name rather than at a compile or a link.
+if [ holds libs/locale/src/$(.locale-shared).cpp libs/locale/src/$(.locale-posix).cpp
+    libs/locale/src/$(.locale-winapi).cpp ]
+{
+    .locale = libs/locale/src/$(.locale-shared).cpp boost_charconv ;
+}
+compiled boost_locale : $(.locale)
+  : libs/locale/src holds no Boost.Locale sources, or only some of them
+  : <define>BOOST_LOCALE_SOURCE <conditional>@locale-configuration
+  : <define>BOOST_LOCALE_NO_LIB=1 <target-os>darwin:<library>iconv ;

@@ -401,10 +401,15 @@ rule boost-source-usable ( properties * )
 # Boost's compiled libraries, built from those sources (tools/boost/Jamfile).
 use-project /webcpp/boost-libraries : tools/boost ;
 
-# Boost.URL, compiled: a library that needs it puts <library>/webcpp//boost_url
-# in its main target's usage requirements, as one that needs Boost.JSON does
-# with boost_json. The alias checks the sources before anything is built.
-alias boost_url : tools/boost//boost_url : <conditional>@boost-source-usable ;
+# Boost.URL, Boost.Charconv and Boost.Locale, compiled: a library that needs
+# one puts <library>/webcpp//boost_url, boost_charconv or boost_locale in its
+# main target's usage requirements, as one that needs Boost.JSON does with
+# boost_json. Each alias checks the sources before anything is built; what
+# Boost.Locale gives on each target is AGENTS.md chapter 2's table.
+for local name in boost_url boost_charconv boost_locale
+{
+    alias $(name) : tools/boost//$(name) : <conditional>@boost-source-usable ;
+}
 
 # The emsdk a library's reference is read with, for Emscripten's target, as
 # its em++ compiles (tools/doc/doc.jam): a reference puts
@@ -628,8 +633,9 @@ notfile declared-lanes : @declared-lanes : : <webcpp-boost-check>off ;
 # every test, those the lane skips included. With --out-xml, b2 exits 0 even
 # when a test fails: the report's exit status is the verdict.
 
-explicit boost_version throw_exception boost_json boost_url emscripten-reference test
-    example doc install $(.install) declared-targets declared-lanes site site-serve ;
+explicit boost_version throw_exception boost_json boost_url boost_charconv
+    boost_locale emscripten-reference test example doc install $(.install)
+    declared-targets declared-lanes site site-serve ;
 if [ glob site/Jamfile ]
 {
     explicit site-declared.txt libraries.json site-pages ;

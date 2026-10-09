@@ -104,7 +104,7 @@ webcpp/
     boost_json.cpp    Boost.JSON's definitions, built as /webcpp//boost_json (chapter 2)
     boost_test_runner.cpp  Boost.Test's header-only framework, for webcpp.boost-test (chapter 9)
     boost/            Jamfile: the compiled Boost libraries built from Boost's sources
-                      (/webcpp//boost_url)
+                      (/webcpp//boost_url, boost_charconv and boost_locale)
     oracle/           the shared oracle (chapter 5): oracle.jam, twins.py, compare.py and their
                       tests
     lint/             lint.sh, rules.py, compile_commands.py and their test
@@ -184,7 +184,8 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
 ### Prerequisites
 
 - Boost 1.92 or newer, installed, and, for a library that links a compiled
-  Boost library (Boost.URL), Boost's sources of the same version (below);
+  Boost library (Boost.URL, Boost.Charconv, Boost.Locale), Boost's sources of
+  the same version (below);
 - b2 (B2 5.5.3 measured);
 - a C++20 compiler;
 - Python 3.9 or newer;
@@ -283,7 +284,8 @@ cannot read stops the build too, naming the directory.
 
 **Boost's sources.** A compiled Boost library that a webcpp library needs is
 built from Boost's own sources, for every target, as Boost.JSON's definitions
-are: `/webcpp//boost_url` (`tools/boost/Jamfile`). An installed Boost has none
+are: `/webcpp//boost_url`, `/webcpp//boost_charconv` and
+`/webcpp//boost_locale` (`tools/boost/Jamfile`). An installed Boost has none
 (Homebrew's ships its own `libboost_url` and no `libs/url/src`), so the build
 reads them from `-sBOOST_SOURCE=<dir>` on b2's command line (or `-s
 BOOST_SOURCE=<dir>`), which wins, else `BOOST_SOURCE` as a user-config.jam's
@@ -467,10 +469,23 @@ owner's:
    static, built once per variant with Boost.URL's own macros; never
    `/boost//url`, which would link the system's, nor
    `/webcpp/boost-libraries//boost_url`, which the Jamroot's alias checks
-   the sources' version for. A library that needs
-   Boost.JSON adds `<library>/webcpp//boost_json` to its target's usage
-   requirements, as xstate's `build.jam` does: the Jamroot's `boost_json`,
-   `tools/boost_json.cpp`, compiles Boost.JSON's definitions
+   the sources' version for. Boost.Charconv and Boost.Locale likewise,
+   `<library>/webcpp//boost_charconv` and `<library>/webcpp//boost_locale`:
+   Boost.Locale without ICU, with what it gives on each target in this
+   table:
+
+   | Target | `/webcpp//boost_locale` | `/webcpp//boost_charconv` |
+   | --- | --- | --- |
+   | native Linux (gcc, clang, glibc) | backends posix and std; iconv from glibc; no ICU (measured) | yes (measured) |
+   | native macOS (Apple clang, gcc) | backends posix and std; iconv from the system's libiconv, `-liconv` given by the target; no ICU (measured) | yes (measured) |
+   | native Windows (MSVC) | backends winapi and std, no iconv, no ICU: Boost's own configuration on Windows. Not measured here: no Windows machine; the first CI run that builds it is its measurement, and a failure is reported to the owner, never hidden | yes; not measured here |
+   | wasip2, wasip3 | backends posix and std; iconv from wasi-libc; number, currency and date formatting in the C locale's form (no locale data, no ICU); a catalog is read from a directory the test gives (`webcpp.data`) (measured) | yes (measured) |
+   | emscripten | refused by name: `shared/date_time.cpp`, `shared/generator.cpp` and `shared/localization_backend.cpp` include `<boost/thread/mutex.hpp>`, and Boost.Config stops with "Compiler threading support is not turned on" (`boost/config/requires_threads.hpp:47`), webcpp's emscripten being single-threaded (measured) | yes (measured) |
+   | any target, `exception-handling=off` | refused by name: Boost.Locale throws and catches unguarded (61 `throw`, 14 `try` in its sources, 8 `throw` in its headers) | yes (measured natively and on wasip2) |
+
+   A library that needs Boost.JSON adds `<library>/webcpp//boost_json` to its
+   target's usage requirements, as xstate's `build.jam` does: the Jamroot's
+   `boost_json`, `tools/boost_json.cpp`, compiles Boost.JSON's definitions
    (`<boost/json/src.hpp>`, as Boost.JSON documents for a header-only build)
    into a static library, once per variant, so a user's build without
    exceptions gets them built without exceptions too. A library that builds
@@ -2515,9 +2530,11 @@ What webcpp does not have yet, and the chapters that mention it:
   user's allocator, applied first to xactor, xstate and wasi, whose response
   holds its body as a `std::string`; pratt is born with the rule, and
   trystero through `std::pmr` (chapter 6).
-- **Compiled Boost libraries.** Boost.URL is built from Boost's sources
-  (`/webcpp//boost_url`); Boost.Locale and Boost.Charconv join the same way
-  when a library needs them. A Boost.Test suite still compiles the
-  framework's header-only form (chapters 2 and 9).
+- **Compiled Boost libraries.** Boost.URL, Boost.Charconv and Boost.Locale
+  are built from Boost's sources (`/webcpp//boost_url`,
+  `/webcpp//boost_charconv`, `/webcpp//boost_locale`). Boost.Locale has no
+  build for emscripten, which is single-threaded, nor without exceptions,
+  and it is not yet measured on Windows. A Boost.Test suite still compiles
+  the framework's header-only form (chapters 2 and 9).
 - **Bundled toolchains.** Each toolchain is installed by hand and configured
   in `user-config.jam` (chapter 1), until webcpp bundles them.
