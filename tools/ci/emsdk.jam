@@ -1,0 +1,32 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The toolset of the emscripten target: b2's emscripten, registered against
+# Emscripten 6.0.11 from emsdk, as a user-config.jam declares it, where
+# $(emsdk) is the emsdk's directory and $(node) the node that runs a
+# program, both set by the region emsdk before it. Each is the region between
+# its tag:: and end:: lines. tools/ci/matrix.py register writes the region
+# emsdk and the region emscripten into a lane's user-config.jam, with the
+# directory where tools/ci/actions/emsdk installs the emsdk, quoted, in place
+# of /path/to/emsdk and of $(emsdk), and the node wrapper it installs,
+# quoted, in place of /path/to/node and of $(node); the documentation shows
+# the regions from here. No build loads this file.
+#
+# b2 1.92's emscripten toolset probes the node it is given with
+# `--version --experimental-wasm-threads`, a flag Node 24 and newer refuse
+# with an error on standard error, which lands in the output of every b2 that
+# configures the toolset. The CI's node is therefore
+# tools/ci/actions/emsdk/node.sh, which refuses that flag without a word and
+# runs the node on PATH; any node runs the programs, with that error printed.
+
+# tag::emsdk[]
+local emsdk = /path/to/emsdk ;
+local node = /path/to/node ;
+# end::emsdk[]
+
+# tag::emscripten[]
+using emscripten : : $(emsdk)/upstream/emscripten/em++ : <nodejs>$(node) ;
+# end::emscripten[]

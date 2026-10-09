@@ -18,24 +18,23 @@ plan runs `b2 -d0 declared-targets` from the superproject's root and prints the 
 the lanes to run, {"include": [LANE, ...]}: one lane per compiler of LANES for each target a
 library declares, of the library --library names, else of every library. A lane builds the tests
 and examples of the libraries that declare its target, and no other: a lane of a target no
-library declares would build nothing. A target the CI has no lane for (emscripten, until emsdk
-is pinned: AGENTS.md, Roadmap) is a failure, never a lane left out.
+library declares would build nothing. A target the CI has no lane for is a failure, never a lane
+left out.
 
 own-lanes runs `b2 -d0 declared-lanes` and prints the JSON matrix of the libraries' own lanes, of
 the library --library names, else of every library; empty, {"include":[]}, when none declares one,
-and a failure when --library names no library of libs/, as plan's does. An own lane is one a
-library declares with webcpp.lane, such as its oracle, or its served tests, and one job runs it,
-per target it runs on, in every directory D that declares it there: the entry {"library": L,
-"lane": N, "directories": [D, ...]}, with "name", what the CI shows for the job, Own lane (L, N)
-or Own lane (L, N, T), and the "os" and "wasm" of the lane whose setup it shares. One that names
-no target runs as `b2 -a toolset=clang-18 D//N ...`, whose exit status is its verdict: it writes
-no XML, so it is no column of the report. One that names targets is an entry per target T, which
-adds "platform": T and the "id" <T>.<L>.<N> (wasip2.wasi.http), and shares T's own lane, or the
-oracle's Clang 18 for native. It runs as that lane runs, with --dump-tests and --out-xml, and its
-XML, <id>.xml, is a column of the report under its id, which tools/report/report.py checks
-against the toolset it was built with and the library whose tests it lists. A target the CI
-cannot set up an own lane on, emscripten until emsdk is pinned (AGENTS.md, Roadmap), fails the
-listing by name: an own lane is never run natively in its place.
+and a failure when --library names no library of libs/, as plan's does. An own lane is one a library
+declares with webcpp.lane, such as its oracle, or its served tests, and one job runs it, per target
+it runs on, in every directory D that declares it there: the entry {"library": L, "lane": N,
+"directories": [D, ...]}, with "name", what the CI shows for the job, Own lane (L, N) or Own lane
+(L, N, T), and the "os", "wasm" and "emsdk" of the lane whose setup it shares. One that names no
+target runs as `b2 -a toolset=clang-18 D//N ...`, whose exit status is its verdict: it writes no
+XML, so it is no column of the report. One that names targets is an entry per target T, which adds
+"platform": T and the "id" <T>.<L>.<N> (wasip2.wasi.http), and shares T's own lane, or the oracle's
+Clang 18 for native. It runs as that lane runs, with --dump-tests and --out-xml, and its XML,
+<id>.xml, is a column of the report under its id, which tools/report/report.py checks against the
+toolset it was built with and the library whose tests it lists. A target the CI has no lane to set
+up an own lane on fails the listing by name: an own lane is never run natively in its place.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -57,14 +56,17 @@ it. Without a target, b2's exit status is its verdict; with one, it writes DIR/<
 job uploads, and fails only when b2 cannot build at all, as a lane does.
 
 register adds the toolsets of the lanes named by id to the user-config.jam, in their order, the
-first being b2's default toolset: what the CI's tools job builds the tests of the tools with. A
-WASI lane's toolset is the region of tools/ci/wasi-sdk.jam between `# tag::<target>[]` and
-`# end::<target>[]`, after its region wasi-sdk, which names wasi-sdk's directory and gives it to
-the build as WASI_SDK, read when the lane registers its toolset, with wasi-sdk's directory,
-quoted, in place of /path/to/wasi-sdk and of $(wasi-sdk): the lines the documentation shows.
-Each block of lines, the regions apart, is added once. A wasi-sdk.jam without them fails what
-registers a WASI toolset, a lane, an own lane on a WASI target or register, naming the file and
-the tag; the plan and the report, which register nothing, never read it.
+first being b2's default toolset: what the CI's tools job builds the tests of the tools with. A WASI
+lane's toolset is the region of tools/ci/wasi-sdk.jam between `# tag::<target>[]` and
+`# end::<target>[]`, after its region wasi-sdk, which names wasi-sdk's directory and gives it to the
+build as WASI_SDK, read when the lane registers its toolset, with wasi-sdk's directory, quoted, in
+place of /path/to/wasi-sdk and of $(wasi-sdk): the lines the documentation shows. The emscripten
+lane's toolset is likewise the region emscripten of tools/ci/emsdk.jam, after its region emsdk, with
+the directory where tools/ci/actions/emsdk installs the emsdk, quoted, in place of /path/to/emsdk
+and of $(emsdk), and the node wrapper it installs, quoted, in place of /path/to/node and of $(node).
+Each block of lines, the regions apart, is added once. A wasi-sdk.jam or an emsdk.jam without them
+fails what registers that toolset, a lane, an own lane on that target or register, naming the file
+and the tag; the plan and the report, which register nothing, never read them.
 
 report merges what the lanes of the matrix MATRIX wrote under DIR, one directory per lane,
 lane-<id>/<lane>.xml (as the CI downloads the lanes' artifacts), with tools/report/report.py into
@@ -76,7 +78,8 @@ The user-config.jam is .local/user-config.jam by default, where tools/ci/actions
 `using boost` line. Exit 0 on success; 1 when b2 or the report fails; 2 on a usage error, a
 --library that names no library, a target with no lane, a line of declared-lanes that is no own
 lane, an own lane on a target the CI cannot set up, a planned lane that wrote no XML, missing from
-the report, or a tools/ci/wasi-sdk.jam that does not hold the WASI toolset to register.
+the report, or a tools/ci/wasi-sdk.jam or tools/ci/emsdk.jam that does not hold the toolset to
+register.
 """
 
 from __future__ import annotations
@@ -108,6 +111,15 @@ WASI_SDK = '.local/wasi-sdk'
 # and end:: lines.
 WASI_SDK_JAM = ROOT / 'tools/ci/wasi-sdk.jam'
 
+# Where tools/ci/actions/emsdk installs the emsdk, and the node wrapper b2's emscripten toolset
+# runs a program with (tools/ci/actions/emsdk/node.sh).
+EMSDK = '.local/emsdk'
+EMSCRIPTEN_NODE = '.local/emscripten/node'
+
+# The lines that register b2's emscripten toolset against $(emsdk) and $(node), between the tag::
+# and end:: lines of the region emscripten.
+EMSDK_JAM = ROOT / 'tools/ci/emsdk.jam'
+
 # MSVC's lanes build 64-bit programs, embed their manifest with the linker and abbreviate b2's
 # paths against Windows's MAX_PATH, as xstate-cpp's green Windows jobs did. b2 abbreviates each
 # word of the toolset directory too, and msvc-14.3 and msvc-14.5 are their own abbreviations,
@@ -125,22 +137,24 @@ class Lane:
     name: str
     # The runner image.
     os: str
-    # The target it builds for (tools/webcpp.jam): native, wasip2 or wasip3.
+    # The target it builds for (tools/webcpp.jam): native, emscripten, wasip2 or wasip3.
     target: str
     # The directory b2 builds the lane in, and the lane's column in the report. {version} is the
     # major version of the compiler `detect` names.
     lane: str
     toolset: str
     # The lines that register the toolset in user-config.jam, in blocks an empty line apart, each
-    # added once. {wasi_sdk} is wasi-sdk's absolute directory, quoted, and WASI_TOOLSET, the
-    # whole, stands for the lines of tools/ci/wasi-sdk.jam for the lane's target, read when the
-    # lane is registered.
+    # added once. {wasi_sdk} is wasi-sdk's absolute directory, quoted; WASI_TOOLSET, the whole,
+    # stands for the lines of tools/ci/wasi-sdk.jam for the lane's target, and EMSCRIPTEN_TOOLSET
+    # for those of tools/ci/emsdk.jam, each read when the lane is registered.
     using: str
     # The compiler whose major version is {version}, or nothing.
     detect: str = ''
     options: tuple[str, ...] = ()
     # Whether the lane needs wasi-sdk and wasmtime.
     wasm: bool = False
+    # Whether the lane needs emsdk and Node.
+    emsdk: bool = False
     # The b2 projects it builds: libs/<library>/test and libs/<library>/example of each library.
     projects: tuple[str, ...] = field(default_factory=tuple)
 
@@ -157,34 +171,62 @@ class Failure(Exception):
 # place of.
 PLACEHOLDER = '/path/to/wasi-sdk'
 
+# What the region emsdk of EMSDK_JAM names, the emsdk's directory and the node, which register
+# writes the action's in place of.
+EMSDK_PLACEHOLDER = '/path/to/emsdk'
+NODE_PLACEHOLDER = '/path/to/node'
 
-def region_lines(tag: str, needed: str, what: str) -> str:
-    """The lines of WASI_SDK_JAM's region tag, which must hold needed and say what, with
-    {wasi_sdk} in place of PLACEHOLDER and of $(wasi-sdk)."""
+
+def region_lines(jam: Path, tag: str, needed: str, what: str, fills: dict[str, str]) -> str:
+    """The lines of jam's region tag, which must hold needed and say what, with each key of fills
+    replaced by its value."""
     try:
-        text = WASI_SDK_JAM.read_text()
+        text = jam.read_text()
     except OSError as error:
-        raise Failure(f'cannot read {WASI_SDK_JAM}: {error.strerror}', 2) from error
+        raise Failure(f'cannot read {jam}: {error.strerror}', 2) from error
     found = re.search(rf'^# tag::{tag}\[\]\n(.*?)^# end::{tag}\[\]$', text,
                       re.MULTILINE | re.DOTALL)
     if found is None or needed not in found.group(1):
-        raise Failure(f'{WASI_SDK_JAM} holds no lines tag::{tag}[] to end::{tag}[] that {what}', 2)
+        raise Failure(f'{jam} holds no lines tag::{tag}[] to end::{tag}[] that {what}', 2)
     lines = found.group(1).rstrip('\n')
-    return lines.replace(PLACEHOLDER, '{wasi_sdk}').replace('$(wasi-sdk)', '{wasi_sdk}')
+    for old, new in fills.items():
+        lines = lines.replace(old, new)
+    return lines
 
 
 def toolset_lines(target: str) -> str:
     """The lines that register target's toolset: the region wasi-sdk of WASI_SDK_JAM, then the
     region target, an empty line between the two blocks, with {wasi_sdk} in place of wasi-sdk's
     directory."""
-    sdk = region_lines('wasi-sdk', PLACEHOLDER, f'name wasi-sdk\'s directory, {PLACEHOLDER}')
-    toolset = region_lines(target, '$(wasi-sdk)', f'register clang-{target} against $(wasi-sdk)')
+    fills = {PLACEHOLDER: '{wasi_sdk}', '$(wasi-sdk)': '{wasi_sdk}'}
+    sdk = region_lines(WASI_SDK_JAM, 'wasi-sdk', PLACEHOLDER,
+                       f'name wasi-sdk\'s directory, {PLACEHOLDER}', fills)
+    toolset = region_lines(WASI_SDK_JAM, target, '$(wasi-sdk)',
+                           f'register clang-{target} against $(wasi-sdk)', fills)
+    return f'{sdk}\n\n{toolset}'
+
+
+def emscripten_lines() -> str:
+    """The lines that register b2's emscripten toolset: the region emsdk of EMSDK_JAM, then the
+    region emscripten, an empty line between the two blocks, with {emsdk} in place of the emsdk's
+    directory and {node} in place of the node."""
+    fills = {EMSDK_PLACEHOLDER: '{emsdk}', '$(emsdk)': '{emsdk}', NODE_PLACEHOLDER: '{node}',
+             '$(node)': '{node}'}
+    sdk = region_lines(EMSDK_JAM, 'emsdk', EMSDK_PLACEHOLDER,
+                       f"name the emsdk's directory, {EMSDK_PLACEHOLDER}", fills)
+    toolset = region_lines(EMSDK_JAM, 'emscripten', '$(emsdk)',
+                           'register emscripten against $(emsdk)', fills)
     return f'{sdk}\n\n{toolset}'
 
 
 # What a WASI lane's using stands for until it is registered: the lines toolset_lines reads, which
 # a wasi-sdk.jam that does not hold them fails then, naming the file and the tag, and only then.
 WASI_TOOLSET = '{wasi-sdk.jam}'
+
+
+# What the emscripten lane's using stands for until it is registered: the lines emscripten_lines
+# reads, which an emsdk.jam that does not hold them fails then, naming the file and the tag.
+EMSCRIPTEN_TOOLSET = '{emsdk.jam}'
 
 
 def wasm_lane(target: str) -> Lane:
@@ -213,6 +255,9 @@ LANES = (
     Lane(id='msvc-14.5', name='MSVC 14.5 (Visual Studio 2026)', os='windows-2025',
          target='native', lane='msvc-14.5', toolset='msvc-14.5', using='using msvc : 14.5 ;',
          options=MSVC_OPTIONS),
+    Lane(id='emscripten', name='Emscripten 6.0.11 (node)', os='ubuntu-24.04',
+         target='emscripten', lane='emscripten', toolset='emscripten',
+         using=EMSCRIPTEN_TOOLSET, emsdk=True),
     wasm_lane('wasip2'),
     wasm_lane('wasip3'),
 )
@@ -268,8 +313,7 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
     if missing:
         declaring = sorted({name for name, target in pairs if target in missing})
         raise Failure(f'{", ".join(declaring)} declare {", ".join(missing)}, which the CI has '
-                      'no lane for: the CI gets an emscripten lane when emsdk is pinned '
-                      '(AGENTS.md, Roadmap); a target is never left untested', 2)
+                      'no lane for: a target is never left untested', 2)
     lanes = []
     for lane in LANES:
         libraries = sorted({name for name, target in pairs if target == lane.target})
@@ -288,9 +332,9 @@ OWN_LANE = re.compile(r'([a-z][a-z0-9_]*) ([A-Za-z0-9][A-Za-z0-9_.-]*) (libs/[^ 
 
 # The lane whose toolset, options and setup an own lane shares, by the target it runs on: the
 # target's own lane, and Clang 18's, the oracle's, for native and for an own lane that names no
-# target (None). Each runs on Linux x86-64. emscripten has none until emsdk is pinned (AGENTS.md,
-# Roadmap).
-OWN_LANE_BASES = {None: 'clang-18', 'native': 'clang-18', 'wasip2': 'wasip2', 'wasip3': 'wasip3'}
+# target (None). Each runs on Linux x86-64.
+OWN_LANE_BASES = {None: 'clang-18', 'native': 'clang-18', 'emscripten': 'emscripten',
+                  'wasip2': 'wasip2', 'wasip3': 'wasip3'}
 
 
 @dataclass(frozen=True)
@@ -352,8 +396,8 @@ def own_lane_base(target: str | None) -> Lane:
     """The lane an own lane on target, or on none, shares its toolset and its setup with."""
     known = {lane.id: lane for lane in LANES}
     if target not in OWN_LANE_BASES:
-        raise Failure(f"an own lane on {target} needs the {target} lane's setup, which comes when "
-                      'emsdk is pinned (AGENTS.md, Roadmap)', 2)
+        raise Failure(f'an own lane on {target} needs a lane of that target to share its setup '
+                      'with, and the CI has none', 2)
     return known[OWN_LANE_BASES[target]]
 
 
@@ -366,14 +410,14 @@ def own_lane_entry(own: OwnLane) -> dict[str, object]:
                                 'directories': list(own.directories)}
     if own.target is not None:
         entry.update(platform=own.target, id=own.id)
-    entry.update(name=own.name, os=base.os, wasm=base.wasm)
+    entry.update(name=own.name, os=base.os, wasm=base.wasm, emsdk=base.emsdk)
     return entry
 
 
 def own_lanes(user_config: Path, library: str | None) -> list[OwnLane]:
     """The own lanes the libraries declare, of library alone when it is given, which must be a
     library of libs/: one that declares no own lane has none, one that does not exist fails. An
-    own lane on a target the CI cannot set up fails, by name."""
+    own lane on a target the CI has no lane to set up fails, by name."""
     if library is not None and not (ROOT / 'libs' / library / 'build.jam').is_file():
         raise Failure(f'libs/{library} is no library of libs/ (a directory with a build.jam)', 2)
     lanes = parsed_own_lanes('\n'.join(printed('declared-lanes', user_config)))
@@ -384,7 +428,7 @@ def own_lanes(user_config: Path, library: str | None) -> list[OwnLane]:
         except Failure as failure:
             raise Failure(f'{own.library} declares its own lane {own.lane} in '
                           f'{" and ".join(own.directories)} on {own.target}, which the CI cannot '
-                          f'set up yet: {failure}', 2) from None
+                          f'set up: {failure}', 2) from None
     return lanes
 
 
@@ -442,15 +486,23 @@ def major_version(compiler: str) -> str:
 
 
 def resolved(lane: Lane) -> Lane:
-    """lane with its WASI_TOOLSET read, and its {version} and {wasi_sdk} filled in."""
+    """lane with its WASI_TOOLSET or EMSCRIPTEN_TOOLSET read, and its {version}, {wasi_sdk},
+    {emsdk} and {node} filled in."""
     version = major_version(lane.detect) if lane.detect else ''
     # Quoted, one word of Jam however many spaces the checkout's path holds; the quotes end
     # where the directory does, so that <archiver>"<wasi-sdk>"/bin/llvm-ar stays one word too.
     wasi_sdk = f'"{(ROOT / WASI_SDK).as_posix()}"'
-    using = toolset_lines(lane.target) if lane.using == WASI_TOOLSET else lane.using
+    emsdk = f'"{(ROOT / EMSDK).as_posix()}"'
+    node = f'"{(ROOT / EMSCRIPTEN_NODE).as_posix()}"'
+    using = lane.using
+    if using == WASI_TOOLSET:
+        using = toolset_lines(lane.target)
+    elif using == EMSCRIPTEN_TOOLSET:
+        using = emscripten_lines()
 
     def fill(text: str) -> str:
-        return text.replace('{version}', version).replace('{wasi_sdk}', wasi_sdk)
+        return (text.replace('{version}', version).replace('{wasi_sdk}', wasi_sdk)
+                .replace('{emsdk}', emsdk).replace('{node}', node))
 
     return replace(lane, lane=fill(lane.lane), toolset=fill(lane.toolset), using=fill(using))
 

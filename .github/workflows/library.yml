@@ -27,25 +27,28 @@
 #   lanes       one job per lane, which runs the lane command, b2 -a --dump-tests
 #               --out-xml=<lane>.xml for one toolset, and uploads the XML. With --out-xml, b2
 #               exits 0 even when a test fails: the report gives the verdict. A wasip2 or
-#               wasip3 lane installs wasi-sdk, wasmtime, wit-bindgen and the WASI WIT first.
+#               wasip3 lane installs wasi-sdk, wasmtime, wit-bindgen and the WASI WIT first, and
+#               the emscripten lane emsdk and Node, which runs its programs.
 #   own-lanes   one job per own lane of a library and target it runs on, which runs the lane
 #               in every directory that declares it there. One that names no target, as an
 #               oracle, runs on Linux x86-64 with Node and Clang 18, b2 -a <directory>//<lane>,
 #               and its exit status is its verdict. One that names a target, as wasi's served
-#               tests and examples, is set up as that target's lane is, runs b2 -a --dump-tests
-#               --out-xml with its toolset, and uploads the XML, which the report reads as a
-#               lane's. A library that declares none, as xactor, has no such job.
+#               tests and examples on wasip2, or a driven test on emscripten, is set up as that
+#               target's lane is, runs b2 -a --dump-tests --out-xml with its toolset, and uploads
+#               the XML, which the report reads as a lane's. A library that declares none, as
+#               xactor, has no such job.
 #   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64,
-#               and wit-bindgen and the WASI WIT, for a reference that parses a component's
-#               bindings; the index is built with -sWEBCPP_INDEX=site, its links where the site
-#               serves each page (libs/<name>/), and the pages are the artifact ci.yml publishes.
+#               wit-bindgen and the WASI WIT, for a reference that parses a component's
+#               bindings, and emsdk; the index is built with -sWEBCPP_INDEX=site, its links where
+#               the site serves each page (libs/<name>/), and the pages are the artifact ci.yml
+#               publishes.
 #   tools       for the superproject only: every tools/**/*_test.py, the tests of the build,
 #               the oracle, the lint, the report, the documentation, the components and the
 #               CI's own scripts, with every tool a lane, the docs or the lint uses.
 #   lint        tools/lint/lint.sh in four shards, each analysing a quarter of the files with
 #               clang-tidy and running every other rule; with the full history, which the
-#               banned-word rule reads, and the toolsets and tools of the WASI lanes, whose
-#               commands it analyses.
+#               banned-word rule reads, and the toolsets and tools of the WASI and emscripten
+#               lanes, whose commands it analyses.
 #   actionlint  every workflow of the superproject and of the libraries.
 #   report      merges the XML of every lane and every own lane on a target with
 #               tools/report/report.py into the test matrix. Its exit status is the verdict, and it
@@ -180,6 +183,17 @@ jobs:
         if: matrix.wasm
         uses: ./tools/ci/actions/wasi-wit
 
+      # What the emscripten lane installs, which the own-lanes job installs too, by this anchor,
+      # for an own lane on emscripten: emsdk, which also gives the later steps EM_CACHE; and Node,
+      # with which b2's emscripten toolset runs the programs, through the wrapper the action
+      # installs.
+      - &emsdk
+        if: matrix.emsdk
+        uses: ./tools/ci/actions/emsdk
+
+      - if: matrix.emsdk
+        uses: ./tools/ci/actions/node
+
       # The lane registers its toolset in .local/user-config.jam, prints its b2 command and runs
       # it; Windows's Python is python.
       - name: Lane
@@ -204,10 +218,10 @@ jobs:
   # the Jamroot's check of Boost, so the job has Boost and a toolset, Clang 18, as the docs job
   # does; and Node, whose npm cache the action keys on every oracle's lock file. One that names a
   # target, such as wasi's served tests and examples on wasip2, installs what that target's lane
-  # installs (its entry's wasm, as a lane's, selects the WASI steps, by their anchors), runs with
-  # its toolset and uploads its XML as a lane does, under its id: wasip2.wasi.http. The job's
-  # name and image are its entry's, which tools/ci/matrix.py writes: Own lane (xstate, oracle)
-  # and Own lane (wasi, http, wasip2).
+  # installs (its entry's wasm and emsdk, as a lane's, select the WASI steps and emsdk's, by
+  # their anchors, and emsdk's Node), runs with its toolset and uploads its XML as a lane does,
+  # under its id: wasip2.wasi.http. The job's name and image are its entry's, which
+  # tools/ci/matrix.py writes: Own lane (xstate, oracle) and Own lane (wasi, http, wasip2).
   own-lanes:
     name: ${{ matrix.name }}
     needs: plan
@@ -227,8 +241,9 @@ jobs:
       - *wasmtime
       - *wit-bindgen
       - *wasi-wit
+      - *emsdk
 
-      - if: ${{ !matrix.platform }}
+      - if: ${{ !matrix.platform || matrix.emsdk }}
         uses: ./tools/ci/actions/node
 
       # It registers its toolset in .local/user-config.jam, prints its b2 command and runs it.
@@ -268,6 +283,8 @@ jobs:
       - uses: ./tools/ci/actions/wit-bindgen
 
       - uses: ./tools/ci/actions/wasi-wit
+
+      - uses: ./tools/ci/actions/emsdk
 
       # clang++ reads the headers for tools/doc/doc_comments.py; the Boost check compiles with
       # the same Clang. The index links each library's page where the site serves it.
@@ -354,14 +371,17 @@ jobs:
 
       - uses: ./tools/ci/actions/node
 
+      - uses: ./tools/ci/actions/emsdk
+
       # The compilation database is what b2 compiles with its default toolset, the first that
       # user-config.jam registers, Clang 18, and, for what only a WASI target builds, with the
-      # toolset of that target, whose dry run generates the bindings its commands include.
+      # toolset of that target, whose dry run generates the bindings its commands include. The
+      # emscripten toolset is registered too, as every machine that builds webcpp registers it.
       - name: Lint
         env:
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
         run: |
-          python3 tools/ci/matrix.py register clang-18 wasip2 wasip3
+          python3 tools/ci/matrix.py register clang-18 wasip2 wasip3 emscripten
           tools/lint/lint.sh --clang-format .local/wasi-sdk/bin/clang-format \
             --clang-tidy .local/wasi-sdk/bin/clang-tidy --shard "$SHARD"
 
@@ -386,11 +406,15 @@ jobs:
 
       - uses: ./tools/ci/actions/mrdocs
 
-      # The toolsets the tests build with, Clang 18 the default, and the clang++ that
-      # tools/doc/doc_comments.py finds on PATH. Every test runs, and each failure is named.
+      - uses: ./tools/ci/actions/emsdk
+
+      # The toolsets the tests build with, Clang 18 the default, emscripten among them, which the
+      # tests of the emscripten target build with (tools/test/emscripten_test.py), and the
+      # clang++ that tools/doc/doc_comments.py finds on PATH. Every test runs, and each failure
+      # is named.
       - name: Tests of the tools
         run: |
-          python3 tools/ci/matrix.py register clang-18 wasip2 wasip3
+          python3 tools/ci/matrix.py register clang-18 wasip2 wasip3 emscripten
           mkdir -p "$RUNNER_TEMP/bin"
           ln -sf /usr/bin/clang++-18 "$RUNNER_TEMP/bin/clang++"
           export PATH="$RUNNER_TEMP/bin:$PATH"

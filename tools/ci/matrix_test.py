@@ -6,22 +6,23 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 
 """Checks tools/ci/matrix.py: the plan has a lane per compiler for each target the libraries
-declare, with the libraries that declare it, and fails on a target the CI has no lane for or a
-library that does not exist; the own lanes the libraries declare are listed, of every library or of
-one, once per target an own lane runs on and as before for one that names none, and a library that
-does not exist, a line of b2's that is no own lane or an own lane on a target the CI cannot set up
-fails; a lane is named and registered by the compiler's version when the image decides it, and a
-WASI lane by the lines of tools/ci/wasi-sdk.jam, its wasi-sdk directory one word of Jam; a lane runs
-the lane command and writes its XML, and fails when b2 cannot build; an own lane runs as the lane it
-shares does, and writes its XML under its own name; the report merges the lanes and the own lanes on
-a target and fails, by name, a planned lane that wrote nothing. Each case runs the scratch
-superproject's own copy of matrix.py, with the fixture library demo. Run with the names of some
-cases to run only those."""
+declare, emscripten's among them, with the libraries that declare it, and fails on a target the CI
+has no lane for or a library that does not exist; the own lanes the libraries declare are listed,
+of every library or of one, once per target an own lane runs on, emscripten included, and as
+before for one that names none, and a library that does not exist, a line of b2's that is no own
+lane or an own lane on a target the CI cannot set up fails; a lane is named and registered by the
+compiler's version when the image decides it, a WASI lane by the lines of tools/ci/wasi-sdk.jam,
+its wasi-sdk directory one word of Jam, and the emscripten lane by the lines of
+tools/ci/emsdk.jam, its emsdk directory and its node one word of Jam each; a lane runs the lane
+command and writes its XML, emscripten's under node, and fails when b2 cannot build; an own lane
+runs as the lane it shares does, and writes its XML under its own name; the report merges the
+lanes and the own lanes on a target and fails, by name, a planned lane that wrote nothing. Each
+case runs the scratch superproject's own copy of matrix.py, with the fixture library demo, and
+browser_demo where it says so. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
 import json
-import os
 import re
 import shlex
 import shutil
@@ -41,10 +42,9 @@ NATIVE = ['gcc-14', 'gcc-15', 'clang-18', 'clang-22', 'apple-clang', 'msvc-14.3'
 
 def run(root: Path, *arguments: str,
         github_output: Path | None = None) -> subprocess.CompletedProcess:
-    """Runs root's matrix.py, without the variables the Jamroot refuses, and with GITHUB_OUTPUT
-    set to github_output when it is given."""
-    environment = {name: value for name, value in os.environ.items()
-                   if name not in harness.COMPILER_PATHS}
+    """Runs root's matrix.py in the environment the harness gives b2, Emscripten's cache the
+    run's own, and with GITHUB_OUTPUT set to github_output when it is given."""
+    environment = harness.b2_environment()
     environment.pop('GITHUB_OUTPUT', None)
     if github_output is not None:
         environment['GITHUB_OUTPUT'] = str(github_output)
@@ -114,20 +114,50 @@ def test_plan_of_every_library(root):
     assert [lane['id'] for lane in planned(root, '--library', 'plain')] == NATIVE
 
 
-def test_a_target_without_a_lane_fails(root):
-    harness.add_library(root, 'browser',
-                        'import webcpp ;\nwebcpp.targets emscripten ;\n'
-                        'webcpp.run pass : pass.cpp ;\n',
-                        {'pass.cpp': 'int main() {}\n'})
-    result = run(root, 'plan')
-    assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
-    assert 'browser declare emscripten, which the CI has no lane for' in result.stderr, (
-        result.stderr)
-    assert 'the CI gets an emscripten lane when emsdk is pinned (AGENTS.md, Roadmap)' in (
-        result.stderr), result.stderr
-    assert result.stdout == '', result.stdout
-    # Not even for another library: the matrix is planned whole, or not at all.
-    assert run(root, 'plan', '--library', 'demo').returncode == 0
+# The emscripten lane, as the plan writes it for a library that declares emscripten.
+EMSCRIPTEN_LANE = {'id': 'emscripten', 'name': 'Emscripten 6.0.11 (node)', 'os': 'ubuntu-24.04',
+                   'target': 'emscripten', 'lane': 'emscripten', 'toolset': 'emscripten',
+                   'using': '{emsdk.jam}', 'detect': '', 'options': [], 'wasm': False,
+                   'emsdk': True}
+
+
+def test_plan_of_a_library_on_emscripten(root):
+    # browser_demo declares native and emscripten: its native lanes, and the emscripten lane,
+    # which needs emsdk and Node, and neither wasi-sdk nor a launcher.
+    shutil.copytree(harness.FIXTURES / 'browser_demo', root / 'libs/browser_demo',
+                    ignore=harness.built)
+    boost_only(root)
+    lanes = planned(root, '--library', 'browser_demo')
+    assert [lane['id'] for lane in lanes] == NATIVE + ['emscripten'], lanes
+    emscripten = lanes[-1]
+    projects = emscripten.pop('projects')
+    assert projects == ['libs/browser_demo/test', 'libs/browser_demo/example'], projects
+    assert emscripten == EMSCRIPTEN_LANE, emscripten
+    assert not any(lane['emsdk'] for lane in lanes[:-1]), lanes
+    # Every library's plan has it once, for the libraries that declare emscripten alone.
+    by_id = {lane['id']: lane for lane in planned(root)}
+    assert by_id['emscripten']['projects'] == projects, by_id['emscripten']
+    assert by_id['wasip2']['projects'] == ['libs/demo/test', 'libs/demo/example'], by_id
+    assert not by_id['wasip2']['emsdk'], by_id['wasip2']
+
+
+def test_a_target_without_a_lane_fails(_):
+    # Every target has a lane today; one added to the report's TARGETS before the CI has a lane
+    # for it fails the plan by name, rather than leave it untested.
+    pairs = [('browser', 'emscripten'), ('demo', 'native')]
+    original = matrix.LANES
+    matrix.LANES = tuple(lane for lane in original if lane.target != 'emscripten')
+    try:
+        matrix.plan(pairs, None)
+    except matrix.Failure as failure:
+        assert failure.status == 2, failure.status
+        assert str(failure) == ('browser declare emscripten, which the CI has no lane for: a '
+                                'target is never left untested'), failure
+    else:
+        raise AssertionError('a target without a lane was planned')
+    finally:
+        matrix.LANES = original
+    assert [lane.id for lane in matrix.plan(pairs, None)] == NATIVE + ['emscripten']
 
 
 def test_an_unknown_library_fails(root):
@@ -168,11 +198,14 @@ def test_own_lanes_of_every_library_and_of_one(root):
         'webcpp.lane oracle : twins ;\n')
     # Every entry names its job and its image, which the job reads from here alone.
     alpha = [{'library': 'alpha', 'lane': 'browser', 'directories': ['libs/alpha/example/browser'],
-              'name': 'Own lane (alpha, browser)', 'os': 'ubuntu-24.04', 'wasm': False},
+              'name': 'Own lane (alpha, browser)', 'os': 'ubuntu-24.04', 'wasm': False,
+              'emsdk': False},
              {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
-              'name': 'Own lane (alpha, http)', 'os': 'ubuntu-24.04', 'wasm': False}]
+              'name': 'Own lane (alpha, http)', 'os': 'ubuntu-24.04', 'wasm': False,
+              'emsdk': False}]
     beta = [{'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
-             'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False}]
+             'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False,
+             'emsdk': False}]
     assert own_lanes(root) == alpha + beta
     assert own_lanes(root, '--library', 'beta') == beta
     assert own_lanes(root, '--library', 'demo') == []
@@ -224,42 +257,57 @@ def test_own_lanes_on_targets(root):
         'webcpp.lane oracle : twins ;\n')
     alpha = [{'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/example'],
               'platform': 'native', 'id': 'native.alpha.http', 'name': 'Own lane (alpha, http, '
-              'native)', 'os': 'ubuntu-24.04', 'wasm': False},
+              'native)', 'os': 'ubuntu-24.04', 'wasm': False, 'emsdk': False},
              {'library': 'alpha', 'lane': 'http',
               'directories': ['libs/alpha/example', 'libs/alpha/test'], 'platform': 'wasip2',
               'id': 'wasip2.alpha.http', 'name': 'Own lane (alpha, http, wasip2)',
-              'os': 'ubuntu-24.04', 'wasm': True},
+              'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False},
              {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
               'platform': 'wasip3', 'id': 'wasip3.alpha.http', 'name': 'Own lane (alpha, http, '
-              'wasip3)', 'os': 'ubuntu-24.04', 'wasm': True}]
+              'wasip3)', 'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False}]
     beta = {'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
-            'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False}
+            'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False,
+            'emsdk': False}
     assert own_lanes(root) == [*alpha, beta]
     assert own_lanes(root, '--library', 'alpha') == alpha
     assert run(root, 'own-lanes', '--library', 'beta').stdout == (
         '{"include":[{"library":"beta","lane":"oracle","directories":["libs/beta/test/oracle"],'
-        '"name":"Own lane (beta, oracle)","os":"ubuntu-24.04","wasm":false}]}\n')
+        '"name":"Own lane (beta, oracle)","os":"ubuntu-24.04","wasm":false,"emsdk":false}]}\n')
     # Each entry is read back as the lane it is, and runs in each of its directories.
     for entry in alpha:
         own = matrix.parsed_own_lane(json.dumps(entry))
         assert own_lane_entry_of(own) == entry, (own, entry)
         assert own.requests == [f'{directory}//http' for directory in entry['directories']]
-    # A target the job cannot set up yet fails the listing by name, rather than run natively;
-    # the own lanes of another library are still listed.
+    # An own lane on emscripten shares the emscripten lane's setup: emsdk and Node.
     harness.add_library(root, 'gamma',
                         'import webcpp ;\n'
                         'webcpp.targets emscripten ;\n'
                         'webcpp.run plain : plain.cpp ;\n'
                         'webcpp.lane browser : plain : emscripten ;\n',
                         {'plain.cpp': 'int main() {}\n'})
-    result = run(root, 'own-lanes')
-    assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
-    assert ('gamma declares its own lane browser in libs/gamma/test on emscripten, which the CI '
-            "cannot set up yet: an own lane on emscripten needs the emscripten lane's setup, "
-            'which comes when emsdk is pinned (AGENTS.md, Roadmap)') in result.stderr, (
-                result.stderr)
-    assert result.stdout == '', result.stdout
-    assert own_lanes(root, '--library', 'alpha') == alpha
+    gamma = {'library': 'gamma', 'lane': 'browser', 'directories': ['libs/gamma/test'],
+             'platform': 'emscripten', 'id': 'emscripten.gamma.browser',
+             'name': 'Own lane (gamma, browser, emscripten)', 'os': 'ubuntu-24.04', 'wasm': False,
+             'emsdk': True}
+    assert own_lanes(root) == [*alpha, beta, gamma]
+    assert own_lanes(root, '--library', 'gamma') == [gamma]
+    own = matrix.parsed_own_lane(json.dumps(gamma))
+    assert own_lane_entry_of(own) == gamma, (own, gamma)
+    # A target the job cannot set up fails the listing by name, rather than run natively; every
+    # target has a lane today, so the case is made by leaving emscripten's out.
+    original = matrix.OWN_LANE_BASES
+    matrix.OWN_LANE_BASES = {target: lane for target, lane in original.items()
+                             if target != 'emscripten'}
+    try:
+        matrix.own_lane_base('emscripten')
+    except matrix.Failure as failure:
+        assert failure.status == 2, failure.status
+        assert str(failure) == ('an own lane on emscripten needs a lane of that target to share '
+                                'its setup with, and the CI has none'), failure
+    else:
+        raise AssertionError('an own lane was set up on a target without a lane')
+    finally:
+        matrix.OWN_LANE_BASES = original
 
 
 def own_lane_entry_of(own: matrix.OwnLane) -> dict:
@@ -284,9 +332,16 @@ def test_an_own_lanes_command(root):
         'b2', f'--user-config={config}', '-a', '--dump-tests', f'--out-xml={xml}',
         'toolset=clang-wasip2', 'testing.launcher=wasmtime', 'libs/alpha/example//http',
         'libs/alpha/test//http']
+    # On emscripten, as the emscripten lane runs: its toolset, and no launcher.
+    driven = matrix.parsed_own_lanes('alpha driver libs/alpha/test/driver emscripten')
+    xml = Path('bin/ci/emscripten.alpha.driver.xml')
+    assert matrix.own_lane_command(driven[0], config, xml, []) == [
+        'b2', f'--user-config={config}', '-a', '--dump-tests', f'--out-xml={xml}',
+        'toolset=emscripten', 'libs/alpha/test/driver//driver']
     # The lane the job sets up for each target runs on the own-lanes job's image, and the native
     # one is the oracle's Clang 18.
-    for target, lane_id in (('native', 'clang-18'), ('wasip2', 'wasip2'), ('wasip3', 'wasip3')):
+    for target, lane_id in (('native', 'clang-18'), ('wasip2', 'wasip2'), ('wasip3', 'wasip3'),
+                            ('emscripten', 'emscripten')):
         lane = matrix.own_lane_base(target)
         assert (lane.id, lane.os) == (lane_id, 'ubuntu-24.04'), lane
 
@@ -371,6 +426,11 @@ def test_a_lane_is_named_by_the_compiler_version(root):
     wasip2 = matrix.resolved(next(lane for lane in matrix.LANES if lane.id == 'wasip2'))
     assert f'using clang : wasip2 : "{matrix.ROOT.as_posix()}/.local/wasi-sdk"/bin/clang++\n' in (
         wasip2.using), wasip2.using
+    emscripten = matrix.resolved(next(lane for lane in matrix.LANES if lane.id == 'emscripten'))
+    assert (emscripten.lane, emscripten.toolset) == ('emscripten', 'emscripten'), emscripten
+    assert (f'using emscripten : : "{matrix.ROOT.as_posix()}/.local/emsdk"/upstream/emscripten/'
+            f'em++ : <nodejs>"{matrix.ROOT.as_posix()}/.local/emscripten/node" ;') in (
+                emscripten.using.splitlines()), emscripten.using
     # Registered once, after what the file holds.
     config = root / 'config.jam'
     config.write_text('using boost : 1.92 ;')
@@ -511,6 +571,56 @@ def test_the_wasm_toolsets_come_from_wasi_sdk_jam(root):
         result.stderr), result.stderr
 
 
+def test_the_emscripten_toolset_comes_from_emsdk_jam(root):
+    # tools/ci/emsdk.jam holds the lines that name the emsdk's directory and the node that runs a
+    # program, and those that register b2's emscripten toolset against them, between
+    # `# tag::<region>[]` and `# end::<region>[]`, and the documentation shows them from there;
+    # register writes both, once, with the directory where tools/ci/actions/emsdk installs the
+    # emsdk in place of /path/to/emsdk and of $(emsdk), and the node wrapper it installs in place
+    # of /path/to/node and of $(node), each quoted: the scratch superproject's path holds a space.
+    jam = root / 'tools/ci/emsdk.jam'
+    emsdk = f'"{root.resolve().as_posix()}/.local/emsdk"'
+    node = f'"{root.resolve().as_posix()}/.local/emscripten/node"'
+    sdk = region(jam, 'emsdk')
+    assert sdk == 'local emsdk = /path/to/emsdk ;\nlocal node = /path/to/node ;\n', sdk
+    toolset = region(jam, 'emscripten')
+    assert toolset == ('using emscripten : : $(emsdk)/upstream/emscripten/em++ : '
+                       '<nodejs>$(node) ;\n'), toolset
+
+    def filled(text: str) -> str:
+        return (text.replace('/path/to/emsdk', emsdk).replace('$(emsdk)', emsdk)
+                .replace('/path/to/node', node).replace('$(node)', node))
+
+    config = boost_only(root)
+    before = config.read_text()
+    for _ in range(2):
+        result = run(root, 'register', 'emscripten', '--user-config', str(config))
+        assert result.returncode == 0, (result.returncode, result.stderr)
+    # Once, after what the file held.
+    assert config.read_text() == before + filled(sdk) + filled(toolset), config.read_text()
+    assert config.read_text().splitlines()[-1] == (
+        f'using emscripten : : {emsdk}/upstream/emscripten/em++ : <nodejs>{node} ;')
+    # Beside the toolsets the lint registers, after them.
+    config = boost_only(root)
+    result = run(root, 'register', 'clang-18', 'wasip2', 'wasip3', 'emscripten', '--user-config',
+                 str(config))
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert config.read_text().endswith(filled(sdk) + filled(toolset)), config.read_text()
+    assert config.read_text().splitlines()[1] == 'using clang : 18 : clang++-18 ;'
+    # A file that does not hold the lines fails what registers emscripten, naming the file and
+    # the tag, and leaves the user-config.jam as it was.
+    for tag in ('emscripten', 'emsdk'):
+        harness.replace(jam, f'# tag::{tag}[]', '# tag::other[]')
+        config = boost_only(root)
+        before = config.read_text()
+        result = run(root, 'register', 'clang-18', 'emscripten', '--user-config', str(config))
+        assert result.returncode == 2 and result.stdout == '', (result.returncode, result.stdout)
+        assert f'{jam.resolve()} holds no lines tag::{tag}[] to end::{tag}[]' in (
+            result.stderr), result.stderr
+        assert config.read_text() == before, config.read_text()
+        harness.replace(jam, '# tag::other[]', f'# tag::{tag}[]')
+
+
 def host_lane(root: Path) -> dict:
     """The demo's lane for the host's clang++, as the plan writes Apple Clang's."""
     system = 'darwin' if sys.platform == 'darwin' else 'linux'
@@ -558,6 +668,45 @@ def test_a_lane_writes_its_xml_and_the_report_merges_it(root):
     assert f'data-lane="{name}"' in page, page[:2000]
 
 
+def test_an_emscripten_lane_writes_its_xml_and_the_report_merges_it(root):
+    # The emscripten lane of browser_demo, run as the CI runs it: matrix.py lane registers the
+    # toolset against the emsdk and the node wrapper where tools/ci/actions/emsdk installs them,
+    # and b2 runs each program with that node. The wrapper refuses b2's probe of
+    # --experimental-wasm-threads quietly, so no line of node's complaint reaches the output.
+    shutil.copytree(harness.FIXTURES / 'browser_demo', root / 'libs/browser_demo',
+                    ignore=harness.built)
+    harness.link_emsdk(root)
+    wrapper = root / '.local/emscripten/node'
+    wrapper.parent.mkdir(parents=True)
+    shutil.copy2(root / 'tools/ci/actions/emsdk/node.sh', wrapper)
+    config = boost_only(root)
+    entry = next(lane for lane in planned(root, '--library', 'browser_demo')
+                 if lane['id'] == 'emscripten')
+    output = root / 'github-output'
+    output.write_text('')
+    result = run(root, 'lane', json.dumps(entry), '--', '--build-dir=bin/lane',
+                 github_output=output)
+    assert result.returncode == 0, (result.returncode, result.stdout[-4000:], result.stderr)
+    xml = root.resolve() / 'bin/ci/emscripten.xml'
+    printed = (f'lane emscripten: b2 {shlex.quote(f"--user-config={config.resolve()}")} -a '
+               f'--dump-tests {shlex.quote(f"--out-xml={xml}")} toolset=emscripten '
+               '--build-dir=bin/lane libs/browser_demo/test libs/browser_demo/example\n')
+    assert result.stdout.startswith(printed), (printed, result.stdout[:2000])
+    assert 'experimental-wasm-threads' not in result.stdout + result.stderr, (
+        result.stdout[-4000:], result.stderr)
+    assert output.read_text().splitlines() == ['lane=emscripten', f'xml={xml.as_posix()}'], (
+        output.read_text())
+    lanes = root / 'downloaded'
+    (lanes / 'lane-emscripten').mkdir(parents=True)
+    xml.rename(lanes / 'lane-emscripten' / xml.name)
+    report = run(root, 'report', '--plan', json.dumps({'include': [entry]}), '--lanes',
+                 str(lanes), '--out', str(root / 'report'))
+    # browser_demo's tests pass under node, and the lane is a column of the matrix.
+    assert report.returncode == 0, (report.returncode, report.stdout, report.stderr)
+    page = (root / 'report/browser_demo.html').read_text()
+    assert 'data-lane="emscripten"' in page, page[:2000]
+
+
 def test_a_lane_that_cannot_build_fails(root):
     entry = host_lane(root)
     # A user-config.jam that stops b2 as it loads, before it writes any XML.
@@ -596,6 +745,7 @@ CASES = [
     test_plan_of_one_library,
     test_plan_with_no_toolset_configured,
     test_plan_of_every_library,
+    test_plan_of_a_library_on_emscripten,
     test_a_target_without_a_lane_fails,
     test_an_unknown_library_fails,
     test_own_lanes_of_every_library_and_of_one,
@@ -605,7 +755,9 @@ CASES = [
     test_abbreviated_paths_keep_the_lane_name,
     test_register_writes_the_lanes_toolsets_in_order,
     test_the_wasm_toolsets_come_from_wasi_sdk_jam,
+    test_the_emscripten_toolset_comes_from_emsdk_jam,
     test_a_lane_writes_its_xml_and_the_report_merges_it,
+    test_an_emscripten_lane_writes_its_xml_and_the_report_merges_it,
     test_a_lane_that_cannot_build_fails,
     test_the_report_names_a_planned_lane_that_wrote_nothing,
     test_an_own_lane_on_a_target_writes_its_xml_and_the_report_merges_it,

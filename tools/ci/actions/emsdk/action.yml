@@ -1,0 +1,48 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: emsdk
+description: >-
+  Installs Emscripten 6.0.11 from emsdk in .local/emsdk, the emsdk and every archive it installs
+  checked against its SHA-256, cached with Emscripten's cache per version and runner; checks
+  that emcc is 6.0.11, installs the node wrapper tools/ci/emsdk.jam names, and gives the later
+  steps EM_CACHE, .local/emscripten-cache by its resolved path, warmed. On Linux and macOS.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache key
+      id: key
+      shell: bash
+      run: bash tools/ci/actions/emsdk/install.sh key
+
+    - name: Restore emsdk
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          .local/emsdk
+          .local/emscripten-cache
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Install Emscripten 6.0.11
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: bash tools/ci/actions/emsdk/install.sh install
+
+    # Before the save, so that the cache saved is the one Emscripten has checked.
+    - name: Configure Emscripten 6.0.11
+      shell: bash
+      run: bash tools/ci/actions/emsdk/install.sh configure
+
+    - name: Save emsdk
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          .local/emsdk
+          .local/emscripten-cache
+        key: ${{ steps.key.outputs.key }}

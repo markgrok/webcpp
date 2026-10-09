@@ -93,8 +93,9 @@ webcpp/
                       rules, the emscripten target and the doc build, their harness, and the
                       fixture libraries demo, oracle_demo, component_demo and browser_demo
     ci/               matrix.py (the lanes), assemble.py (the site), download.sh, wasi-sdk.jam
-                      (the lines that register the WASI toolsets), and
-                      actions/{boost,wasi-sdk,wasmtime,wit-bindgen,wasi-wit,mrdocs,node}/
+                      and emsdk.jam (the lines that register the WASI and emscripten
+                      toolsets), and
+                      actions/{boost,wasi-sdk,wasmtime,wit-bindgen,wasi-wit,emsdk,mrdocs,node}/
                       (chapter 9)
   .github/            workflows/library.yml, workflows/ci.yml, actionlint.yaml (chapter 9)
   .local/             machine-local, git-ignored (below)
@@ -1059,7 +1060,7 @@ A target is what a program is built for:
 | Target | Toolset | Runs with |
 | --- | --- | --- |
 | `native` | any toolset not below: gcc, clang, msvc, darwin | the host |
-| `emscripten` | b2's `emscripten`, wasm32, single-threaded, static | node, run by the toolset itself; no `testing.launcher`. No CI lane yet: one comes when emsdk is pinned (chapter 13) |
+| `emscripten` | b2's `emscripten`, wasm32, single-threaded, static | node, run by the toolset itself; no `testing.launcher` |
 | `wasip2` | `clang-wasip2`, a clang registered against wasi-sdk with version `wasip2` | `testing.launcher=wasmtime`; a component, `wasmtime serve` (below) |
 | `wasip3` | `clang-wasip3`, likewise | `testing.launcher=wasmtime`; a component, `wasmtime serve` (below) |
 
@@ -1341,9 +1342,10 @@ lanes, which build only its test and example directories' other programs.
   it is built for, so the CI's plan fails before any job runs rather than
   leave it untested.
 
-  A lane on emscripten is declared like any other, and the CI refuses it by
-  name until it gets an emscripten lane (chapter 13); it never runs one
-  natively in its place.
+  A lane on emscripten is declared like any other, and runs as the
+  emscripten lane runs, `toolset=emscripten` with no launcher, never natively
+  in its place: browser_demo's driven test is its lane `driver`, on native and
+  emscripten, `emscripten.browser_demo.driver` there.
 
 ### The report (`tools/report/`)
 
@@ -1396,18 +1398,17 @@ jobs:
 - **plan:** `python3 tools/ci/matrix.py plan [--library <name>]` runs
   `b2 declared-targets -d0` and prints the JSON matrix of lanes: one lane per
   compiler for each target a library declares, building the libraries that
-  declare it. The CI never lists a library's targets by hand. A target with
-  no lane fails the plan by name: the CI gets an emscripten lane when emsdk
-  is pinned (chapter 13). Then `matrix.py own-lanes [--library <name>]`
-  runs `b2 declared-lanes -d0` and prints the JSON matrix of the own lanes
-  of that library, or of every library, one entry per library, lane and
-  target: `{library, lane, directories}`, every directory that declares the
-  lane there, for an own lane that names no target, and one per target for
-  one that names targets, which adds `platform`, its target, and `id`, its
-  name in the report; every entry has `name`, its job's, and the `os` and
-  `wasm` of the lane whose setup it shares, the target's own, and the
-  oracle's Clang 18 for native and for none, which the job reads from it
-  alone. An own lane on emscripten fails the plan, by name.
+  declare it. The CI never lists a library's targets by hand. Every target
+  has a lane, and one that comes to have none fails the plan by name. Then
+  `matrix.py own-lanes [--library <name>]` runs `b2 declared-lanes -d0` and
+  prints the JSON matrix of the own lanes of that library, or of every
+  library, one entry per library, lane and target: `{library, lane,
+  directories}`, every directory that declares the lane there, for an own
+  lane that names no target, and one per target for one that names targets,
+  which adds `platform`, its target, and `id`, its name in the report; every
+  entry has `name`, its job's, and the `os`, `wasm` and `emsdk` of the lane
+  whose setup it shares, the target's own, and the oracle's Clang 18 for
+  native and for none, which the job reads from it alone.
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
@@ -1421,6 +1422,7 @@ jobs:
   | `clang-darwin-<version>` | macos-15 | Apple Clang, its version read from `clang++ -dumpversion` |
   | `msvc-14.3` | windows-2022 | Visual Studio 2022 |
   | `msvc-14.5` | windows-2025 | Visual Studio 2026 |
+  | `emscripten` | ubuntu-24.04 | `emscripten`: Emscripten 6.0.11 from emsdk, and Node 26.7.0 through the wrapper of the emsdk action |
   | `wasip2`, `wasip3` | ubuntu-24.04 | `clang-wasip2`, `clang-wasip3`: wasi-sdk 34, wasmtime 47.0.3, wit-bindgen 0.62.0 and the WASI WIT, for every library |
 
   The Clang lanes on libstdc++ stay: a regression of xactor's guarantee 28 is
@@ -1440,24 +1442,27 @@ jobs:
   - One that names a target, `Own lane (<library>, <lane>, <target>)`, on its
     entry's image: the Boost action and what the target's lane installs, the
     same steps by their YAML anchors (`&wasi-sdk`, `&wasmtime`,
-    `&wit-bindgen`, `&wasi-wit`), so that a step added to a WASI lane is
-    added to it too; then `b2 -a --dump-tests --out-xml=<id>.xml
-    toolset=<toolset> [<options>] <directory>//<lane> ...`, and it uploads
-    `<id>.xml` as a lane uploads its XML, the artifact `lane-<id>`.
+    `&wit-bindgen`, `&wasi-wit`, `&emsdk`), so that a step added to a WASI or
+    emscripten lane is added to it too, and Node on emscripten; then `b2 -a
+    --dump-tests --out-xml=<id>.xml toolset=<toolset> [<options>]
+    <directory>//<lane> ...`, and it uploads `<id>.xml` as a lane uploads its
+    XML, the artifact `lane-<id>`.
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
   Intel macOS), `clang++-18`, Node, wit-bindgen and the WASI WIT (wasi's
-  reference parses its bindings), `b2 -a libs/<library>/doc`, or for the
-  superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's.
+  reference parses its bindings), and emsdk, `b2 -a libs/<library>/doc`, or
+  for the superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the
+  site's.
 - **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
   with wasi-sdk's clang-format and clang-tidy, Node, Clang 18 as b2's default
-  toolset and the wasip2 and wasip3 toolsets after it (`matrix.py register
-  clang-18 wasip2 wasip3`), wit-bindgen and the WASI WIT, which the WASI dry
-  runs of the compilation database need, and the full history
-  (`fetch-depth: 0`) of the superproject and of the library, since the
-  banned-word rule reads every commit.
+  toolset and the wasip2, wasip3 and emscripten toolsets after it
+  (`matrix.py register clang-18 wasip2 wasip3 emscripten`), wit-bindgen and
+  the WASI WIT, which the WASI dry runs of the compilation database need,
+  emsdk, and the full history (`fetch-depth: 0`) of the superproject and of
+  the library, since the banned-word rule reads every commit.
 - **tools,** for the superproject only: every `tools/**/*_test.py`, with
-  Clang 18 and the wasip2 and wasip3 toolsets, wasi-sdk, wasmtime,
-  wit-bindgen, the WASI WIT, Node and MrDocs, each failure named.
+  Clang 18 and the wasip2, wasip3 and emscripten toolsets, wasi-sdk,
+  wasmtime, wit-bindgen, the WASI WIT, emsdk, Node and MrDocs, each failure
+  named.
 - **actionlint:** actionlint 1.7.12, downloaded and checked against its
   SHA-256, on every workflow of the superproject and of `libs/*`, with
   `.github/actionlint.yaml`. It also runs clean locally before a workflow
@@ -1473,7 +1478,8 @@ jobs:
 for b2, so that a lane is run locally exactly as the CI runs it, beside
 others: `python3 tools/ci/matrix.py lane '<entry>' --
 --build-dir=bin/lane-gcc-15`. Each registers the lane's toolset in
-`.local/user-config.jam`, wasi-sdk's directory quoted as one word of Jam.
+`.local/user-config.jam`, wasi-sdk's directory, the emsdk's and the node
+wrapper each quoted as one word of Jam.
 
 **The actions,** `tools/ci/actions/`, each a script beside its `action.yml`:
 
@@ -1504,15 +1510,51 @@ others: `python3 tools/ci/matrix.py lane '<entry>' --
   `.local/wasi-wit/p3`. Both install where the build looks when no `-s` is
   given (chapter 1), so a job's b2 commands name neither, and each replaces
   what an earlier install left.
+- `emsdk` installs Emscripten 6.0.11 into `.local/emsdk`, on Linux and
+  macOS, x86-64 and arm64: the emsdk repository's archive at the commit of
+  its tag `6.0.11`, and every archive `emsdk install 6.0.11` installs from
+  (the release's binaries, Node 24.19.0 and, on macOS, Python 3.13.3), each
+  downloaded first and checked against the SHA-256 it records, since emsdk
+  checks none: emsdk runs with `EMSDK_KEEP_DOWNLOADS=1`, under which it
+  installs from the files it finds in its `downloads/`, and one it downloads
+  besides them fails the action, naming it. It checks that `emcc --version`
+  names `6.0.11 (a0014542110d6078c3a1a7941fa1ddb3a2281f16)`, else fails
+  naming both; installs `tools/ci/actions/emsdk/node.sh` as
+  `.local/emscripten/node`, the node that the toolset runs a program with,
+  which refuses `--experimental-wasm-threads` without a word (b2 1.92's
+  emscripten toolset probes Node with that flag, which Node 24 and newer
+  refuse with an error on standard error, in every b2's output); gives the
+  later steps `EM_CACHE`, `.local/emscripten-cache` by its resolved path,
+  outside the emsdk (chapter 1); and warms that cache: Emscripten checks its
+  configuration the first time it meets a cache and says "Running sanity
+  checks" on standard error, so the action runs `emcc --version` once, where
+  the log is its own, and fails unless `em++ --version` then says nothing
+  more. The emsdk and the warmed cache are cached together, keyed on the
+  version, the runner and the action's files. A warmed cache, rather than
+  `EMCC_SKIP_SANITY_CHECK=1` as the tests of the build set: the check still
+  runs, once, and again when the version or the emsdk's directory changes.
+  The toolset's lines are the regions `emsdk` and `emscripten` of
+  `tools/ci/emsdk.jam`, which `matrix.py register emscripten` writes with
+  `.local/emsdk` in place of `/path/to/emsdk` and `$(emsdk)`, and
+  `.local/emscripten/node` in place of `/path/to/node` and `$(node)`, and
+  which a page includes as wasi's does those of `wasi-sdk.jam` (chapter 8):
+
+  ```
+  local emsdk = /path/to/emsdk ;
+  local node = /path/to/node ;
+  using emscripten : : $(emsdk)/upstream/emscripten/em++ : <nodejs>$(node) ;
+  ```
 - `tools/ci/download.sh <url> <sha256> <file>` downloads each pinned file,
   and leaves no file and exits 1 when the download fails or the digest
   differs.
 
 `tools/ci/actions_test.py` pins `download.sh`, the Boost action's prefix
 checks and the layouts it installs the headers and b2 in, and where the
-wit-bindgen and WASI WIT actions install what they download, what they
-leave out, and their refusals: a runner no build of wit-bindgen is pinned
-for, and a crate that holds no WIT.
+wit-bindgen, WASI WIT and emsdk actions install what they download, what
+they leave out, and their refusals: a runner no build of wit-bindgen or
+emsdk is pinned for, a crate that holds no WIT, an archive emsdk would
+download unpinned, and an emcc that is not 6.0.11; and the emsdk action's
+node wrapper, `EM_CACHE` and warmed cache.
 
 **The site.** On every run of the superproject's CI, `tools/ci/assemble.py`
 lays out the site from the pages and the report, and on `main` it is
@@ -1697,10 +1739,6 @@ What webcpp does not have yet, and the chapters that mention it:
   the allocator of what it allocates, settled in a milestone of its own,
   which first applies it to xactor, xstate and wasi, whose response holds its
   body as a `std::string` (chapter 6).
-- **The emscripten lane.** b2's `emscripten` is a target already, and the CI
-  gets a lane for it when emsdk is pinned, as wasi-sdk and wasmtime are;
-  until then, a library that declares it fails the CI's plan (chapter 9).
-  trystero is its first user.
 - **Compiled Boost libraries.** The CI installs Boost's headers alone, so a
   library uses only header-only Boost, and a Boost.Test suite compiles the
   framework's header-only form (chapters 2 and 9).
