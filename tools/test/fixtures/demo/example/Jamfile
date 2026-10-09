@@ -9,4 +9,7 @@ import webcpp ;
 webcpp.targets native wasip2 wasip3 ;
 
 webcpp.example hello.cpp : <library>/webcpp/demo//demo ;
-webcpp.example catches.cpp ;
+# It throws and catches, so it needs exceptions, which a user's
+# exception-handling=off does not take from it: built with them whatever the
+# build asks, and analysed by the lint with them alone.
+webcpp.example catches.cpp : <exception-handling>on ;

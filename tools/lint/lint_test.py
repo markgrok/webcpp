@@ -141,6 +141,12 @@ def add_component_demo(root: Path) -> None:
     harness.link_wasi_tools(root)
 
 
+def user_config_text(root: Path) -> str:
+    """The user-config.jam b2 reads for the scratch superproject root, found as every test of the
+    build finds it: root's .local/, else $WEBCPP_USER_CONFIG."""
+    return harness.user_config(root).read_text()
+
+
 def compile_database(root: Path) -> subprocess.CompletedProcess:
     """Runs the scratch superproject's compile_commands.py, writing root/compile database/."""
     script = root / 'tools/lint/compile_commands.py'
@@ -219,6 +225,23 @@ def test_no_library_passes(root):
     assert 'clang-tidy is clean (1 translation unit)' in result.stdout, result.stdout[-6000:]
 
 
+def test_a_user_config_the_environment_names_is_read(root):
+    # A checkout whose user-config.jam is not in .local/ but where $WEBCPP_USER_CONFIG says: the
+    # cases that rewrite it read that one, as b2 does.
+    given = root / 'elsewhere/user-config.jam'
+    given.parent.mkdir()
+    (root / '.local/user-config.jam').rename(given)
+    saved = os.environ.get('WEBCPP_USER_CONFIG')
+    os.environ['WEBCPP_USER_CONFIG'] = str(given)
+    try:
+        assert user_config_text(root) == given.read_text()
+    finally:
+        if saved is None:
+            del os.environ['WEBCPP_USER_CONFIG']
+        else:
+            os.environ['WEBCPP_USER_CONFIG'] = saved
+
+
 def test_compile_database_lists_what_b2_builds(root):
     out = root / 'compile database/compile_commands.json'
     script = root / 'tools/lint/compile_commands.py'
@@ -242,16 +265,27 @@ def test_compile_database_lists_what_b2_builds(root):
     assert files == expected | {aggregate}, sorted(map(str, files))
     for entry in entries:
         assert entry['directory'] == str(root), entry
-    # Each configuration once: a native test is built as its Jamfile declares it, and nothing
-    # more, so pass.cpp has one command; native_only.cpp too, though the test
-    # native_only_compiles compiles it a second time, the same way.
-    sources = [Path(entry['file']) for entry in entries]
-    assert sources.count(root / 'libs/demo/test/pass.cpp') == 1, sources
-    assert sources.count(root / 'libs/demo/test/native_only.cpp') == 1, sources
-    # A Boost.Test suite's framework is one object, with exceptions, and Boost.JSON's definitions
-    # are compiled once for the one variant the tests are built in.
-    assert sources.count(root / 'tools/boost_test_runner.cpp') == 1, sources
-    assert sources.count(root / 'tools/boost_json.cpp') == 1, sources
+    # Each program as its Jamfile declares it, and again as b2 compiles it with
+    # exception-handling=off, where the templates it instantiates meet -fno-exceptions: pass.cpp
+    # has two commands; native_only.cpp too, though the test native_only_compiles compiles it a
+    # second time, the same way.
+    by_file: dict[Path, list[list[str]]] = {}
+    for entry in entries:
+        by_file.setdefault(Path(entry['file']), []).append(entry['arguments'])
+    for source in ('pass.cpp', 'native_only.cpp', 'suite_test.cpp', 'parses_json.cpp'):
+        commands = by_file[root / 'libs/demo/test' / source]
+        assert ['-fno-exceptions' in command for command in commands] == [False, True], (
+            source, commands)
+    # A Boost.Test suite's framework is one object, with exceptions whatever the build asks, as
+    # is catches, which declares that it needs them: each has its one command, and the database
+    # names both. Boost.JSON's definitions are compiled once per variant.
+    for source in ('tools/boost_test_runner.cpp', 'libs/demo/example/catches.cpp'):
+        assert len(by_file[root / source]) == 1, (source, by_file[root / source])
+        assert '-fno-exceptions' not in by_file[root / source][0], by_file[root / source]
+    assert ('built with exceptions whatever the build asks, so analysed with them alone: '
+            'libs/demo/example/catches.cpp, tools/boost_test_runner.cpp') in completed.stdout, (
+        completed.stdout[-6000:])
+    assert len(by_file[root / 'tools/boost_json.cpp']) == 2, by_file[root / 'tools/boost_json.cpp']
     # The handler is analysed as a program built without exceptions links it.
     handler = [entry['arguments'] for entry in entries
                if Path(entry['file']) == root / 'tools/throw_exception.cpp']
@@ -327,13 +361,17 @@ def test_compile_database_reads_what_only_wasi_builds(root):
         assert any(word.endswith(f'generated/component_demo/demo-bindings-{version}')
                    for word in command), command
         assert boost_sees_no_exceptions(root, command) == without, command
-    # The programs that declare no native target are analysed as wasip2 builds them, once; the
-    # native one natively.
+    # The programs that declare no native target are analysed as wasip2 builds them, with
+    # exceptions and without; the native one natively, both ways.
     for source in ('bindings.cpp', 'answers.cpp'):
         commands = by_file[root / 'libs/component_demo/test' / source]
-        assert len(commands) == 1 and '--target=wasm32-wasip2' in commands[0], commands
+        assert ['-fno-exceptions' in command for command in commands] == [False, True], commands
+        for command in commands:
+            assert '--target=wasm32-wasip2' in command, command
     native = by_file[root / 'libs/component_demo/test/native_alone.cpp']
-    assert len(native) == 1 and not any(word.startswith('--target') for word in native[0]), native
+    assert ['-fno-exceptions' in command for command in native] == [False, True], native
+    for command in native:
+        assert not any(word.startswith('--target') for word in command), command
     # demo's aggregate builds natively, and keeps its native command and the one without
     # exceptions; the handler is analysed once, natively without exceptions.
     demo = by_file[root / 'bin/aggregate/demo.cpp']
@@ -355,8 +393,7 @@ def test_compile_database_reads_what_only_wasi_builds(root):
     jamfile.write_text(text)
     # A target some library declares, whose toolset is not configured, fails it, naming the
     # target and its toolset.
-    config = root / '.local/user-config.jam'
-    configured = config.read_text()
+    configured = user_config_text(root)
     harness.configure(root, re.sub(r'^using clang : wasip3 :.*?;\n', '', configured,
                                    flags=re.MULTILINE | re.DOTALL))
     completed = compile_database(root)
@@ -424,8 +461,7 @@ def test_wasm_compiler_not_from_wasi_sdk_fails_by_name(root):
     # a script that runs the host's clang++, as em++ runs a clang of its own. clang-tidy would
     # read its commands as native ones and give them the host's --target, so the database refuses
     # them, naming the file and the compiler.
-    config = root / '.local/user-config.jam'
-    configured = config.read_text()
+    configured = user_config_text(root)
     using = re.search(r'^using clang : wasip2 : (\S+)', configured, re.MULTILINE)
     assert using is not None, configured
     compiler = root / 'other sdk/bin/em++'
@@ -619,6 +655,68 @@ def test_clang_tidy_reads_what_b2_expects_to_build(root):
                  [at(root, test, 'int value;'), at(root, helper, 'int helped_value;'),
                   at(root, header, 'int value;'), at(root, run_fail, 'int status;')],
                  spared=('also_rejects', 'rejects.cpp', 'states_its_error'))
+
+
+def test_clang_tidy_refuses_a_throw_a_build_without_exceptions_cannot_compile(root):
+    prepare(root)
+    # A public header that throws outside #ifndef BOOST_NO_EXCEPTIONS: once in an inline
+    # function, which the aggregate compiled without exceptions refuses, and once in a template,
+    # which clang refuses only where it is instantiated: in the test that calls it, compiled
+    # without exceptions too. Each fails the lint, naming its line.
+    header = 'libs/demo/include/webcpp/demo/checked.hpp'
+    write(root, header, CPP + '\n'
+          '#ifndef WEBCPP_DEMO_CHECKED_HPP\n'
+          '#define WEBCPP_DEMO_CHECKED_HPP\n'
+          '\n'
+          '#include <stdexcept>\n'
+          '\n'
+          'namespace webcpp::demo {\n'
+          '\n'
+          '/** Returns the count it is given, refusing a negative one.\n'
+          '\n'
+          '    @param count The count.\n'
+          '    @return count.\n'
+          '*/\n'
+          'template <typename Count>\n'
+          'Count planted_checked(Count count) {\n'
+          '    if (count < 0) {\n'
+          '        throw std::invalid_argument("a negative count");\n'
+          '    }\n'
+          '    return count;\n'
+          '}\n'
+          '\n'
+          '/** Returns the level it is given, refusing a negative one.\n'
+          '\n'
+          '    @param level The level.\n'
+          '    @return level.\n'
+          '*/\n'
+          'inline int planted_strict(int level) {\n'
+          '    if (level < 0) {\n'
+          '        throw std::domain_error("a negative level");\n'
+          '    }\n'
+          '    return level;\n'
+          '}\n'
+          '\n'
+          '}  // namespace webcpp::demo\n'
+          '\n'
+          '#endif\n')
+    write(root, 'libs/demo/test/checks.cpp', CPP + '\n'
+          '#include <webcpp/demo/checked.hpp>\n'
+          '\n'
+          '#include <boost/core/lightweight_test.hpp>\n'
+          '\n'
+          '// NOLINTNEXTLINE(bugprone-exception-escape)\n'
+          'int main() {\n'
+          '    BOOST_TEST_EQ(webcpp::demo::planted_checked(2), 2);\n'
+          '    BOOST_TEST_EQ(webcpp::demo::planted_strict(3), 3);\n'
+          '    return boost::report_errors();\n'
+          '}\n')
+    append(root, 'libs/demo/test/Jamfile',
+           'webcpp.run checks : checks.cpp : <library>/webcpp/demo//demo ;\n')
+    expect_alone(lint(root), 'clang-tidy',
+                 [at(root, header, 'throw std::invalid_argument'),
+                  at(root, header, 'throw std::domain_error'),
+                  "cannot use 'throw' with exceptions disabled"])
 
 
 def test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles(root):
@@ -1239,6 +1337,7 @@ def test_shards_split_clang_tidy(root):
 CASES = [
     test_clean_tree_passes,
     test_no_library_passes,
+    test_a_user_config_the_environment_names_is_read,
     test_compile_database_lists_what_b2_builds,
     test_compile_database_reads_what_only_wasi_builds,
     test_an_aggregate_no_units_options_compile_names_each,
@@ -1247,6 +1346,7 @@ CASES = [
     test_a_failed_check_of_the_database_runs_the_other_rules,
     test_clang_format,
     test_clang_tidy_reads_what_b2_expects_to_build,
+    test_clang_tidy_refuses_a_throw_a_build_without_exceptions_cannot_compile,
     test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles,
     test_clang_tidy_reads_what_only_wasi_builds,
     test_clang_tidy_reads_what_an_own_lane_builds,

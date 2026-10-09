@@ -30,10 +30,13 @@
 # compiles, as the first WASI target that compiles it does (wasip2, else wasip3), with
 # wasi-sdk's clang++, the one compiler of a WebAssembly command the database accepts; plus each
 # library's aggregate translation unit, through which every public header is analysed: natively,
-# or, for a library whose headers build only for WASI, on wasip2 and on wasip3; each time as the
-# tests build it, with exceptions, and again as b2 compiles it with exception-handling=off (with
-# the handler tools/throw_exception.cpp, natively), so that what only a user's build without
-# exceptions compiles is analysed too. That database leaves out a source b2 expects not to
+# or, for a library whose headers build only for WASI, on wasip2 and on wasip3. Every command,
+# a program's and an aggregate's, natively and on wasip2 and wasip3, is analysed as the tests
+# build it, with exceptions, and again as b2 compiles it with exception-handling=off (with the
+# handler tools/throw_exception.cpp, natively), so that what only a user's build without
+# exceptions compiles is analysed too, and a throw, try or catch outside it fails, in a template
+# where a program instantiates it; a program that declares <exception-handling>on has no such
+# twin, and the database names it. That database leaves out a source b2 expects not to
 # compile (webcpp.compile-fail), and one that must stop with the error it states
 # (webcpp.compile-diagnostic): an analysis would stop at the error the test exists to show. Each
 # is left out of clang-tidy only, the one rule that compiles: clang-format and the rules that read

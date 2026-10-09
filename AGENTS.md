@@ -557,8 +557,9 @@ than leave it green on the rest.
   `wasi-exceptions`): wasi-sdk 34 emits the legacy encoding by default, which
   wasmtime 47 refuses to run ("legacy_exceptions feature required"). A
   program that uses exceptions on wasip2 needs a host that runs them:
-  wasmtime 47 or later (older ones with `-W exceptions=y`), jco with
-  `jco transpile --bindgen-enable-wasm-exnref`, or another Wasm 3.0 engine.
+  wasmtime 47 or later (wasmtime 37 to 46 with `-W exceptions=y`), jco
+  with `jco transpile --bindgen-enable-wasm-exnref`, or another Wasm 3.0
+  engine.
 - **A user's build without exceptions.** `exception-handling=off` compiles
   with `-fno-exceptions` on any target, Boost.Config then defines
   `BOOST_NO_EXCEPTIONS`, and `webcpp.jam` links `tools/throw_exception.cpp`,
@@ -568,8 +569,18 @@ than leave it green on the rest.
   `-fno-exceptions`: what throws, tries or catches sits behind
   `#ifndef BOOST_NO_EXCEPTIONS`, and a failure that cannot be returned goes
   through `boost::throw_exception`. The lint checks it, by analysing every
-  aggregate translation unit a second time as b2 compiles it with
-  `exception-handling=off` (below).
+  aggregate translation unit, and every test and example, a second time as
+  b2 compiles them with `exception-handling=off` (below). Clang refuses a
+  `throw`, a `try` or a `catch` there, in a template only where a test or an
+  example instantiates it: a template that none of them instantiates is not
+  checked.
+- **A program that needs exceptions says so.** A test or an example that
+  throws, tries or catches on purpose declares `<exception-handling>on` in
+  its requirements, as the fixture demo's
+  `webcpp.example catches.cpp : <exception-handling>on ;` does: b2 then
+  builds it with exceptions whatever the build asks, a user's
+  `exception-handling=off` included, and the lint analyses it with them
+  alone and names it ("built with exceptions whatever the build asks").
 - **RTTI** is never restricted by webcpp, on any target, and no variant is
   built without it; a user imposes their own.
 
@@ -584,7 +595,7 @@ rule that failed.
 | Rule | What fails |
 | --- | --- |
 | clang-format | a C++ file not formatted as `.clang-format` says (Google-based, 4 spaces, 100 columns); `clang-format -i` fixes it |
-| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, with every program an own lane builds on that target, or on none (a served component, which only its own lane builds, among them; a served program in no own lane fails it, as it fails `b2 declared-lanes`), and each source that no native program compiles with the command of the first WASI target that compiles it (wasip2, else wasip3): wasi-sdk's `clang++` with that target's `--target`, the one compiler of a WebAssembly command the database accepts, to which the lint adds no host target or SDK, once the dry run of that target has generated the bindings its commands include (so the lint needs wit-bindgen and the WIT, chapter 1); plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, or, for a library whose headers build only for WASI, on wasip2 and on wasip3, each reading its version's branch; and each of those commands is followed by its twin, the same unit as b2 compiles it with `exception-handling=off` on the same target (natively with the handler `tools/throw_exception.cpp`), so that what only a user's build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is not wasi-sdk's `clang++` (emscripten's `em++`, which the lint would analyse as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
+| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, with every program an own lane builds on that target, or on none (a served component, which only its own lane builds, among them; a served program in no own lane fails it, as it fails `b2 declared-lanes`), and each source that no native program compiles with the command of the first WASI target that compiles it (wasip2, else wasip3): wasi-sdk's `clang++` with that target's `--target`, the one compiler of a WebAssembly command the database accepts, to which the lint adds no host target or SDK, once the dry run of that target has generated the bindings its commands include (so the lint needs wit-bindgen and the WIT, chapter 1); plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, or, for a library whose headers build only for WASI, on wasip2 and on wasip3, each reading its version's branch. Every command, a program's and an aggregate's, natively and on wasip2 and wasip3, has its twin: the same translation unit as b2 compiles it with `exception-handling=off` on the same target (natively with the handler `tools/throw_exception.cpp`), so that what only a user's build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too, and a `throw`, `try` or `catch` outside it fails, in a template where a test or an example instantiates it; a program that declares `<exception-handling>on` has none, and the database names it. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is not wasi-sdk's `clang++` (emscripten's `em++`, which the lint would analyse as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
 | io_context::run | a call of Boost.Asio's `run`, `run_one` or `run_for`, which block; a driver drains with `poll` and `poll_one` |
 | fluent chains | three calls chained in one expression |
 | returns `*this` | a function other than an assignment operator returning `*this` |

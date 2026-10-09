@@ -7,18 +7,19 @@
 
 """Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, and only
 once per target; every target builds with exceptions, and a build without them is the user's own
-request, which links the handler on any target; no variant is built without RTTI; an example is
-compared with its expected output, its standard input its .input file or nothing; every public
-header compiles alone, each call of webcpp.headers-alone taking the headers its globs match, with
-requirements and targets of its own, and a header two calls take or a glob that matches none
-refused; a compile-diagnostic test passes only on the error it states, and is skipped on a toolset
-that is not clang; `b2 declared-targets` lists what each library declares; a lane of a library's
-own is listed once per target it runs on, which must be one its Jamfile declares, what it names
-leaves the ordinary lanes, a build of it for another target stops by name, and every served
-program runs in one on every target it is served on; a Boost.Test suite is built and run natively
-only, its framework always with exceptions; Boost.JSON's definitions link on every target; and
-every program sees C++20 and exceptions, on every target. Each case builds a scratch superproject
-with the fixture library demo. Run with the names of some cases to run only those."""
+request, which links the handler on any target and reaches every program but one that declares
+<exception-handling>on; no variant is built without RTTI; an example is compared with its expected
+output, its standard input its .input file or nothing; every public header compiles alone, each call
+of webcpp.headers-alone taking the headers its globs match, with requirements and targets of its
+own, and a header two calls take or a glob that matches none refused; a compile-diagnostic test
+passes only on the error it states, and is skipped on a toolset that is not clang;
+`b2 declared-targets` lists what each library declares; a lane of a library's own is listed once per
+target it runs on, which must be one its Jamfile declares, what it names leaves the ordinary lanes,
+a build of it for another target stops by name, and every served program runs in one on every target
+it is served on; a Boost.Test suite is built and run natively only, its framework always with
+exceptions; Boost.JSON's definitions link on every target; and every program sees C++20 and
+exceptions, on every target. Each case builds a scratch superproject with the fixture library demo.
+Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -852,8 +853,21 @@ def test_a_users_build_without_exceptions_links_the_handler(root):
             assert ('throw_exception: planted' in output_of(root, 'aborts.output')) == handled, (
                 target, request, output_of(root, 'aborts.output'))
             shutil.rmtree(root / 'bin/libs/aborts')
-    # The request is the user's, and reaches every program: an example that throws no longer
-    # compiles.
+    # The request is the user's, and reaches every program but one that declares it needs
+    # exceptions, <exception-handling>on, as catches does: it is built with them, and catches.
+    result = harness.run_b2(root, '-d+2', 'exception-handling=off', 'libs/demo/example')
+    harness.expect(result, True)
+    assert output_of(root, 'catches.output') == 'caught: boom\n'
+    assert output_of(root, 'hello.output') == 'The answer is 42.\n'
+    compiles = {name: [line for line in result.stdout.splitlines()
+                       if ' -c ' in line and f'{name}.cpp"' in line]
+                for name in ('catches', 'hello')}
+    assert len(compiles['catches']) == 1 and '-fno-exceptions' not in compiles['catches'][0], (
+        compiles)
+    assert len(compiles['hello']) == 1 and '-fno-exceptions' in compiles['hello'][0], compiles
+    # Without that declaration, an example that throws does not compile.
+    harness.replace(root / 'libs/demo/example/Jamfile', 'webcpp.example catches.cpp : '
+                    '<exception-handling>on ;', 'webcpp.example catches.cpp ;')
     harness.expect(harness.run_b2(root, 'exception-handling=off', 'libs/demo/example'), False,
                    "cannot use 'throw' with exceptions disabled")
 
