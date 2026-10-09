@@ -9,21 +9,58 @@
 
 Usage: release.py check --root <superproject> --version <a.b.c>
 
-check fails when the version disagrees anywhere: WEBCPP_VERSION and WEBCPP_LIB_VERSION of
-libs/config/include/webcpp/version.hpp, the one place it is written, name different versions,
-or the version the Jamroot read, --version, is not theirs. Exit 0 when nothing is wrong; 1 with
-each fault on a line of its own, `<command>: <fault>`; 2 on a usage error, or when what it reads
-is not there.
+check names every fault that keeps the tree from being tagged webcpp-<a.b.c>:
+- the version disagrees anywhere: WEBCPP_VERSION and WEBCPP_LIB_VERSION of
+  libs/config/include/webcpp/version.hpp, the one place it is written, name different versions,
+  or the version the Jamroot read, --version, is not theirs;
+- the notes doc/releases/<a.b.c>.adoc do not exist, or they or a library's changelog break the
+  form tools/release/changelog.py reads, each fault at its line;
+- the section Releases of doc/index.adoc does not include the notes of every version of
+  doc/releases, each once, newest first, this version's first;
+- notes in preparation include a library's region other than tag=unreleased, or a changelog has
+  the version's section already; frozen notes include a region other than tag=<a.b.c>, an
+  Unreleased holds lines, Compilers tested is None., or a tag webcpp-<a.b.c> is not at HEAD;
+  Compilers tested lists other lanes than the CI's, tools/ci/matrix.py's LANES, as the notes
+  write them;
+- a library is no submodule at HEAD, is not checked out, or is checked out at another commit
+  than the superproject records;
+- New Libraries or Removed Libraries is not exactly the libraries new or gone since the newest
+  earlier tag webcpp-<x.y.z> that HEAD holds, every library for the first version;
+- a library under Updated Libraries is new or removed, or its region holds no line;
+- a library whose changelog has lines for this version is not under Updated Libraries;
+- a library changed since that tag, under USER_VISIBLE, and its region has no line; or the
+  commit a tag or HEAD records is not in its repository.
+Exit 0 when nothing is wrong; 1 with each fault on a line of its own, `<command>: <fault>`; 2 on a
+usage error, or when what it reads is not there.
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+TOOLS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOLS / 'ci'))
+import changelog  # noqa: E402  (beside this file)
+import matrix  # noqa: E402  (tools/ci, put on the path above: its LANES are the CI's lanes)
+
+# What a user of a library sees: a change under these paths of its repository needs a line in
+# its changelog; its tests, its CI and its AGENTS.md need none. version.hpp, config's alone,
+# moves at every release by the procedure, and is no change of config's.
+USER_VISIBLE = ('include', 'build.jam', 'wit', 'meta/libraries.json', 'README.md', 'example',
+                'doc', 'LICENSE*', ':(exclude)doc/changelog.adoc',
+                ':(exclude)include/webcpp/version.hpp')
+
+TAG = re.compile(r'webcpp-(\d+\.\d+\.\d+)')
+RELEASES = re.compile(r'^\[#releases\]\n== Releases\n', re.MULTILINE)
+INCLUDED = re.compile(r'^include::releases/(\d+\.\d+\.\d+)\.adoc\[leveloffset=\+2\]$',
+                      re.MULTILINE)
+NOTES_FILE = re.compile(r'(\d+\.\d+\.\d+)\.adoc')
 
 HEADER = 'libs/config/include/webcpp/version.hpp'
 # A value runs to the end of its line, so config writes no comment after one: its exemption from
@@ -118,9 +155,221 @@ def version_findings(root: Path, version: Version) -> list[str]:
     return findings
 
 
+def git(directory: Path, *arguments: str) -> str:
+    """What git prints in directory; a git that fails is Broken, naming the command."""
+    completed = subprocess.run(['git', '-C', str(directory), *arguments], capture_output=True,
+                               text=True, check=False)
+    if completed.returncode != 0:
+        raise Broken(f'git {" ".join(arguments)} in {directory}: {completed.stderr.strip()}')
+    return completed.stdout
+
+
+def libraries(root: Path) -> list[str]:
+    """The libraries the build registers: each directory of libs/ with a build.jam."""
+    return sorted(build.parent.name for build in (root / 'libs').glob('*/build.jam'))
+
+
+def gitlinks(root: Path, revision: str) -> dict[str, str]:
+    """The commit the superproject records at revision for each library, libs/<name>."""
+    found = {}
+    for entry in git(root, 'ls-tree', '-z', revision, 'libs/').split('\0'):
+        if not entry:
+            continue
+        meta, path = entry.split('\t', 1)
+        _, kind, commit = meta.split()
+        if kind == 'commit':
+            found[PurePosixPath(path).name] = commit
+    return found
+
+
+def previous_tag(root: Path, version: Version) -> str | None:
+    """The tag of the newest version before version that HEAD holds, or None for a first
+    release."""
+    earlier = []
+    for tag in git(root, 'tag', '--merged', 'HEAD', '--list', 'webcpp-*').split():
+        match = TAG.fullmatch(tag)
+        if match is not None and Version.parse(match.group(1)) < version:
+            earlier.append(Version.parse(match.group(1)))
+    return max(earlier).tag if earlier else None
+
+
+def has_commit(root: Path, library: str, commit: str) -> bool:
+    """Whether library's repository holds commit."""
+    completed = subprocess.run(['git', '-C', str(root / 'libs' / library), 'cat-file', '-e',
+                                f'{commit}^{{commit}}'], capture_output=True, check=False)
+    return completed.returncode == 0
+
+
+def changed(root: Path, library: str, old: str, new: str) -> bool:
+    """Whether a user sees a change in library between the commits the superproject records at
+    the previous tag, old, and at HEAD, new."""
+    completed = subprocess.run(['git', '-C', str(root / 'libs' / library), 'diff', '--quiet',
+                                old, new, '--', *USER_VISIBLE], capture_output=True, text=True,
+                               check=False)
+    if completed.returncode not in (0, 1):
+        raise Broken(f'git diff in libs/{library}: {completed.stderr.strip()}')
+    return completed.returncode == 1
+
+
+def located(path: str, faults: list[changelog.Finding]) -> list[str]:
+    """Faults of the file path as findings: <path>:<line>: <message>."""
+    return [f'{path}:{line}: {message}' for line, message in faults]
+
+
+def lines_of(regions: list[changelog.Region], tag: str) -> list[changelog.Bullet]:
+    """The lines of the region tag, or none when there is no such region."""
+    return next((region.bullets for region in regions if region.tag == tag), [])
+
+
+def index_findings(root: Path, version: Version) -> list[str]:
+    """What the index's section Releases gets wrong: it includes every version's notes of
+    doc/releases once, newest first, the version's first."""
+    if not (root / 'doc/index.adoc').is_file():
+        return ['doc/index.adoc does not exist']
+    text = (root / 'doc/index.adoc').read_text(encoding='utf-8')
+    section = RELEASES.search(text)
+    if section is None:
+        return ['doc/index.adoc has no section [#releases], == Releases']
+    body = text[section.end():]
+    following = re.search(r'^== ', body, re.MULTILINE)
+    included = INCLUDED.findall(body[:following.start()] if following else body)
+    names = [path.name for path in (root / 'doc/releases').iterdir()]
+    findings = [f'doc/releases/{name} is no version\'s notes, <a.b.c>.adoc' for name in names
+                if name.endswith('.adoc') and NOTES_FILE.fullmatch(name) is None]
+    files = sorted((Version.parse(match.group(1)) for match in
+                    (NOTES_FILE.fullmatch(name) for name in names) if match is not None),
+                   reverse=True)
+    if included != [each.name for each in files] or not files or files[0] != version:
+        findings.append(f'doc/index.adoc: section Releases includes {", ".join(included)}, and '
+                        f'it includes the notes of doc/releases newest first: '
+                        f'{", ".join(each.name for each in files)}')
+    return findings
+
+
+def state_findings(root: Path, version: Version, notes: changelog.Notes,
+                   logs: dict[str, list[changelog.Region]]) -> list[str]:
+    """What breaks the state the notes give the version: in preparation, or frozen for its
+    tag."""
+    relative = f'doc/releases/{version.name}.adoc'
+    wanted = 'unreleased' if notes.preparing else version.name
+    state = 'in preparation' if notes.preparing else 'frozen'
+    findings = [f'{relative}: {name} is included with tag={tag}, and the version is {state}: '
+                f'tag={wanted}' for name, tag in notes.updated if tag != wanted]
+    for name, regions in logs.items():
+        if notes.preparing and version.name in {region.tag for region in regions}:
+            findings.append(f'libs/{name}/doc/changelog.adoc has webcpp {version.name}, and '
+                            f'{relative} says it is in preparation')
+        if not notes.preparing and lines_of(regions, 'unreleased'):
+            findings.append(f'libs/{name}/doc/changelog.adoc: Unreleased holds lines, and webcpp '
+                            f'{version.name} is frozen')
+    lanes = [changelog.notes_lane(lane.name) for lane in matrix.LANES]
+    if notes.compilers is None:
+        if not notes.preparing:
+            findings.append(f'{relative}: Compilers tested is None., and the version is frozen')
+    elif notes.compilers != lanes:
+        findings.append(f'{relative}: Compilers tested lists {", ".join(notes.compilers)}, and '
+                        f'the CI\'s lanes are {", ".join(lanes)}')
+    if not notes.preparing:
+        tagged = subprocess.run(['git', '-C', str(root), 'rev-parse', '-q', '--verify',
+                                 f'refs/tags/{version.tag}^{{commit}}'], capture_output=True,
+                                text=True, check=False)
+        head = git(root, 'rev-parse', 'HEAD').strip()
+        if tagged.returncode == 0 and tagged.stdout.strip() != head:
+            findings.append(f'the tag {version.tag} is at {tagged.stdout.strip()}, and HEAD is '
+                            f'{head}')
+    return findings
+
+
+def library_findings(root: Path, version: Version, notes: changelog.Notes,
+                     logs: dict[str, list[changelog.Region]], current: list[str]) -> list[str]:
+    """What the libraries get wrong: each recorded at its checked-out commit; New and Removed
+    Libraries exactly those new or gone since the previous tag; and every library changed since,
+    or with lines for this version, under Updated Libraries with its lines."""
+    relative = f'doc/releases/{version.name}.adoc'
+    wanted = 'unreleased' if notes.preparing else version.name
+    region = 'Unreleased' if notes.preparing else f'webcpp {version.name}'
+    previous = previous_tag(root, version)
+    since = previous or 'the first version'
+    before = gitlinks(root, previous) if previous else {}
+    head = gitlinks(root, 'HEAD')
+    findings = []
+    # A submodule that is not checked out holds no build.jam, and is not gone: it is named, and
+    # counted as present.
+    absent = sorted(set(head) - set(current))
+    findings += [f'libs/{name} is a submodule of the superproject at HEAD, and is not checked '
+                 f'out: git submodule update --init libs/{name}' for name in absent]
+    for name in current:
+        if name not in head:
+            findings.append(f'libs/{name} is no submodule of the superproject at HEAD: a release '
+                            'ships only what its tag records')
+            continue
+        checked_out = git(root / 'libs' / name, 'rev-parse', 'HEAD').strip()
+        if checked_out != head[name]:
+            findings.append(f'libs/{name} is at {checked_out}, and the superproject records '
+                            f'{head[name]}')
+    present = set(current) | set(absent)
+    new = sorted(present - set(before))
+    removed = sorted(set(before) - present)
+    listed_new = [name for name, _ in notes.new]
+    listed_removed = [name for name, _ in notes.removed]
+    if listed_new != new:
+        findings.append(f'{relative}: New Libraries lists {", ".join(listed_new) or "none"}, and '
+                        f'the libraries new since {since} are {", ".join(new) or "none"}')
+    if listed_removed != removed:
+        findings.append(f'{relative}: Removed Libraries lists '
+                        f'{", ".join(listed_removed) or "none"}, and the libraries gone since '
+                        f'{since} are {", ".join(removed) or "none"}')
+    updated = [name for name, _ in notes.updated]
+    for name in updated:
+        if name in new or name in removed:
+            findings.append(f'{relative}: {name} is under Updated Libraries, and is '
+                            f'{"new" if name in new else "removed"} since {since}')
+        elif not lines_of(logs.get(name, []), wanted):
+            findings.append(f'{relative}: {name} is under Updated Libraries, and its region '
+                            f'{wanted} holds no line')
+    for name in sorted(set(current) & set(before)):
+        lines = lines_of(logs.get(name, []), wanted)
+        if lines and name not in updated:
+            findings.append(f'the release notes miss {name}, whose changelog has lines for this '
+                            'version')
+        if lines or name not in head:
+            continue
+        if not has_commit(root, name, before[name]):
+            findings.append(f'libs/{name}: the commit {previous} records, {before[name]}, is not '
+                            'in its repository; fetch its tags')
+        elif not has_commit(root, name, head[name]):
+            findings.append(f'libs/{name}: the commit HEAD records, {head[name]}, is not in its '
+                            'repository')
+        elif changed(root, name, before[name], head[name]):
+            findings.append(f'libs/{name} changed since {previous} and its {region} has no line')
+    return findings
+
+
 def check(root: Path, version: Version) -> list[str]:
     """Every fault that keeps the tree from being tagged webcpp-<version>."""
-    return version_findings(root, version)
+    findings = version_findings(root, version)
+    relative = f'doc/releases/{version.name}.adoc'
+    if not (root / relative).is_file():
+        return findings + [f'{relative} does not exist: open it from '
+                           'tools/release/template.adoc']
+    text = (root / relative).read_text(encoding='utf-8')
+    notes, faults = changelog.parse_notes(text, version.name)
+    findings += located(relative, sorted(faults + [fault for bullet in notes.tools
+                                                   for fault in changelog.line_findings(bullet)]))
+    findings += index_findings(root, version)
+    current = libraries(root)
+    logs: dict[str, list[changelog.Region]] = {}
+    for name in current:
+        path = f'libs/{name}/doc/changelog.adoc'
+        if not (root / path).is_file():
+            findings.append(f'{path} does not exist')
+            continue
+        log = (root / path).read_text(encoding='utf-8')
+        findings += located(path, changelog.changelog_findings(log, name))
+        logs[name] = changelog.parse_changelog(log, name)[0]
+    findings += state_findings(root, version, notes, logs)
+    findings += library_findings(root, version, notes, logs, current)
+    return findings
 
 
 # A command: given the superproject, the version and its arguments, it returns the faults that

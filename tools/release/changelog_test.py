@@ -24,6 +24,8 @@ import changelog
 
 ROOT = Path(__file__).resolve().parents[2]
 DOC = ROOT / 'tools/doc'
+sys.path.insert(0, str(ROOT / 'tools/ci'))
+import matrix  # noqa: E402  (tools/ci, put on the path above: its LANES are the CI's lanes)
 
 VERB_LIST = 'Added, Changed, Deprecated, Fixed, Improved, Removed, Updated'
 CROSS_REFERENCE = ('a line holds no cross-reference, <<...>>, xref: or link:#: the index page '
@@ -469,6 +471,19 @@ def test_release_notes_hold_no_cross_reference() -> None:
         assert findings_of(text) == [(line_of(text, line), CROSS_REFERENCE)], line
 
 
+def test_a_lane_as_the_notes_write_it() -> None:
+    # Every lane of the CI, as Compilers tested writes it: no ++, which doc-check refuses in prose,
+    # and Asciidoctor renders the CI's name back; the reader keeps the line as written.
+    written = [changelog.notes_lane(lane.name) for lane in matrix.LANES]
+    assert not any('++' in line for line in written), written
+    assert 'Clang 18 (libstdc{plus}{plus}, container, no network)' in written, written
+    rendered = flat_items(asciidoctor(''.join(f'* {line}\n' for line in written)))
+    assert rendered == [lane.name for lane in matrix.LANES], rendered
+    parsed, found = changelog.parse_notes(
+        notes(compilers='\n'.join(f'* {line}' for line in written)), '0.2.0')
+    assert found == [] and parsed.compilers == written, (found, parsed.compilers)
+
+
 def test_findings_by_path() -> None:
     text = log('alpha', ('Unreleased', ['* Made a mistake.']))
     assert changelog.file_findings('libs/alpha/doc/changelog.adoc', text) != []
@@ -504,6 +519,7 @@ CASES: list[Callable[[], None]] = [
     test_release_notes_list_each_library_once_in_order,
     test_release_notes_sections_each_once_and_never_empty,
     test_release_notes_hold_no_cross_reference,
+    test_a_lane_as_the_notes_write_it,
     test_findings_by_path,
     test_the_tree_s_changelogs_keep_their_form,
 ]

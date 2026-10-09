@@ -61,7 +61,8 @@ def notes_text(version: str, *, preparing: bool = True, new: tuple[str, ...] = (
                updated: tuple[tuple[str, str], ...] = (), removed: tuple[str, ...] = (),
                tools: tuple[str, ...] = (), compilers: tuple[str, ...] | None = None) -> str:
     """A version's release notes: each new and removed library named, each updated one with the
-    tag its include names, the lines of Tools and build as written, and the lanes."""
+    tag its include names, the lines of Tools and build as written, and the lanes, as the notes
+    write a lane's name."""
     anchor = version.replace('.', '-')
 
     def section(slug: str, title: str, body: str) -> str:
@@ -81,7 +82,8 @@ def notes_text(version: str, *, preparing: bool = True, new: tuple[str, ...] = (
                     '\n'.join(f'* {name}: {name}, gone.' for name in removed))
     text += section('tools-and-build', 'Tools and build', '\n'.join(tools))
     text += section('compilers-tested', 'Compilers tested',
-                    '' if compilers is None else '\n'.join(f'* {lane}' for lane in compilers))
+                    '' if compilers is None else
+                    '\n'.join(f'* {changelog.notes_lane(lane)}' for lane in compilers))
     return text
 
 

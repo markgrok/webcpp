@@ -21,12 +21,14 @@ from pathlib import Path
 
 import changelog
 import release
+import matrix  # tools/ci, which release puts on the path
 import scratch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'test'))
 import harness  # noqa: E402  (tools/test, put on the path above)
 
 V010 = release.Version.parse('0.1.0')
+V020 = release.Version.parse('0.2.0')
 
 LIB_LINE = '#define WEBCPP_LIB_VERSION "0_1"\n'
 
@@ -141,7 +143,9 @@ def test_check_fails_by_name(directory: Path) -> None:
     status, output, error = run_main('check', '--root', root, '--version', '0.2.0')
     assert (status, error) == (1, ''), (status, error)
     assert output == ('check: the build read the version 0.2.0, and '
-                      f'{release.HEADER} names 0.1.0\n'), output
+                      f'{release.HEADER} names 0.1.0\n'
+                      'check: doc/releases/0.2.0.adoc does not exist: open it from '
+                      'tools/release/template.adoc\n'), output
     header = tree.library('config') / 'include/webcpp/version.hpp'
     for text in ('#define WEBCPP_VERSION 100  // 0.1.0\n#define WEBCPP_LIB_VERSION "0_1"\n',
                  '#define WEBCPP_VERSION 100\n#define WEBCPP_LIB_VERSION 0_1\n',
@@ -189,6 +193,229 @@ def test_scratch_files_keep_their_form(directory: Path) -> None:
     for path in ('doc/releases/0.1.0.adoc', 'libs/alpha/doc/changelog.adoc',
                  'libs/beta/doc/changelog.adoc', 'libs/config/doc/changelog.adoc'):
         assert changelog.file_findings(path, (tree.root / path).read_text()) == [], path
+
+
+def released(tree: scratch.Tree) -> None:
+    """Tags 0.1.0, then opens 0.2.0 as the release procedure does: config's version moves, and
+    the notes of 0.2.0 come first in the index."""
+    scratch.git(tree.root, 'tag', 'webcpp-0.1.0')
+    tree.change('config', 'include/webcpp/version.hpp',
+                scratch.VERSION_HPP.format(number=200, lib='0_2'))
+    tree.commit_file('doc/releases/0.2.0.adoc', scratch.notes_text('0.2.0'))
+    tree.commit_file('doc/index.adoc', scratch.index_text(('0.2.0', '0.1.0')))
+
+
+def test_first_release_lists_every_library_as_new(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    assert release.check(tree.root, V010) == []
+    tree.commit_file('doc/releases/0.1.0.adoc',
+                     scratch.notes_text('0.1.0', new=('alpha', 'config')))
+    expect(release.check(tree.root, V010),
+           'New Libraries lists alpha, config, and the libraries new since the first version are '
+           'alpha, beta, config')
+
+
+def test_changed_library_needs_a_line_and_a_listing(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    assert release.check(tree.root, V020) == []
+    tree.change('alpha', 'include/webcpp/alpha.hpp', '// alpha, changed\n')
+    expect(release.check(tree.root, V020),
+           'libs/alpha changed since webcpp-0.1.0 and its Unreleased has no line')
+    tree.change('alpha', 'doc/changelog.adoc',
+                scratch.changelog_text('alpha', unreleased=('* Changed alpha.',)))
+    expect(release.check(tree.root, V020),
+           'the release notes miss alpha, whose changelog has lines for this version')
+    tree.commit_file('doc/releases/0.2.0.adoc',
+                     scratch.notes_text('0.2.0', updated=(('alpha', 'unreleased'),)))
+    assert release.check(tree.root, V020) == []
+
+
+def test_a_change_no_user_sees_needs_no_line(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    tree.change('alpha', 'test/alpha_test.cpp', 'int main() { return 0; }\n')
+    tree.change('alpha', 'AGENTS.md', '# alpha, for agents\n')
+    assert release.check(tree.root, V020) == []
+    # A changelog's own change, such as a line of a released version reworded, is no change.
+    tree.change('alpha', 'doc/changelog.adoc', scratch.changelog_text(
+        'alpha', released=(('0.1.0', ('* Added alpha, reworded.',)),)))
+    assert release.check(tree.root, V020) == []
+    tree.change('alpha', 'LICENSE_1_0.txt', 'Boost Software License, again\n')
+    expect(release.check(tree.root, V020), 'libs/alpha changed since webcpp-0.1.0')
+
+
+def test_a_listed_library_without_a_line_fails(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    tree.commit_file('doc/releases/0.2.0.adoc',
+                     scratch.notes_text('0.2.0', updated=(('beta', 'unreleased'),)))
+    expect(release.check(tree.root, V020),
+           'beta is under Updated Libraries, and its region unreleased holds no line')
+
+
+def test_added_and_removed_libraries(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    tree.add_library('gamma')
+    expect(release.check(tree.root, V020),
+           'New Libraries lists none, and the libraries new since webcpp-0.1.0 are gamma')
+    scratch.git(tree.root, 'rm', '-q', '--cached', 'libs/beta')
+    shutil.rmtree(tree.library('beta'))
+    scratch.git(tree.root, 'commit', '-q', '-m', 'libs/beta: removed')
+    tree.commit_file('doc/releases/0.2.0.adoc',
+                     scratch.notes_text('0.2.0', new=('gamma',), removed=('beta',)))
+    assert release.check(tree.root, V020) == []
+    tree.commit_file('doc/releases/0.2.0.adoc', scratch.notes_text(
+        '0.2.0', new=('gamma',), updated=(('beta', 'unreleased'),), removed=('beta',)))
+    expect(release.check(tree.root, V020),
+           'beta is under Updated Libraries, and is removed since webcpp-0.1.0')
+
+
+def test_a_missing_commit_and_a_stale_pointer(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    alpha = tree.library('alpha')
+    scratch.git(alpha, 'checkout', '-q', '--orphan', 'rewritten')
+    scratch.git(alpha, 'commit', '-q', '-m', 'alpha: rewritten')
+    scratch.git(alpha, 'branch', '-q', '-D', 'main')
+    scratch.git(alpha, 'reflog', 'expire', '--expire=now', '--all')
+    scratch.git(alpha, 'gc', '-q', '--prune=now')
+    tree.record('alpha')
+    expect(release.check(tree.root, V020), 'is not in its repository; fetch its tags')
+    scratch.git(tree.library('beta'), 'commit', '-q', '--allow-empty', '-m', 'beta: unrecorded')
+    expect(release.check(tree.root, V020), 'libs/beta is at ', ', and the superproject records ')
+
+
+def test_a_library_not_checked_out_is_named(directory: Path) -> None:
+    # A clone whose submodule is not checked out holds its directory empty: the library is not
+    # removed, and the check says what is missing rather than ask for a line of Removed Libraries.
+    tree = scratch.make_tree(directory)
+    released(tree)
+    shutil.rmtree(tree.library('beta'))
+    tree.library('beta').mkdir()
+    found = release.check(tree.root, V020)
+    expect(found, 'libs/beta is a submodule of the superproject at HEAD, and is not checked out: '
+           'git submodule update --init libs/beta')
+    assert not any('Removed Libraries' in finding for finding in found), found
+
+
+def test_the_previous_tag_is_the_newest_before_the_version(directory: Path) -> None:
+    # Three versions: 0.2.0 adds gamma and changes alpha, and is tagged; 0.3.0 compares with
+    # webcpp-0.2.0, never with webcpp-0.1.0, and 0.2.0 checked again still with webcpp-0.1.0.
+    lanes = tuple(lane.name for lane in matrix.LANES)
+    tree = scratch.make_tree(directory)
+    released(tree)
+    tree.add_library('gamma')
+    tree.change('alpha', 'include/webcpp/alpha.hpp', '// alpha, changed\n')
+    tree.change('alpha', 'doc/changelog.adoc', scratch.changelog_text(
+        'alpha', released=(('0.2.0', ('* Changed alpha.',)),)))
+    tree.commit_file('doc/releases/0.2.0.adoc', scratch.notes_text(
+        '0.2.0', preparing=False, new=('gamma',), updated=(('alpha', '0.2.0'),),
+        compilers=lanes))
+    scratch.git(tree.root, 'tag', 'webcpp-0.2.0')
+    assert release.check(tree.root, V020) == []
+    tree.change('config', 'include/webcpp/version.hpp',
+                scratch.VERSION_HPP.format(number=300, lib='0_3'))
+    tree.commit_file('doc/releases/0.3.0.adoc', scratch.notes_text('0.3.0'))
+    tree.commit_file('doc/index.adoc', scratch.index_text(('0.3.0', '0.2.0', '0.1.0')))
+    assert release.check(tree.root, release.Version.parse('0.3.0')) == []
+
+
+def test_lines_out_of_form_are_named(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    tree.change('alpha', 'doc/changelog.adoc',
+                scratch.changelog_text('alpha', unreleased=('* Made a mistake.',)))
+    tree.commit_file('doc/releases/0.1.0.adoc', scratch.notes_text(
+        '0.1.0', new=('alpha', 'beta', 'config'), tools=('* Built a thing.',)))
+    expect(release.check(tree.root, V010), 'libs/alpha/doc/changelog.adoc:',
+           'doc/releases/0.1.0.adoc:')
+
+
+def test_compilers_tested_are_the_ci_lanes(directory: Path) -> None:
+    lanes = tuple(lane.name for lane in matrix.LANES)
+    tree = scratch.make_tree(directory)
+    tree.commit_file('doc/releases/0.1.0.adoc', scratch.notes_text(
+        '0.1.0', new=('alpha', 'beta', 'config'), compilers=lanes))
+    assert release.check(tree.root, V010) == []
+    tree.commit_file('doc/releases/0.1.0.adoc', scratch.notes_text(
+        '0.1.0', new=('alpha', 'beta', 'config'), compilers=lanes[1:]))
+    expect(release.check(tree.root, V010), 'Compilers tested lists')
+    # The notes write a lane as changelog.notes_lane does, and the check compares through it: the
+    # CI's own spelling, libstdc++, is no lane of the notes, which doc-check refuses in prose.
+    tree.commit_file('doc/releases/0.1.0.adoc', scratch.notes_text(
+        '0.1.0', new=('alpha', 'beta', 'config'), compilers=lanes).replace('{plus}', '+'))
+    expect(release.check(tree.root, V010), 'Compilers tested lists GCC 14 (container, no '
+           'network), GCC 15, Clang 18 (libstdc++, container, no network), ', "and the CI's "
+           'lanes are GCC 14 (container, no network), GCC 15, Clang 18 (libstdc{plus}{plus}, '
+           'container, no network), ')
+
+
+def frozen(tree: scratch.Tree, lanes: tuple[str, ...]) -> None:
+    """Freezes 0.2.0 as the release procedure does: alpha's Unreleased becomes webcpp 0.2.0 under
+    a new, empty Unreleased, and the notes include tag=0.2.0, without their paragraph."""
+    tree.change('alpha', 'doc/changelog.adoc', scratch.changelog_text(
+        'alpha', released=(('0.2.0', ('* Changed alpha.',)),)))
+    tree.commit_file('doc/releases/0.2.0.adoc', scratch.notes_text(
+        '0.2.0', preparing=False, updated=(('alpha', '0.2.0'),), compilers=lanes))
+
+
+def test_frozen_state(directory: Path) -> None:
+    lanes = tuple(lane.name for lane in matrix.LANES)
+    tree = scratch.make_tree(directory)
+    released(tree)
+    tree.change('alpha', 'include/webcpp/alpha.hpp', '// alpha, changed\n')
+    frozen(tree, lanes)
+    assert release.check(tree.root, V020) == []
+    tree.commit_file('doc/releases/0.2.0.adoc', scratch.notes_text(
+        '0.2.0', updated=(('alpha', '0.2.0'),), compilers=lanes))
+    expect(release.check(tree.root, V020),
+           'alpha is included with tag=0.2.0, and the version is in preparation: '
+           'tag=unreleased', 'libs/alpha/doc/changelog.adoc has webcpp 0.2.0')
+    frozen(tree, lanes)
+    tree.change('alpha', 'doc/changelog.adoc', scratch.changelog_text(
+        'alpha', unreleased=('* Fixed alpha.',), released=(('0.2.0', ('* Changed alpha.',)),)))
+    expect(release.check(tree.root, V020),
+           'libs/alpha/doc/changelog.adoc: Unreleased holds lines, and webcpp 0.2.0 is frozen')
+    frozen(tree, lanes)
+    scratch.git(tree.root, 'tag', 'webcpp-0.2.0', 'HEAD~1')
+    expect(release.check(tree.root, V020), 'the tag webcpp-0.2.0 is at ')
+    scratch.git(tree.root, 'tag', '-f', 'webcpp-0.2.0', 'HEAD')
+    assert release.check(tree.root, V020) == []
+
+
+def test_index_includes_every_version_newest_first(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    tree.commit_file('doc/index.adoc', scratch.index_text(('0.1.0', '0.2.0')))
+    expect(release.check(tree.root, V020),
+           'doc/index.adoc: section Releases includes 0.1.0, 0.2.0, and it includes the notes of '
+           'doc/releases newest first: 0.2.0, 0.1.0')
+    tree.commit_file('doc/index.adoc', scratch.index_text(('0.1.0',)))
+    expect(release.check(tree.root, V020), 'section Releases includes 0.1.0, and')
+
+
+def test_template_opens_a_version_that_checks(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    template = (Path(release.__file__).parent / 'template.adoc').read_text(encoding='utf-8')
+    tree.commit_file('doc/releases/0.2.0.adoc',
+                     template.replace('@VERSION@', '0.2.0').replace('@ANCHOR@', '0-2-0'))
+    assert release.check(tree.root, V020) == []
+
+
+def test_the_tree_s_notes_name_the_ci_lanes(directory: Path) -> None:
+    # This checkout's newest notes, read and never checked against its tags: the lanes they list,
+    # when they list any, are the CI's, as the notes write them.
+    files = sorted((release.Version.parse(path.stem), path)
+                   for path in (harness.ROOT / 'doc/releases').glob('*.adoc'))
+    assert files, 'doc/releases holds no notes'
+    version, path = files[-1]
+    notes, faults = changelog.parse_notes(path.read_text(encoding='utf-8'), version.name)
+    assert faults == [], faults
+    if notes.compilers is not None:
+        assert notes.compilers == [changelog.notes_lane(lane.name) for lane in matrix.LANES], (
+            notes.compilers)
 
 
 def git_checkout(root: Path) -> None:
@@ -291,6 +518,20 @@ CASES: list[Callable[[Path], None]] = [
     test_check_fails_by_name,
     test_version_forms,
     test_scratch_files_keep_their_form,
+    test_first_release_lists_every_library_as_new,
+    test_changed_library_needs_a_line_and_a_listing,
+    test_a_change_no_user_sees_needs_no_line,
+    test_a_listed_library_without_a_line_fails,
+    test_added_and_removed_libraries,
+    test_a_missing_commit_and_a_stale_pointer,
+    test_a_library_not_checked_out_is_named,
+    test_the_previous_tag_is_the_newest_before_the_version,
+    test_lines_out_of_form_are_named,
+    test_compilers_tested_are_the_ci_lanes,
+    test_frozen_state,
+    test_index_includes_every_version_newest_first,
+    test_template_opens_a_version_that_checks,
+    test_the_tree_s_notes_name_the_ci_lanes,
 ]
 
 B2_CASES: list[Callable[[Path], None]] = [

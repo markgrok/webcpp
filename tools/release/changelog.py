@@ -17,7 +17,7 @@ A library's changelog, libs/<name>/doc/changelog.adoc, after its notice: [append
 A version's release notes, doc/releases/<a.b.c>.adoc: [#webcpp-<a-b-c>] and = webcpp <a.b.c>,
 the paragraph IN_PREPARATION while the version is in preparation, then SECTIONS, each
 [#webcpp-<a-b-c>-<slug>] and == <title>, each holding its entries in alphabetical order, or the
-paragraph None.
+paragraph None. Compilers tested names each lane of the CI as notes_lane writes it.
 
 A line is a bullet, read as Asciidoctor reads a list: "* " at the start of a line, indented or
 not, then the lines after it up to a blank line, the next bullet or the region's end, which
@@ -116,6 +116,13 @@ class Notes:
     removed: list[tuple[str, str]] = field(default_factory=list)
     tools: list[Bullet] = field(default_factory=list)
     compilers: list[str] | None = None
+
+
+def notes_lane(name: str) -> str:
+    """A lane of the CI as Compilers tested writes it, each + as {plus}: a ++ in prose is a
+    passthrough to Asciidoctor, which doc-check refuses, and a + at a line's end a line break.
+    The check of the notes compares through it too."""
+    return name.replace('+', '{plus}')
 
 
 def bullets(lines: list[str], first: int) -> tuple[list[Bullet], list[Finding]]:
