@@ -702,7 +702,14 @@ def test_an_interrupted_b2_leaves_no_wasmtime(root):
     slow.write_text(SLOW_WASMTIME.format(python=sys.executable, real=shutil.which('wasmtime'),
                                          mark=str(mark), gate=str(gate), pause=60))
     slow.chmod(0o755)
-    process = harness.start_b2(root, '-a', WASIP2, f'-sWASMTIME={slow}', f'{TEST}//answers')
+    # b2 must answer SIGINT as a terminal's b2 does: a shell starts a background job, such as a run
+    # of the tools tests beside another, with SIGINT ignored, which b2 would inherit and keep, and
+    # then finish its run green. A handler of this process is reset to the default in b2.
+    interrupt = signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        process = harness.start_b2(root, '-a', WASIP2, f'-sWASMTIME={slow}', f'{TEST}//answers')
+    finally:
+        signal.signal(signal.SIGINT, interrupt)
     deadline = time.monotonic() + harness.TIMEOUT
     while not mark.exists() or not mark.read_text():
         assert process.poll() is None, process.communicate()[0][-4000:]
@@ -715,8 +722,8 @@ def test_an_interrupted_b2_leaves_no_wasmtime(root):
     # interrupted, so that b2 cannot finish first, however late the interrupt comes.
     os.killpg(process.pid, signal.SIGINT)
     gate.touch()
-    process.communicate(timeout=60)
-    assert process.returncode != 0
+    output = process.communicate(timeout=60)[0]
+    assert process.returncode != 0, (process.returncode, output[-4000:])
     assert not left(root, seconds=60), left(root)
     for pid in pids:
         try:
