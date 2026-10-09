@@ -353,19 +353,25 @@ else
 fi
 
 # 3c. A function that returns *this is a fluent interface unless it is an assignment operator.
-#     Inside the body of an assignment operator whose signature line opens it with {, up to the
-#     } at that line's indentation which closes it, a return of *this is the assignment's: its
-#     body's calls hold parentheses as a signature does. Elsewhere, the nearest preceding line
-#     with a parenthesis, the signature of a function written on one line, decides.
+#     An assignment operator's signature is followed from the line where operator=( opens it,
+#     over the lines clang-format splits it into, to the line that ends with the { opening its
+#     body; up to the } at the signature's indentation that closes it, a return of *this is the
+#     assignment's, though its body's calls hold parentheses as a signature does. A signature
+#     that ends with ; or } first (a declaration, = default, = delete, or a body on one line)
+#     opens no body to follow. Elsewhere, the nearest preceding line with a parenthesis, the
+#     signature of a function written on one line, decides. A // comment ends no line.
 rule 'returns *this'
 # The program is awk's, and its $ are awk's fields.
 # shellcheck disable=SC2016
 self_returns="$(on_files "${work_directory}/sources" awk '
     function indent(line) { match(line, /^ */); return RLENGTH }
-    FNR == 1 { assigning = 0 }
-    assigning && /^ *}/ && indent($0) == opened { assigning = 0 }
-    /\(/ { signature = $0 }
-    /operator[ ]*=[ ]*\(.*\{[ ]*$/ { assigning = 1; opened = indent($0) }
+    FNR == 1 { assigning = 0; pending = 0 }
+    { code = $0; sub(/[ ]*\/\/.*$/, "", code) }
+    assigning && code ~ /^ *}/ && indent(code) == opened { assigning = 0 }
+    code ~ /\(/ { signature = code }
+    !assigning && !pending && code ~ /operator[ ]*=[ ]*\(/ { pending = 1; opened = indent(code) }
+    pending && code ~ /\{[ ]*$/ { pending = 0; assigning = 1 }
+    pending && code ~ /[;}][ ]*$/ { pending = 0 }
     /return \*this;/ {
         if (!assigning && signature !~ /operator[ ]*=/) {
             printf "%s:%d: %s\n", FILENAME, FNR, $0

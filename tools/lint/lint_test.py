@@ -1059,11 +1059,11 @@ def test_fluent_chain(root):
 def test_returns_this(root):
     prepare(root)
     # An assignment operator may return *this after a body that calls functions, whose lines
-    # hold parentheses as a signature does; a function after it that is no assignment operator
-    # may not, however long its body. The body is followed only from a signature line that opens
-    # it with {: an assignment operator whose signature clang-format splits before the brace
-    # falls back to the nearest line with a parenthesis, which spares it while its body calls
-    # nothing, and takes a call in its body for its signature, a known false finding.
+    # hold parentheses as a signature does, however clang-format splits its signature: the rule
+    # follows it from operator=( to the brace that opens its body. A function that is no
+    # assignment operator may not, split or not, with a call in its body or none, nor after a
+    # deleted or a one-line assignment operator; and a chain inside an assignment
+    # operator's body is still the fluent chain rule's finding.
     path = 'libs/demo/test/builder.cpp'
     write(root, path, CPP + '\n'
           '#include <initializer_list>\n'
@@ -1072,6 +1072,11 @@ def test_returns_this(root):
           '    builder& add() { return *this; }\n'
           '\n'
           '    builder& operator=(const builder&) { return *this; }\n'
+          '\n'
+          '    builder& append_one() {\n'
+          '        swap(*this);\n'
+          '        return *this;  // after a one-line operator\n'
+          '    }\n'
           '\n'
           '    builder& operator=(builder&& other) noexcept {\n'
           '        swap(other);\n'
@@ -1096,13 +1101,42 @@ def test_returns_this(root):
           '        return *this;  // split, a call\n'
           '    }\n'
           '\n'
+          '    builder& operator=(const std::initializer_list<double>& numbers) = delete;\n'
+          '\n'
+          '    builder& append_all(\n'
+          '        const std::initializer_list<short>& numbers_given_to_the_builder_one_by_one)'
+          ' noexcept {\n'
+          '        swap(*this);\n'
+          '        return *this;  // split, appended with a call\n'
+          '    }\n'
+          '\n'
+          '    builder& append_none(\n'
+          '        const std::initializer_list<char>& numbers_given_to_the_builder_one_by_one)'
+          ' noexcept {\n'
+          '        return *this;  // split, appended without a call\n'
+          '    }\n'
+          '\n'
+          '    builder& operator=(const std::initializer_list<bool>& flags) {\n'
+          '        if (flags.size() != 0) {\n'
+          '            shared().self().self().swap(*this);  // a chain\n'
+          '        }\n'
+          '        return *this;  // after a chain\n'
+          '    }\n'
+          '\n'
+          '    builder& self() { return *this; }\n'
+          '\n'
+          '    static builder& shared();\n'
+          '\n'
           '    void swap(builder& /*other*/) noexcept {}\n'
           '};\n')
-    expect_alone(lint(root), 'returns *this',
-                 [at(root, path, 'add()'), at(root, path, '// appended'),
-                  at(root, path, '// split, a call')],
-                 spared=(at(root, path, 'operator=(const'), at(root, path, '// moved'),
-                         at(root, path, '// split, no call')))
+    expect_failed(lint(root), ['fluent chains', 'returns *this'],
+                  [at(root, path, 'add()'), at(root, path, '// after a one-line operator'),
+                   at(root, path, '// appended'), at(root, path, '// split, appended with a call'),
+                   at(root, path, '// split, appended without a call'),
+                   at(root, path, 'self() {'), at(root, path, '// a chain')],
+                  spared=(at(root, path, 'operator=(const builder'), at(root, path, '// moved'),
+                          at(root, path, '// split, no call'), at(root, path, '// split, a call'),
+                          at(root, path, '// after a chain')))
 
 
 def test_em_dash(root):
