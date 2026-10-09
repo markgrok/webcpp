@@ -48,7 +48,9 @@ tests, link-only programs and driven tests, in CI and in own lanes.
 `boost::throw_exception`.
 * Changed the lint to analyse every aggregate, test and example without
 exceptions too, so a library keeps compiling without them.
-* Changed CI to run one own-lane job per library, lane and target.
+* Changed CI to run one own-lane job per library, lane and target,
+installing Node only where needed; `b2 declared-lanes` prints each lane's
+kind.
 * Fixed an own lane that served nothing or missed a target passing
 silently; it now fails by name.
 * Fixed `serve.py` leaving wasmtime running when it is killed.
@@ -56,8 +58,6 @@ silently; it now fails by name.
 lane builds, served programs included.
 * Fixed the Node package installer leaving a stray link or a traceback
 when an install is killed or refused.
-* Added a kind to each own lane (`original` or `programs`); CI installs
-Node only for lanes that need it.
 * Added the names `target`, `has`, `no`, `lib`, `version` and `test`, alone
 or before `_`, to those no library may take.
 * Added the lint rule refusing an unescaped `+__X__+` in a Doc Comment's
