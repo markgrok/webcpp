@@ -244,9 +244,8 @@ DEMO_TYPES = {
     'parses_json': 'run',
 }
 
-# What wasip2 builds of demo: neither the native-only programs, nor the Boost.Test suite, nor
-# catches, an example that throws.
-WASIP2_DEMO = {'pass', 'fails', 'rejects', 'alone-demo', 'alone-demo-answer', 'hello',
+# What wasip2 builds of demo: neither the native-only programs, nor the Boost.Test suite.
+WASIP2_DEMO = {'pass', 'fails', 'rejects', 'alone-demo', 'alone-demo-answer', 'hello', 'catches',
                'parses_json'}
 
 
@@ -402,6 +401,9 @@ def test_two_lanes_merge_into_one_matrix(root: Path) -> None:
         assert demo.verdict(name, 'native') == 'pass', name
         assert demo.verdict(name, 'wasip2') == ('pass' if name in WASIP2_DEMO else 'n/a'), name
     check_pages(out)
+    # The wasip2 lane builds with exceptions, as every lane does: no build path of it says
+    # otherwise.
+    assert 'exception-handling-off' not in sample('wasip2-pass').read_text(), 'wasip2-pass'
     # The lanes are the columns in the order the command line gives them.
     out = root / 'swapped'
     result = report(out, ('wasip2', sample('wasip2-pass')), ('native', sample('native-pass')))
@@ -612,34 +614,33 @@ def test_an_own_lane_is_named_after_its_target_and_library(root: Path) -> None:
 
 
 def test_a_failure_outside_every_test_fails_the_lane(root: Path) -> None:
-    # The handler of tools/throw_exception.cpp, which pass links on wasip2, does not compile: the
-    # action is no test's, and pass is compiled but never linked nor run.
+    # Boost.JSON's definitions, tools/boost_json.cpp, which parses_json links, do not compile: the
+    # action is no test's, and parses_json is compiled but never linked nor run.
     out = root / 'report'
     result = report(out, ('wasip2', sample('wasip2-dependency')))
     assert result.returncode == 1, outcome(result)
     lines = result.stderr.splitlines()
-    assert 'report: wasip2: demo/pass: not run' in lines, outcome(result)
-    outside = [line for line in lines if 'throw_exception.o' in line]
+    assert 'report: wasip2: demo/parses_json: not run' in lines, outcome(result)
+    outside = [line for line in lines if 'boost_json.o' in line]
     assert len(outside) == 1 and 'compile' in outside[0], outcome(result)
-    full = ('bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/'
-            'target-os-wasi/')
+    full = 'bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/tools/'
     assert full in outside[0], outcome(result)
     # The summary names the file; the page it links to, its whole path.
     index = Page(out / 'index.html')
-    assert 'wasip2: throw_exception.o: compile, outside every test' in index.text, index.text
+    assert 'wasip2: boost_json.o: compile, outside every test' in index.text, index.text
     assert full not in index.text, index.text
     problem = [href for href in index.links if href.startswith('output/wasip2/')]
     assert len(problem) == 1, index.links
     page = linked(out / 'index.html', problem[0])
-    assert 'planted: the handler does not compile' in page.text, page.text
-    assert f'{full}throw_exception.o' in page.text, page.text
+    assert "planted: Boost.JSON's definitions do not compile" in page.text, page.text
+    assert f'{full}boost_json.o' in page.text, page.text
     demo = matrix(out / 'demo.html')
-    assert demo.verdict('pass', 'wasip2') == 'not run'
+    assert demo.verdict('parses_json', 'wasip2') == 'not run'
     assert demo.verdict('fails', 'wasip2') == 'n/a'
     assert 'outside' in demo.columns[2].classes, demo.columns
     assert demo.cells[('fails', 'wasip2')].attributes.get('data-note') == 'outside failure'
-    output = linked(out / 'demo.html', demo.cells[('pass', 'wasip2')].href)
-    assert 'throw_exception.o' in output.text, output.text
+    output = linked(out / 'demo.html', demo.cells[('parses_json', 'wasip2')].href)
+    assert 'boost_json.o' in output.text, output.text
     check_pages(out)
 
 

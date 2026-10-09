@@ -53,7 +53,7 @@ std::string_view method_name(const wasi_http_types_method_t& method) {
 answer answer_to(std::string_view method, std::string_view target) {
     if (target == "/throw") {
         // No request asks for it: the call is here so that the program links
-        // boost::throw_exception, which on wasip2, built without exceptions, only the handler
+        // boost::throw_exception, which in a user's build without exceptions only the handler
         // webcpp.serve links (tools/throw_exception.cpp) defines.
         boost::throw_exception(std::runtime_error("asked to throw"));
     }

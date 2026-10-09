@@ -454,12 +454,12 @@ rule served-targets ( found + : shown : given * : declared * )
 # <stem>.expected, both beside source (tools/component/serve.py). only is
 # what builds it for its targets alone (webcpp.jam's filter), and
 # requirements the rest: the bindings of its world, and the handler of a
-# program built without exceptions (webcpp.jam's .handler). The test builds
-# the component itself, as run builds its program, so that the report counts
-# its compile and its link as the test's; the explicit target
-# <stem>-component is the same component, to serve by hand. The test is
-# always run again: the wasmtime that serves it plays no part in its
-# properties.
+# program a user builds with exception-handling=off (webcpp.jam's
+# .handler). The test builds the component itself, as run builds its
+# program, so that the report counts its compile and its link as the test's;
+# the explicit target <stem>-component is the same component, to serve by
+# hand. The test is always run again: the wasmtime that serves it plays no
+# part in its properties.
 rule serve ( found + : source : requirements * : only * )
 {
     local stem = $(source:B) ;

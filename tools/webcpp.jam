@@ -82,10 +82,9 @@ feature.feature webcpp-include : : free incidental ;
 feature.feature webcpp-lane : : free incidental ;
 
 # What links tools/throw_exception.cpp, the handler Boost calls in place of
-# a throw, into a program built without exceptions: every program on
-# wasip2, whose toolset the Jamroot builds without them, and any other whose
-# user asks b2 for exception-handling=off. webcpp builds no variant of its
-# own without exceptions, nor any without RTTI.
+# a throw, into a program a user builds with exception-handling=off, on any
+# target. webcpp builds no variant of its own without exceptions, nor any
+# without RTTI.
 .handler = <exception-handling>off:<source>/webcpp//throw_exception ;
 
 if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }

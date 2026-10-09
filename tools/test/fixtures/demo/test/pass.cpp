@@ -19,8 +19,9 @@
 // A throw that escapes main ends the run, which fails the test, as it should.
 // NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** /*argv*/) {
-    // Never taken, since no test passes an argument, but a throw site the compiler keeps: built
-    // without exceptions, the program links only with the handler of tools/throw_exception.cpp.
+    // Never taken, since no test passes an argument, but a throw site the compiler keeps: in a
+    // user's build without exceptions, the program links only with the handler of
+    // tools/throw_exception.cpp.
     if (argc > 1) {
         boost::throw_exception(std::invalid_argument("pass takes no argument"));
     }

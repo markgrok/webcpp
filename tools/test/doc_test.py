@@ -466,7 +466,7 @@ def test_page_shows_the_counts_of_its_programs(root):
     prepare(root)
     harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
     text = page_text(root)
-    assert ('demo has 2 examples: 2 built natively, 1 for wasip2 and 2 for wasip3. It has 9 '
+    assert ('demo has 2 examples: 2 built natively, 2 for wasip2 and 2 for wasip3. It has 9 '
             'tests, 1 of them a Boost.Test suite: 9 run natively, 6 on wasip2 and 6 on wasip3. '
             'Each of its 2 headers compiles alone.') in text, text
     # A program more is counted at the next build.

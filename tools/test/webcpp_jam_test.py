@@ -6,20 +6,19 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 
 """Checks tools/webcpp.jam: a program is built only for the targets its Jamfile declares, and only
-once per target; wasip2 builds without exceptions and wasip3 with them, and a native build without
-exceptions is the user's own request, which links the handler as wasip2 does; no variant is built
-without RTTI; an example is compared with its expected output, its standard input its .input file or
-nothing; every public header compiles alone, each call of webcpp.headers-alone taking the headers
-its globs match, with requirements and targets of its own, and a header two calls take or a glob
-that matches none refused; a compile-diagnostic test passes only on the error it states, and is
-skipped on a toolset that is not clang; `b2 declared-targets` lists what each library declares; a
-lane of a library's own is listed once per target it runs on, which must be one its Jamfile
-declares, what it names leaves the ordinary lanes, a build of it for another target stops by name,
-and every served program runs in one on every target it is served on; a Boost.Test suite is
-built and run natively only, its framework always with exceptions; Boost.JSON's definitions link
-on every target; and every program sees C++20, the wasip2 one alone without exceptions. Each case
-builds a scratch superproject with the fixture library demo. Run with the names of some cases to
-run only those."""
+once per target; every target builds with exceptions, and a build without them is the user's own
+request, which links the handler on any target; no variant is built without RTTI; an example is
+compared with its expected output, its standard input its .input file or nothing; every public
+header compiles alone, each call of webcpp.headers-alone taking the headers its globs match, with
+requirements and targets of its own, and a header two calls take or a glob that matches none
+refused; a compile-diagnostic test passes only on the error it states, and is skipped on a toolset
+that is not clang; `b2 declared-targets` lists what each library declares; a lane of a library's
+own is listed once per target it runs on, which must be one its Jamfile declares, what it names
+leaves the ordinary lanes, a build of it for another target stops by name, and every served
+program runs in one on every target it is served on; a Boost.Test suite is built and run natively
+only, its framework always with exceptions; Boost.JSON's definitions link on every target; and
+every program sees C++20 and exceptions, on every target. Each case builds a scratch superproject
+with the fixture library demo. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -93,17 +92,19 @@ def test_native_builds_exactly_the_declared_programs(root):
     assert output_of(root, 'catches.output') == 'caught: boom\n'
 
 
-def test_wasip2_skips_native_only_and_has_no_exceptions(root):
+def test_wasip2_skips_native_only_and_has_exceptions(root):
     result = harness.run_b2(root, *WASIP2, 'libs/demo/test', 'libs/demo/example')
     harness.expect(result, True)
-    # native_only, which does not compile for WASI, is not built; nor is catches, an example that
-    # throws.
+    # native_only, which does not compile for WASI, is not built; catches, an example that throws
+    # and catches, is, as on every target.
     assert passed(result) == WASM_DEMO, (passed(result), result.stdout[-4000:])
     assert 'native_only' not in result.stdout, result.stdout[-4000:]
-    assert not list((root / 'bin').rglob('catches*')), result.stdout[-4000:]
-    assert output_of(root, 'pass.output').startswith(built_with(exceptions=False, rtti=True))
+    assert output_of(root, 'pass.output').startswith(built_with(exceptions=True, rtti=True))
     assert output_of(root, 'hello.output') == 'The answer is 42.\n'
-    # The handler of tools/throw_exception.cpp prints what was thrown, and ends the program.
+    assert output_of(root, 'catches.output') == 'caught: boom\n'
+    # A user's build without exceptions compiles every program with -fno-exceptions alone, and
+    # links the handler of tools/throw_exception.cpp, which prints what was thrown and ends the
+    # program.
     harness.add_library(
         root, 'aborts',
         'import webcpp ;\n'
@@ -112,15 +113,14 @@ def test_wasip2_skips_native_only_and_has_no_exceptions(root):
         {'aborts.cpp': '#include <boost/throw_exception.hpp>\n'
                        '#include <stdexcept>\n'
                        'int main() { boost::throw_exception(std::runtime_error("planted")); }\n'})
-    result = harness.run_b2(root, *WASIP2, 'libs/aborts/test')
+    result = harness.run_b2(root, '-d+2', *WASIP2, 'exception-handling=off', 'libs/aborts/test')
     harness.expect(result, True)
     assert passed(result) == {'aborts'}, (passed(result), result.stdout[-4000:])
     assert 'throw_exception: planted' in output_of(root, 'aborts.output')
-    # A program that throws does not compile for wasip2.
-    harness.replace(root / 'libs/demo/example/Jamfile', ': : native wasip3 ;',
-                    ': : native wasip2 wasip3 ;')
-    harness.expect(harness.run_b2(root, *WASIP2, 'libs/demo/example'), False,
-                   "cannot use 'throw' with exceptions disabled")
+    compiles = [line for line in result.stdout.splitlines() if ' -c ' in line]
+    assert compiles, result.stdout[-4000:]
+    for line in compiles:
+        assert '-fno-exceptions' in line and '-fwasm-exceptions' not in line, line
 
 
 def test_wasip3_catches_a_throw(root):
@@ -129,20 +129,27 @@ def test_wasip3_catches_a_throw(root):
     assert passed(result) == WASM_DEMO, (passed(result), result.stdout[-4000:])
     assert output_of(root, 'pass.output').startswith(built_with(exceptions=True, rtti=True))
     assert output_of(root, 'catches.output') == 'caught: boom\n'
-    # The Jamroot's -mllvm -wasm-use-legacy-eh=false is needed: without it, clang encodes the
-    # throw with the legacy instructions, which wasmtime refuses to run.
-    shutil.rmtree(root / 'bin')
-    harness.replace(root / 'Jamroot', ' -mllvm -wasm-use-legacy-eh=false', '')
-    result = harness.run_b2(root, *WASIP3, 'libs/demo/example')
-    harness.expect(result, False, '-caught: boom')
-    assert re.search(r'^\.\.\.failed .*catches\.output', result.stdout, re.MULTILINE), (
-        result.stdout[-4000:])
-    program = sorted((root / 'bin').rglob('catches.wasm'))
-    assert len(program) == 1, program
-    refused = subprocess.run(['wasmtime', program[0]], stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, text=True, check=False)
-    assert refused.returncode != 0, refused.stdout
-    assert 'legacy_exceptions feature required' in refused.stdout, refused.stdout
+    # The Jamroot's -mllvm -wasm-use-legacy-eh=false is needed, on each WASI target: without it,
+    # clang encodes the throw with the legacy instructions, which wasmtime refuses to run.
+    jamroot = (root / 'Jamroot').read_text()
+    for version, target in ((2, WASIP2), (3, WASIP3)):
+        shutil.rmtree(root / 'bin')
+        (root / 'Jamroot').write_text(jamroot)
+        harness.replace(root / 'Jamroot',
+                        f'<toolset>clang-wasip{version},<exception-handling>on:<cxxflags>'
+                        '"-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"',
+                        f'<toolset>clang-wasip{version},<exception-handling>on:<cxxflags>'
+                        '"-fwasm-exceptions"')
+        result = harness.run_b2(root, *target, 'libs/demo/example')
+        harness.expect(result, False, '-caught: boom')
+        assert re.search(r'^\.\.\.failed .*catches\.output', result.stdout, re.MULTILINE), (
+            version, result.stdout[-4000:])
+        program = sorted((root / 'bin').rglob('catches.wasm'))
+        assert len(program) == 1, program
+        refused = subprocess.run(['wasmtime', program[0]], stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True, check=False)
+        assert refused.returncode != 0, (version, refused.stdout)
+        assert 'legacy_exceptions feature required' in refused.stdout, (version, refused.stdout)
 
 
 def test_compile_builds_only_where_declared(root):
@@ -762,7 +769,7 @@ def test_boost_json_on_every_target(root):
     assert passed(result) == {'parses_json'}, (passed(result), result.stdout[-4000:])
     archives = boost_json_archives(root)
     assert len(archives) == 4, archives
-    assert len([path for path in archives if 'exception-handling-off' in path.parts]) == 2, (
+    assert len([path for path in archives if 'exception-handling-off' in path.parts]) == 1, (
         archives)
     # Without the library, a program that parses JSON does not link.
     harness.replace(root / 'libs/demo/test/Jamfile', ' <library>/webcpp//boost_json', '')
@@ -799,46 +806,52 @@ TOOLCHAIN_SOURCE = (
     '}\n')
 
 
-def test_every_program_sees_cxx20_and_only_wasip2_is_without_exceptions(root):
+def test_every_program_sees_cxx20_and_exceptions_on_every_target(root):
     # Restores the promise of xstate-cpp's retired toolchain_test.cpp that every program sees
     # C++20, and checks through Boost.Config's own macro, not the raw compiler ones built_with
-    # reads, that of the targets the program declares, wasip2 alone builds it without exceptions.
+    # reads, that every target the program declares builds it with exceptions, and that a user's
+    # exception-handling=off builds it without them, natively and on wasip2.
     harness.add_library(root, 'toolchain', TOOLCHAIN_JAMFILE, {'toolchain.cpp': TOOLCHAIN_SOURCE})
-    for target, expected in (((), 'exceptions\n'), (WASIP2, 'no exceptions\n'),
-                             (WASIP3, 'exceptions\n')):
-        result = harness.run_b2(root, *target, 'libs/toolchain/test')
+    for request, expected in (((), 'exceptions\n'), (WASIP2, 'exceptions\n'),
+                              (WASIP3, 'exceptions\n'),
+                              (('exception-handling=off',), 'no exceptions\n'),
+                              ((*WASIP2, 'exception-handling=off'), 'no exceptions\n')):
+        result = harness.run_b2(root, *request, 'libs/toolchain/test')
         harness.expect(result, True)
-        assert passed(result) == {'toolchain'}, (target, passed(result), result.stdout[-4000:])
-        assert output_of(root, 'toolchain.output').startswith(expected), target
+        assert passed(result) == {'toolchain'}, (request, passed(result), result.stdout[-4000:])
+        assert output_of(root, 'toolchain.output').startswith(expected), request
         shutil.rmtree(root / 'bin')
 
 
 def test_a_users_build_without_exceptions_links_the_handler(root):
-    # webcpp builds no native variant without exceptions; a user who wants one asks b2 for it,
-    # and the program then compiles without exceptions, links the handler of
-    # tools/throw_exception.cpp, which its throw site needs, and runs, RTTI untouched.
+    # webcpp builds no variant without exceptions; a user who wants one asks b2 for it, and the
+    # program then compiles without exceptions, links the handler of tools/throw_exception.cpp,
+    # which its throw site needs, and runs, RTTI untouched.
     result = harness.run_b2(root, 'exception-handling=off', 'libs/demo/test')
     harness.expect(result, True)
     assert passed(result) == NATIVE_DEMO, (passed(result), result.stdout[-4000:])
     assert output_of(root, 'pass.output').startswith(built_with(exceptions=False, rtti=True))
     assert built_with(exceptions=False, rtti=True) in output_of(root, 'suite.output')
     # The handler prints what was thrown and ends the program, where a throw would have gone
-    # through std::terminate.
+    # through std::terminate natively, and trapped the instance on wasip2: so natively and on
+    # wasip2 alike.
     harness.add_library(
         root, 'aborts',
         'import webcpp ;\n'
         '\n'
-        'webcpp.run-fail aborts : aborts.cpp ;\n',
+        'webcpp.run-fail aborts : aborts.cpp : : native wasip2 ;\n',
         {'aborts.cpp': '#include <boost/throw_exception.hpp>\n'
                        '#include <stdexcept>\n'
                        'int main() { boost::throw_exception(std::runtime_error("planted")); }\n'})
-    for request, handled in (((), False), (('exception-handling=off',), True)):
-        result = harness.run_b2(root, *request, 'libs/aborts/test')
-        harness.expect(result, True)
-        assert passed(result) == {'aborts'}, (request, passed(result), result.stdout[-4000:])
-        assert ('throw_exception: planted' in output_of(root, 'aborts.output')) == handled, (
-            request, output_of(root, 'aborts.output'))
-        shutil.rmtree(root / 'bin/libs/aborts')
+    for target in ((), WASIP2):
+        for request, handled in (((), False), (('exception-handling=off',), True)):
+            result = harness.run_b2(root, *target, *request, 'libs/aborts/test')
+            harness.expect(result, True)
+            assert passed(result) == {'aborts'}, (target, request, passed(result),
+                                                  result.stdout[-4000:])
+            assert ('throw_exception: planted' in output_of(root, 'aborts.output')) == handled, (
+                target, request, output_of(root, 'aborts.output'))
+            shutil.rmtree(root / 'bin/libs/aborts')
     # The request is the user's, and reaches every program: an example that throws no longer
     # compiles.
     harness.expect(harness.run_b2(root, 'exception-handling=off', 'libs/demo/example'), False,
@@ -860,7 +873,7 @@ def test_no_variant_is_built_without_rtti(root):
 
 CASES = [
     test_native_builds_exactly_the_declared_programs,
-    test_wasip2_skips_native_only_and_has_no_exceptions,
+    test_wasip2_skips_native_only_and_has_exceptions,
     test_wasip3_catches_a_throw,
     test_compile_builds_only_where_declared,
     test_compile_diagnostic_passes_only_on_its_diagnostic,
@@ -884,7 +897,7 @@ CASES = [
     test_boost_test_failure_is_red_and_named,
     test_boost_test_never_built_for_wasm,
     test_boost_json_on_every_target,
-    test_every_program_sees_cxx20_and_only_wasip2_is_without_exceptions,
+    test_every_program_sees_cxx20_and_exceptions_on_every_target,
     test_a_users_build_without_exceptions_links_the_handler,
     test_no_variant_is_built_without_rtti,
 ]

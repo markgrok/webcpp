@@ -4,8 +4,8 @@
 // accompanying file LICENSE_1_0.txt or copy at
 // https://www.boost.org/LICENSE_1_0.txt)
 
-// Parses and serializes JSON on every target, on wasip2 without exceptions: it links only with
-// the definitions of Boost.JSON that /webcpp//boost_json compiles.
+// Parses and serializes JSON on every target, and in a user's build without exceptions: it links
+// only with the definitions of Boost.JSON that /webcpp//boost_json compiles.
 
 #include <webcpp/demo.hpp>
 

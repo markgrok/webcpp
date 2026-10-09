@@ -113,10 +113,12 @@ def plant_native_only(root: Path) -> None:
                         {'works.cpp': 'int main() { return 0; }\n'})
 
 
-def plant_broken_handler(root: Path) -> None:
-    """Breaks tools/throw_exception.cpp, which every program built without exceptions links."""
-    handler = root / 'tools/throw_exception.cpp'
-    handler.write_text(handler.read_text() + '#error "planted: the handler does not compile"\n')
+def plant_broken_boost_json(root: Path) -> None:
+    """Breaks tools/boost_json.cpp, Boost.JSON's definitions, which every program that parses JSON
+    links."""
+    definitions = root / 'tools/boost_json.cpp'
+    definitions.write_text(definitions.read_text()
+                           + '#error "planted: Boost.JSON\'s definitions do not compile"\n')
 
 
 def plant_wrong_transcript(root: Path) -> None:
@@ -159,9 +161,9 @@ SAMPLES_BY_NAME = {
     # every program of nativeonly is skipped.
     'wasip2-skipped-library': Sample(WASIP2, ('libs/demo/test', 'libs/demo/example',
                                               'libs/nativeonly/test'), plant_native_only),
-    # A program whose dependency outside every test, the exception handler, does not compile: on
-    # wasip2, where every program is built without exceptions and links it.
-    'wasip2-dependency': Sample(WASIP2, ('libs/demo/test//pass',), plant_broken_handler),
+    # A dependency outside every test fails: Boost.JSON's definitions, which parses_json links.
+    'wasip2-dependency': Sample(WASIP2, ('libs/demo/test//parses_json',),
+                                plant_broken_boost_json),
     # A failure whose output b2 writes into CDATA unescaped.
     'native-odd-output': Sample(NATIVE, ('libs/odd/test//prints',), plant_odd_output),
     # component_demo's tests on wasip2, its served component among them: all pass.

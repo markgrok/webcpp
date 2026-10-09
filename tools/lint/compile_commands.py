@@ -50,18 +50,19 @@ holds exactly a public header's: a header that no test includes is still analyse
 that of the first target, in the order native, wasip2, wasip3, emscripten, on which every public
 header has a headers-alone unit; when the units of that target are compiled with different
 options (one call of webcpp.headers-alone adds the bindings a header needs, another does not), the
-command is the first of theirs with which the aggregate compiles. A library whose aggregate builds
-natively has two entries: that command as the tests are built, and the one b2 gives the same
+command is the first of theirs with which the aggregate compiles. Every target builds with
+exceptions, so each aggregate command is followed by its twin: the command b2 gives the same
 translation unit with exception-handling=off, under which Boost.Config defines
-BOOST_NO_EXCEPTIONS, so that what a header holds for a program built without exceptions alone is
-analysed too, though no native test is built so; that request also builds
-`/webcpp//throw_exception`, the superproject's handler as a program built without exceptions links
-it. A library whose aggregate builds only for WASI has an entry for each of wasip2 and wasip3 on
-which every public header has a unit: wasip2's without exceptions and wasip3's with them, each
-reading the branch of its version. The aggregate is written as bin/aggregate/<name>.cpp, inside
-the tree, since clang-tidy takes its configuration from the .clang-tidy nearest a source file. The
-reference of tools/doc/reference.py writes the same translation unit, with write_aggregate, for
-MrDocs to read the library's interface through.
+BOOST_NO_EXCEPTIONS, so that what a header holds for a user's build without exceptions alone is
+analysed too, though no test is built so. A library whose aggregate builds natively has two
+entries, that command and its twin; the native request without exceptions also builds
+`/webcpp//throw_exception`, the superproject's handler as such a build links it. A library whose
+aggregate builds only for WASI has two entries for each of wasip2 and wasip3 on which every public
+header has a unit, each reading the branch of its version: wasip2's command and its twin, then
+wasip3's. A library whose aggregate builds on emscripten alone has that one command. The aggregate
+is written as bin/aggregate/<name>.cpp, inside the tree, since clang-tidy takes its configuration
+from the .clang-tidy nearest a source file. The reference of tools/doc/reference.py writes the same
+translation unit, with write_aggregate, for MrDocs to read the library's interface through.
 
 b2 runs with root/.local/user-config.jam when it exists, else with $WEBCPP_USER_CONFIG when it
 is set, else with its own search; and without CPATH, CPLUS_INCLUDE_PATH and C_INCLUDE_PATH,
@@ -96,11 +97,14 @@ TARGETS = {
     'emscripten': ['toolset=emscripten'],
 }
 
-# The property of the native request that builds a program without exceptions as a user asks b2
-# for one, and what that request builds besides the headers-alone translation unit of each library
+# The property of the request that builds a program without exceptions as a user asks b2 for one,
+# and what the native request builds besides the headers-alone translation unit of each library
 # whose aggregate builds natively: the handler such a program links.
 WITHOUT_EXCEPTIONS = 'exception-handling=off'
 HANDLER = '/webcpp//throw_exception'
+
+# The WASI targets, on which a library whose headers build only for WASI has its aggregate.
+WASI = ('wasip2', 'wasip3')
 
 # The Jamroot's build-dir, where b2 writes what it generates.
 BUILD_DIR = 'bin'
@@ -354,19 +358,24 @@ def first_error(said: str) -> str:
     return (errors or lines or ['the compiler failed'])[0]
 
 
+# A command of a library's aggregate: the target it builds for, whether it is the twin b2 compiles
+# with exception-handling=off, and the command.
+Aggregate = tuple[str, bool, list[str]]
+
+
 def aggregate_entries(root: str, library: str,
-                      commands: list[tuple[str, list[str]]]) -> list[dict[str, object]]:
-    """The entries of the library's aggregate translation unit, one per command given with its
-    variant: the first variant's object is in bin/aggregate, each other's in a directory named
-    after it."""
+                      commands: list[Aggregate]) -> list[dict[str, object]]:
+    """The entries of the library's aggregate translation unit, one per command given: the first
+    one's object is in bin/aggregate, each other's in a directory named after its target, and
+    after exception-handling-off for a twin."""
     directory = os.path.join(root, BUILD_DIR, 'aggregate')
     source = os.path.join(directory, f'{library}.cpp')
     entries: list[dict[str, object]] = []
-    for index, (variant, command) in enumerate(commands):
-        check_compiler(variant if variant in TARGETS else 'native',
-                       os.path.relpath(source, root), command)
+    for index, (target, without, command) in enumerate(commands):
+        check_compiler(target, os.path.relpath(source, root), command)
         arguments = command[:-1] + [source]
-        place = os.path.join(directory, variant) if index else directory
+        place = (os.path.join(directory, target, *(['exception-handling-off'] if without else []))
+                 if index else directory)
         arguments[arguments.index('-o') + 1] = os.path.join(place, f'{library}.o')
         entries.append({'directory': root, 'file': source, 'arguments': arguments})
     return entries
@@ -426,16 +435,48 @@ def whole_targets(headers: list[str], units: dict[str, Units], library: str) -> 
 
 
 def pick(root: str, library: str, targets: list[str],
-         units: dict[str, Units]) -> list[tuple[str, list[str]]]:
+         units: dict[str, Units]) -> list[Aggregate]:
     """Each of targets with the command of the library's aggregate there, after writing it."""
     directory = os.path.join(root, BUILD_DIR, 'aggregate')
     os.makedirs(directory, exist_ok=True)
     source = os.path.join(directory, f'{library}.cpp')
     write_aggregate(root, library, source)
-    return [(target, aggregate_command(root, library, target,
-                                       [command for name in sorted(units[target][library])
-                                        for command in units[target][library][name]], source))
+    return [(target, False, aggregate_command(root, library, target,
+                                              [command for name in sorted(units[target][library])
+                                               for command in units[target][library][name]],
+                                              source))
             for target in targets]
+
+
+def twins(root: str, target: str, chosen: dict[str, list[Aggregate]], extra: list[str],
+          entries: list[dict[str, object]], seen: set[tuple[str, ...]],
+          analysed: set[str]) -> set[str]:
+    """Follows each aggregate command of chosen on target with its twin: the command b2 gives, in
+    a dry run of target with exception-handling=off, to the headers-alone translation unit the
+    command was taken from. The dry run builds extra too, and what it compiles of the tree, but
+    the sources in analysed, is added to entries as read adds it; returns those sources. A unit
+    b2 does not compile so fails, naming its library."""
+    commands = {library: aggregates for library, aggregates in chosen.items()
+                if any(aggregate[0] == target for aggregate in aggregates)}
+    units = [target_of_unit(aggregate[2]) for aggregates in commands.values()
+             for aggregate in aggregates if aggregate[0] == target]
+    if not units and not extra:
+        return set()
+    without, sources = read(root, target,
+                            compiles(dry_run(root, [*TARGETS[target], WITHOUT_EXCEPTIONS, *extra,
+                                                    *units])),
+                            entries, seen, analysed)
+    for library, aggregates in commands.items():
+        index = next(index for index, aggregate in enumerate(aggregates)
+                     if aggregate[0] == target)
+        unit = ALONE.match(aggregates[index][2][-1])
+        assert unit is not None, aggregates
+        twin = without.get(library, {}).get(unit.group(2))
+        if not twin:
+            raise Failure(f'libs/{library}: b2 compiles no translation unit of '
+                          f'webcpp.headers-alone for it on {target} with {WITHOUT_EXCEPTIONS}')
+        aggregates.insert(index + 1, (target, True, twin[0]))
+    return sources
 
 
 def database(root: str) -> list[dict[str, object]]:
@@ -455,19 +496,7 @@ def database(root: str) -> list[dict[str, object]]:
                                      entries, seen, set())
     chosen = {library: pick(root, library, ['native'], units) for library in published
               if whole_targets(headers[library], units, library)}
-    twins = [target_of_unit(commands[0][1]) for commands in chosen.values()]
-    without, sources = read(root, 'native',
-                            compiles(dry_run(root, [WITHOUT_EXCEPTIONS, HANDLER, *twins])),
-                            entries, seen, set())
-    analysed |= sources
-    for library, commands in chosen.items():
-        unit = ALONE.match(commands[0][1][-1])
-        assert unit is not None, commands
-        twin = without.get(library, {}).get(unit.group(2))
-        if not twin:
-            raise Failure(f'libs/{library}: b2 compiles no translation unit of '
-                          f'webcpp.headers-alone for it with {WITHOUT_EXCEPTIONS}')
-        commands.append((WITHOUT_EXCEPTIONS, twin[0]))
+    analysed |= twins(root, 'native', chosen, [HANDLER], entries, seen, set())
 
     # Each other target some library declares: the programs no earlier target compiles.
     for target in TARGETS:
@@ -495,8 +524,11 @@ def database(root: str) -> list[dict[str, object]]:
             raise Failure(f'libs/{library}: no one target compiles every public header alone, so '
                           'none gives its aggregate translation unit, which includes them all, a '
                           'command')
-        wasi = [target for target in whole if target in ('wasip2', 'wasip3')]
+        wasi = [target for target in whole if target in WASI]
         chosen[library] = pick(root, library, wasi or whole[:1], units)
+    # Then the twin of each aggregate that builds only for WASI, on each of its targets.
+    for target in WASI:
+        analysed |= twins(root, target, chosen, [], entries, seen, analysed)
     for library in published:
         entries.extend(aggregate_entries(root, library, chosen[library]))
     if not entries:

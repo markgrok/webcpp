@@ -388,11 +388,12 @@ def test_served_component_green_on_wasip2_and_wasip3(root):
         served = built_in(root, 'answers.served', version)
         assert len(served) == 1, served
         assert served[0].read_bytes() == SERVED_EXPECTED.read_bytes()
-        # The component is built in the test's directory, as a reactor, and linked on wasip2
-        # with the handler of a program built without exceptions, which it calls.
+        # The component is built in the test's directory, as a reactor, and linked with
+        # exceptions on both versions: the handler of a user's build without them is not linked.
         assert 'answers.test' in served[0].parts, served
         line = link_line(output, 'answers.wasm')
-        assert ('throw_exception.o' in line) == (version == 2), line
+        assert 'throw_exception.o' not in line, line
+        assert '-fwasm-exceptions' in line, line
         # The program to serve by hand is not built by default.
         assert not built_in(root, 'answers-component.wasm', version)
     assert not left(root), left(root)
@@ -549,10 +550,11 @@ else
 fi
 "$WASI_SDK/bin/clang" --target=wasm32-wasi$version $threads -c "$work/gen/demo_world.c" \
     -o "$work/demo_world.o" -I"$work/gen"
-"$WASI_SDK/bin/clang++" --target=wasm32-wasi$version -std=c++20 -fno-exceptions \
-    -DBOOST_NO_EXCEPTIONS -mexec-model=reactor -I"$here/../include" -I"$work/gen" \
-    -isystem "@BOOST@" "$here/answers.cpp" "@ROOT@/tools/throw_exception.cpp" \
-    "$work/demo_world.o" "$work/gen/demo_world_component_type.o" -o "$component"
+"$WASI_SDK/bin/clang++" --target=wasm32-wasi$version -std=c++20 \
+    -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -mexec-model=reactor \
+    -I"$here/../include" -I"$work/gen" -isystem "@BOOST@" "$here/answers.cpp" \
+    "$work/demo_world.o" "$work/gen/demo_world_component_type.o" \
+    -fwasm-exceptions -lunwind -o "$component"
 """
 
 
@@ -564,7 +566,7 @@ def by_hand(root):
     include = re.search(r'<include>(\S+)', using.group(0))
     assert include, f'the `using boost` line names no <include>: {using.group(0)}'
     boost = include.group(1)
-    script = BY_HAND.replace('@BOOST@', boost).replace('@ROOT@', str(root.resolve()))
+    script = BY_HAND.replace('@BOOST@', boost)
     (root / TEST / 'by_hand.sh').write_text(script)
     with (root / TEST / 'Jamfile').open('a') as jamfile:
         jamfile.write('webcpp.serve-script by_hand : by_hand.sh : answers ;\n')

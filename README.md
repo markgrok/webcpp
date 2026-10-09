@@ -117,11 +117,10 @@ and run the tests and the examples with wasmtime, one toolset per command:
     b2 toolset=clang-wasip2 testing.launcher=wasmtime test example
     b2 toolset=clang-wasip3 testing.launcher=wasmtime test example
 
-On wasip2 a library builds without exceptions, a portability policy, since
-some WebAssembly hosts lack exception handling. Everywhere else, whether a
-program uses exceptions is the choice of whoever builds it: webcpp builds no
-variant without them, and none without RTTI. A program that a library does
-not declare for a target is skipped there.
+Every target builds with exceptions: whether a program uses them is the
+choice of whoever builds it, and webcpp builds no variant without them, and
+none without RTTI. A program that a library does not declare for a target is
+skipped there.
 `b2 declared-targets -d0` lists the targets each library declares.
 
 A library may also run some of its programs in lanes of its own, which

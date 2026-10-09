@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <build format="1.0" version="5.5.3"> 
-  <directory><![CDATA[$TMPDIR/webcpp scratch y6r9zt9i]]></directory> 
-  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp scratch y6r9zt9i/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=wasip2-empty.xml" "toolset=clang-wasip2" "testing.launcher=wasmtime" "libs/nativeonly/test"]]></command> 
+  <directory><![CDATA[$TMPDIR/webcpp scratch mqcir6a1]]></directory> 
+  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp scratch mqcir6a1/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=wasip2-empty.xml" "toolset=clang-wasip2" "testing.launcher=wasmtime" "libs/nativeonly/test"]]></command> 
   <targets> 
   </targets> 
   <test type="RUN" name="nativeonly/works"> 

@@ -40,7 +40,7 @@ DEMO_PROGRAMS = (
     'boost-test suite native',
     'run parses_json native wasip2 wasip3',
     'example hello native wasip2 wasip3',
-    'example catches native wasip3',
+    'example catches native wasip2 wasip3',
 )
 
 # What demo counts, every count of the programs b2 recorded, a zero included.
@@ -48,7 +48,7 @@ DEMO_COUNTS = {
     'n-examples': '2',
     'n-examples-native': '2',
     'n-examples-emscripten': '0',
-    'n-examples-wasip2': '1',
+    'n-examples-wasip2': '2',
     'n-examples-wasip3': '2',
     'n-tests': '9',
     'n-tests-native': '9',

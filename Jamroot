@@ -246,22 +246,19 @@ project /webcpp
       <toolset>clang-wasip3:<target-os>wasi
       <target-os>wasi:<link>static
       # end::wasi-target[]
-      # A library that declares wasip2 builds there without exceptions, a
-      # portability policy: some wasm hosts lack exception handling. Boost
-      # then calls boost::throw_exception in place of a throw: webcpp.jam
-      # links its definition, tools/throw_exception.cpp, into such a program.
-      # tag::wasip2-exceptions[]
-      <toolset>clang-wasip2:<exception-handling>off
-      <toolset>clang-wasip2:<define>BOOST_NO_EXCEPTIONS
-      # end::wasip2-exceptions[]
-      # One that declares wasip3 may use exceptions, encoded as the standard
-      # exception handling of WebAssembly (exnref): the clang of wasi-sdk 34
-      # emits the legacy encoding by default, which wasmtime 47 refuses to
-      # run ("legacy_exceptions feature required"). The runtime is libunwind.
-      # tag::wasip3-exceptions[]
-      <toolset>clang-wasip3:<cxxflags>"-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
-      <toolset>clang-wasip3:<linkflags>"-fwasm-exceptions -lunwind"
-      # end::wasip3-exceptions[]
+      # Every WASI target builds with exceptions, as native does: whether a
+      # program uses them is its developer's choice. They are encoded as the
+      # standard exception handling of WebAssembly (exnref): the clang of
+      # wasi-sdk 34 emits the legacy encoding by default, which wasmtime 47
+      # refuses to run ("legacy_exceptions feature required"). The runtime is
+      # libunwind. A user's exception-handling=off builds with -fno-exceptions
+      # alone, and webcpp.jam links tools/throw_exception.cpp.
+      # tag::wasi-exceptions[]
+      <toolset>clang-wasip2,<exception-handling>on:<cxxflags>"-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
+      <toolset>clang-wasip2,<exception-handling>on:<linkflags>"-fwasm-exceptions -lunwind"
+      <toolset>clang-wasip3,<exception-handling>on:<cxxflags>"-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
+      <toolset>clang-wasip3,<exception-handling>on:<linkflags>"-fwasm-exceptions -lunwind"
+      # end::wasi-exceptions[]
       <conditional>@boost-check
   : default-build <variant>debug
   : build-dir bin

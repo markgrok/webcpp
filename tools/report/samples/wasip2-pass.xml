@@ -1,105 +1,95 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <build format="1.0" version="5.5.3"> 
-  <directory><![CDATA[$TMPDIR/webcpp scratch pvt75_v5]]></directory> 
-  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp scratch pvt75_v5/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=wasip2-pass.xml" "toolset=clang-wasip2" "testing.launcher=wasmtime" "libs/demo/test" "libs/demo/example"]]></command> 
+  <directory><![CDATA[$TMPDIR/webcpp scratch wxp28u4c]]></directory> 
+  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp scratch wxp28u4c/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=wasip2-pass.xml" "toolset=clang-wasip2" "testing.launcher=wasmtime" "libs/demo/test" "libs/demo/example"]]></command> 
   <targets> 
     <target> 
       <name><![CDATA[.//boost_version.o]]></name> 
       <dependencies> 
         <dependency><![CDATA[.//tools/test/boost_version.cpp]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>boost_version.o]]></jam-target> 
-    </target> 
-    <target> 
-      <name><![CDATA[.//throw_exception.o]]></name> 
-      <dependencies> 
-        <dependency><![CDATA[.//tools/throw_exception.cpp]]></dependency> 
-      </dependencies> 
-      <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>throw_exception.o]]></jam-target> 
+      <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>boost_version.o]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//pass.o]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//pass.cpp]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>pass.o]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>pass.o]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//pass.wasm]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//pass.o]]></dependency> 
-        <dependency><![CDATA[.//throw_exception.o]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>pass.wasm]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>pass.wasm]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//pass.run]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//pass.wasm]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>pass.run]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>pass.run]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//pass.test]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//pass.run]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>pass.test]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>pass.test]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//fails.o]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//fails.cpp]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>fails.o]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>fails.o]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//fails.wasm]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//fails.o]]></dependency> 
-        <dependency><![CDATA[.//throw_exception.o]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>fails.wasm]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>fails.wasm]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//fails.run]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//fails.wasm]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>fails.run]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>fails.run]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//fails.test]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//fails.run]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>fails.test]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>fails.test]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//rejects.o]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//rejects.cpp]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>rejects.o]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>rejects.o]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//rejects.test]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//rejects.o]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>rejects.test]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>rejects.test]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//alone-demo.cpp]]></name> 
@@ -113,16 +103,16 @@
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//alone-demo.cpp]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-demo.o]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>alone-demo.o]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//alone-demo.test]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//alone-demo.o]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-demo.test]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>alone-demo.test]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//alone-demo-answer.cpp]]></name> 
@@ -136,83 +126,81 @@
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//alone-demo-answer.cpp]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-demo-answer.o]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>alone-demo-answer.o]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//alone-demo-answer.test]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//alone-demo-answer.o]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-demo-answer.test]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>alone-demo-answer.test]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[.//tools/boost_json.o]]></name> 
       <dependencies> 
         <dependency><![CDATA[.//tools/boost_json.cpp]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>tools/boost_json.o]]></jam-target> 
+      <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>tools/boost_json.o]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[.//libboost_json.a]]></name> 
       <dependencies> 
         <dependency><![CDATA[.//tools/boost_json.o]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>libboost_json.a]]></jam-target> 
+      <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>libboost_json.a]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//parses_json.o]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//parses_json.cpp]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>parses_json.o]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>parses_json.o]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//parses_json.wasm]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//parses_json.o]]></dependency> 
-        <dependency><![CDATA[.//throw_exception.o]]></dependency> 
         <dependency><![CDATA[.//libboost_json.a]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>parses_json.wasm]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>parses_json.wasm]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//parses_json.run]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//parses_json.wasm]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>parses_json.run]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>parses_json.run]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/test//parses_json.test]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/test//parses_json.run]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>parses_json.test]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>parses_json.test]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/example//hello.o]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/example//hello.cpp]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>hello.o]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>hello.o]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/example//hello.wasm]]></name> 
       <dependencies> 
         <dependency><![CDATA[libs/demo/example//hello.o]]></dependency> 
-        <dependency><![CDATA[.//throw_exception.o]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>hello.wasm]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>hello.wasm]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/demo/example//hello.output]]></name> 
@@ -220,8 +208,33 @@
         <dependency><![CDATA[libs/demo/example//hello.wasm]]></dependency> 
         <dependency><![CDATA[libs/demo/example//hello.expected]]></dependency> 
       </dependencies> 
-      <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi]]></path> 
-      <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>hello.output]]></jam-target> 
+      <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>hello.output]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/demo/example//catches.o]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/demo/example//catches.cpp]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>catches.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/demo/example//catches.wasm]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/demo/example//catches.o]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>catches.wasm]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/demo/example//catches.output]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/demo/example//catches.wasm]]></dependency> 
+        <dependency><![CDATA[libs/demo/example//catches.expected]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi]]></path> 
+      <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>catches.output]]></jam-target> 
     </target> 
   </targets> 
   <test type="RUN" name="demo/pass"> 
@@ -258,28 +271,60 @@
     <target><![CDATA[libs/demo/test//parses_json.test]]></target> 
     <source><![CDATA[libs/demo/test/parses_json.cpp]]></source> 
   </test> 
-  <action status="0" start="2026-10-08 06:35:06.529815000 +0000" end="2026-10-08 06:35:06.537000000 +0000" user="0.001418" system="0.003230"> 
+  <action status="0" start="2026-10-09 00:10:14.595176000 +0000" end="2026-10-09 00:10:14.612144000 +0000" user="0.001633" system="0.004638"> 
     <name><![CDATA[webcpp%write-include]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test>alone-demo.cpp]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/alone-demo.cpp]]></path> 
     <command><![CDATA[
-    cat "$TMPDIR//jamd010399c.000" > "bin/libs/demo/test/alone-demo.cpp"
+    cat "$TMPDIR//jam16ec030e8.000" > "bin/libs/demo/test/alone-demo.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.531386000 +0000" end="2026-10-08 06:35:06.538607000 +0000" user="0.001486" system="0.003657"> 
+  <action status="0" start="2026-10-09 00:10:14.596840000 +0000" end="2026-10-09 00:10:14.612618000 +0000" user="0.001711" system="0.004410"> 
     <name><![CDATA[webcpp%write-include]]></name> 
     <jam-target><![CDATA[<pbin/libs/demo/test>alone-demo-answer.cpp]]></jam-target> 
     <path><![CDATA[bin/libs/demo/test/alone-demo-answer.cpp]]></path> 
     <command><![CDATA[
-    cat "$TMPDIR//jamd010399d.000" > "bin/libs/demo/test/alone-demo-answer.cpp"
+    cat "$TMPDIR//jam16ec030e9.000" > "bin/libs/demo/test/alone-demo-answer.cpp"
 ]]></command> 
   </action> 
-  <action status="1" start="2026-10-08 06:35:06.578490000 +0000" end="2026-10-08 06:35:06.612515000 +0000" user="0.025894" system="0.005848"> 
+  <action status="0" start="2026-10-09 00:10:14.727887000 +0000" end="2026-10-09 00:10:14.794712000 +0000" user="0.028453" system="0.007866"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>rejects.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/rejects.o]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>alone-demo-answer.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/alone-demo-answer.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/rejects.o" "libs/demo/test/rejects.cpp"
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"   -std=c++20 --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/alone-demo-answer.o" "bin/libs/demo/test/alone-demo-answer.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 00:10:14.720162000 +0000" end="2026-10-09 00:10:14.797200000 +0000" user="0.031392" system="0.009658"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>hello.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/hello.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"   -std=c++20 --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/hello.o" "libs/demo/example/hello.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 00:10:14.795541000 +0000" end="2026-10-09 00:10:14.804203000 +0000" user="0.001167" system="0.002846"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>alone-demo-answer.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/alone-demo-answer.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/alone-demo-answer.test"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 00:10:14.721287000 +0000" end="2026-10-09 00:10:14.809032000 +0000" user="0.039286" system="0.012179"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>catches.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/catches.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"   -std=c++20 --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/catches.o" "libs/demo/example/catches.cpp"
+]]></command> 
+  </action> 
+  <action status="1" start="2026-10-09 00:10:14.757145000 +0000" end="2026-10-09 00:10:14.810630000 +0000" user="0.027211" system="0.007269"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>rejects.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/rejects.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"   -std=c++20 --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/rejects.o" "libs/demo/test/rejects.cpp"
 ]]></command> 
     <output><![CDATA[libs/demo/test/rejects.cpp:11:15: error: static assertion failed due to requirement 'webcpp::demo::answer() == 41': the answer is 42
    11 | static_assert(webcpp::demo::answer() == 41, "the answer is 42");
@@ -290,122 +335,106 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
 1 error generated.
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.581146000 +0000" end="2026-10-08 06:35:06.617224000 +0000" user="0.027633" system="0.005916"> 
+  <action status="0" start="2026-10-09 00:10:14.766267000 +0000" end="2026-10-09 00:10:14.818174000 +0000" user="0.029257" system="0.008447"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-demo-answer.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-demo-answer.o]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>alone-demo.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/alone-demo.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-demo-answer.o" "bin/libs/demo/test/alone-demo-answer.cpp"
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"   -std=c++20 --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/alone-demo.o" "bin/libs/demo/test/alone-demo.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.576484000 +0000" end="2026-10-08 06:35:06.618044000 +0000" user="0.029957" system="0.007604"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>hello.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/hello.o]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/hello.o" "libs/demo/example/hello.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-08 06:35:06.582164000 +0000" end="2026-10-08 06:35:06.619324000 +0000" user="0.028598" system="0.005958"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-demo.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-demo.o]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-demo.o" "bin/libs/demo/test/alone-demo.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-08 06:35:06.617468000 +0000" end="2026-10-08 06:35:06.621991000 +0000" user="0.001006" system="0.002090"> 
+  <action status="0" start="2026-10-09 00:10:14.818781000 +0000" end="2026-10-09 00:10:14.833682000 +0000" user="0.001048" system="0.002714"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-demo-answer.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-demo-answer.test]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>alone-demo.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/alone-demo.test]]></path> 
     <command><![CDATA[
-    echo passed > "bin/libs/demo/test/alone-demo-answer.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-demo-answer.test"
+    echo passed > "bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/alone-demo.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.618537000 +0000" end="2026-10-08 06:35:06.623015000 +0000" user="0.001013" system="0.002175"> 
+  <action status="0" start="2026-10-09 00:10:14.824599000 +0000" end="2026-10-09 00:10:14.843245000 +0000" user="0.001034" system="0.002772"> 
     <name><![CDATA[testing%testing.expect-failure]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>rejects.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/rejects.test]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>rejects.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/rejects.test]]></path> 
     <command><![CDATA[
-    echo passed > "bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/rejects.test"
+    echo passed > "bin/libs/demo/test/rejects.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/rejects.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.619661000 +0000" end="2026-10-08 06:35:06.624048000 +0000" user="0.001014" system="0.001889"> 
-    <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>alone-demo.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-demo.test]]></path> 
-    <command><![CDATA[
-    echo passed > "bin/libs/demo/test/alone-demo.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/alone-demo.test"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-08 06:35:06.510756000 +0000" end="2026-10-08 06:35:06.704392000 +0000" user="0.127107" system="0.028552"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>throw_exception.o]]></jam-target> 
-    <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o" "tools/throw_exception.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-08 06:35:06.704639000 +0000" end="2026-10-08 06:35:06.798124000 +0000" user="0.050893" system="0.019262"> 
+  <action status="0" start="2026-10-09 00:10:14.797749000 +0000" end="2026-10-09 00:10:14.902767000 +0000" user="0.057034" system="0.015074"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>hello.wasm]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/hello.wasm]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>hello.wasm]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/hello.wasm]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"    -o "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/hello.wasm"  "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/hello.o" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o"       -std=c++20 -g --target=wasm32-wasip2 
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"    -o "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/hello.wasm"  "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/hello.o"       -std=c++20 -g --target=wasm32-wasip2 -fwasm-exceptions -lunwind
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.577553000 +0000" end="2026-10-08 06:35:06.813674000 +0000" user="0.196936" system="0.026848"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>fails.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.o]]></path> 
+  <action status="0" start="2026-10-09 00:10:14.809329000 +0000" end="2026-10-09 00:10:14.941165000 +0000" user="0.055893" system="0.016266"> 
+    <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>catches.wasm]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/catches.wasm]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.o" "libs/demo/test/fails.cpp"
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"    -o "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/catches.wasm"  "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/catches.o"       -std=c++20 -g --target=wasm32-wasip2 -fwasm-exceptions -lunwind
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.579141000 +0000" end="2026-10-08 06:35:06.818136000 +0000" user="0.199034" system="0.026656"> 
-    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>pass.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.o]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.o" "libs/demo/test/pass.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-08 06:35:06.798438000 +0000" end="2026-10-08 06:35:06.877599000 +0000" user="0.067736" system="0.059671"> 
+  <action status="0" start="2026-10-09 00:10:14.903026000 +0000" end="2026-10-09 00:10:15.059890000 +0000" user="0.065531" system="0.021838"> 
     <name><![CDATA[webcpp%run-and-compare]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>hello.output]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/hello.output]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>hello.output]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/hello.output]]></path> 
     <command><![CDATA[
-    "python3" "$TMPDIR/webcpp scratch pvt75_v5/tools/example/run_example.py" --launcher "wasmtime" --expected "libs/demo/example/hello.expected" --output "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/hello.output" -- "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/hello.wasm"
+    "python3" "$TMPDIR/webcpp scratch wxp28u4c/tools/example/run_example.py" --launcher "wasmtime"  --expected "libs/demo/example/hello.expected" --output "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/hello.output" -- "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/hello.wasm"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.813944000 +0000" end="2026-10-08 06:35:06.888631000 +0000" user="0.056957" system="0.015613"> 
+  <action status="0" start="2026-10-09 00:10:14.941512000 +0000" end="2026-10-09 00:10:15.086281000 +0000" user="0.082693" system="0.020437"> 
+    <name><![CDATA[webcpp%run-and-compare]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>catches.output]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/catches.output]]></path> 
+    <command><![CDATA[
+    "python3" "$TMPDIR/webcpp scratch wxp28u4c/tools/example/run_example.py" --launcher "wasmtime"  --expected "libs/demo/example/catches.expected" --output "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/catches.output" -- "bin/libs/demo/example/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/catches.wasm"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 00:10:14.771601000 +0000" end="2026-10-09 00:10:15.311708000 +0000" user="0.265948" system="0.040825"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>fails.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"   -std=c++20 --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.o" "libs/demo/test/fails.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 00:10:14.747787000 +0000" end="2026-10-09 00:10:15.320585000 +0000" user="0.266688" system="0.040345"> 
+    <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>pass.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"   -std=c++20 --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.o" "libs/demo/test/pass.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 00:10:15.312007000 +0000" end="2026-10-09 00:10:15.444055000 +0000" user="0.059736" system="0.018158"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>fails.wasm]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.wasm]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>fails.wasm]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.wasm]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"    -o "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.wasm"  "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.o" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o"       -std=c++20 -g --target=wasm32-wasip2 
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"    -o "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.wasm"  "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.o"       -std=c++20 -g --target=wasm32-wasip2 -fwasm-exceptions -lunwind
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.818394000 +0000" end="2026-10-08 06:35:06.889735000 +0000" user="0.055927" system="0.015127"> 
+  <action status="0" start="2026-10-09 00:10:15.320977000 +0000" end="2026-10-09 00:10:15.452518000 +0000" user="0.062325" system="0.017815"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>pass.wasm]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.wasm]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>pass.wasm]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.wasm]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"    -o "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.wasm"  "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.o" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o"       -std=c++20 -g --target=wasm32-wasip2 
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"    -o "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.wasm"  "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.o"       -std=c++20 -g --target=wasm32-wasip2 -fwasm-exceptions -lunwind
 ]]></command> 
   </action> 
-  <action status="1" start="2026-10-08 06:35:06.888896000 +0000" end="2026-10-08 06:35:06.944951000 +0000" user="0.233567" system="0.018273"> 
+  <action status="1" start="2026-10-09 00:10:15.444452000 +0000" end="2026-10-09 00:10:15.558180000 +0000" user="0.278100" system="0.016753"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>fails.run]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.run]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>fails.run]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.run]]></path> 
     <command><![CDATA[
     
-    wasmtime "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.wasm"   > "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.output" 2>&1 < /dev/null
+    wasmtime "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.wasm"   > "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.output" 2>&1 < /dev/null
     status=$?
-    echo >> "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.output"
-    echo EXIT STATUS: $status >> "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.output"
+    echo >> "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.output"
+    echo EXIT STATUS: $status >> "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.output"
     if test $status -eq 0 ; then
-        cp "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.output" "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.run" >/dev/null
+        cp "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.output" "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.run" >/dev/null
     fi
     verbose=0
     if test $status -ne 0 ; then
@@ -413,7 +442,7 @@ libs/demo/test/rejects.cpp:11:38: note: expression evaluates to '42 == 41'
     fi
     if test $verbose -eq 1 ; then
         echo ====== BEGIN OUTPUT ======
-        cat "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.output"
+        cat "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.output"
         echo ====== END OUTPUT ======
     fi
     exit $status
@@ -426,18 +455,18 @@ EXIT STATUS: 1
 ====== END OUTPUT ======
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.890027000 +0000" end="2026-10-08 06:35:06.946349000 +0000" user="0.240110" system="0.017398"> 
+  <action status="0" start="2026-10-09 00:10:15.452947000 +0000" end="2026-10-09 00:10:15.562642000 +0000" user="0.282104" system="0.015436"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>pass.run]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.run]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>pass.run]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.run]]></path> 
     <command><![CDATA[
     
-    wasmtime "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.wasm"   > "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.output" 2>&1 < /dev/null
+    wasmtime "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.wasm"   > "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.output" 2>&1 < /dev/null
     status=$?
-    echo >> "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.output"
-    echo EXIT STATUS: $status >> "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.output"
+    echo >> "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.output"
+    echo EXIT STATUS: $status >> "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.output"
     if test $status -eq 0 ; then
-        cp "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.output" "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.run" >/dev/null
+        cp "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.output" "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.run" >/dev/null
     fi
     verbose=0
     if test $status -ne 0 ; then
@@ -445,72 +474,72 @@ EXIT STATUS: 1
     fi
     if test $verbose -eq 1 ; then
         echo ====== BEGIN OUTPUT ======
-        cat "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.output"
+        cat "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.output"
         echo ====== END OUTPUT ======
     fi
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.946639000 +0000" end="2026-10-08 06:35:06.950423000 +0000" user="0.000909" system="0.001524"> 
+  <action status="0" start="2026-10-09 00:10:15.562993000 +0000" end="2026-10-09 00:10:15.569070000 +0000" user="0.001088" system="0.002480"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>pass.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.test]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>pass.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.test]]></path> 
     <command><![CDATA[
-    echo passed > "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/pass.test"
+    echo passed > "bin/libs/demo/test/pass.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/pass.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.949743000 +0000" end="2026-10-08 06:35:06.953261000 +0000" user="0.000866" system="0.001437"> 
+  <action status="0" start="2026-10-09 00:10:15.564841000 +0000" end="2026-10-09 00:10:15.573346000 +0000" user="0.001267" system="0.003300"> 
     <name><![CDATA[testing%testing.expect-failure]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>fails.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.test]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>fails.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.test]]></path> 
     <command><![CDATA[
-    echo passed > "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/fails.test"
+    echo passed > "bin/libs/demo/test/fails.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/fails.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.580093000 +0000" end="2026-10-08 06:35:07.241157000 +0000" user="0.580081" system="0.053659"> 
+  <action status="0" start="2026-10-09 00:10:14.763557000 +0000" end="2026-10-09 00:10:15.992094000 +0000" user="0.749369" system="0.077083"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>parses_json.o]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.o]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>parses_json.o]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.o" "libs/demo/test/parses_json.cpp"
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"   -std=c++20 --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/demo/include"  -c -o "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.o" "libs/demo/test/parses_json.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:06.516530000 +0000" end="2026-10-08 06:35:07.799880000 +0000" user="1.056157" system="0.135164"> 
+  <action status="0" start="2026-10-09 00:10:14.571038000 +0000" end="2026-10-09 00:10:16.493853000 +0000" user="1.264218" system="0.185544"> 
     <name><![CDATA[clang-darwin%clang-darwin.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>tools/boost_json.o]]></jam-target> 
-    <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/tools/boost_json.o]]></path> 
+    <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>tools/boost_json.o]]></jam-target> 
+    <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/tools/boost_json.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"   -std=c++20 -fno-exceptions --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB -DBOOST_NO_EXCEPTIONS   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/tools/boost_json.o" "tools/boost_json.cpp"
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"   -std=c++20 --target=wasm32-wasip2 -O0 -fno-inline -Wall -Wextra -Werror -g --system-header-prefix="boost/" -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/tools/boost_json.o" "tools/boost_json.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:07.806370000 +0000" end="2026-10-08 06:35:07.820409000 +0000" user="0.008269" system="0.003328"> 
+  <action status="0" start="2026-10-09 00:10:16.500228000 +0000" end="2026-10-09 00:10:16.516667000 +0000" user="0.009770" system="0.004391"> 
     <name><![CDATA[clang-darwin%clang-darwin.archive]]></name> 
-    <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>libboost_json.a]]></jam-target> 
-    <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/libboost_json.a]]></path> 
+    <jam-target><![CDATA[<pbin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>libboost_json.a]]></jam-target> 
+    <path><![CDATA[bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/libboost_json.a]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/llvm-ar"  rsc "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/libboost_json.a" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/tools/boost_json.o"
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/llvm-ar"  rsc "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/libboost_json.a" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/tools/boost_json.o"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:07.820643000 +0000" end="2026-10-08 06:35:07.902515000 +0000" user="0.060833" system="0.017964"> 
+  <action status="0" start="2026-10-09 00:10:16.516930000 +0000" end="2026-10-09 00:10:16.597814000 +0000" user="0.063851" system="0.020187"> 
     <name><![CDATA[clang-darwin%clang-darwin.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>parses_json.wasm]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.wasm]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>parses_json.wasm]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.wasm]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-0yhfkiag/local/wasi-sdk/bin/clang++"    -o "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.wasm"  "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.o" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/throw_exception.o" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/libboost_json.a"       -std=c++20 -g --target=wasm32-wasip2 
+    "$TMPDIR/webcpp-local-7osgpd_0/local/wasi-sdk/bin/clang++"    -o "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.wasm"  "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.o" "bin/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/libboost_json.a"       -std=c++20 -g --target=wasm32-wasip2 -fwasm-exceptions -lunwind
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:07.902822000 +0000" end="2026-10-08 06:35:07.958316000 +0000" user="0.394935" system="0.025375"> 
+  <action status="0" start="2026-10-09 00:10:16.598212000 +0000" end="2026-10-09 00:10:16.671169000 +0000" user="0.453134" system="0.027824"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>parses_json.run]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.run]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>parses_json.run]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.run]]></path> 
     <command><![CDATA[
     
-    wasmtime "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.wasm"   > "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.output" 2>&1 < /dev/null
+    wasmtime "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.wasm"   > "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.output" 2>&1 < /dev/null
     status=$?
-    echo >> "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.output"
-    echo EXIT STATUS: $status >> "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.output"
+    echo >> "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.output"
+    echo EXIT STATUS: $status >> "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.output"
     if test $status -eq 0 ; then
-        cp "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.output" "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.run" >/dev/null
+        cp "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.output" "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.run" >/dev/null
     fi
     verbose=0
     if test $status -ne 0 ; then
@@ -518,18 +547,18 @@ EXIT STATUS: 1
     fi
     if test $verbose -eq 1 ; then
         echo ====== BEGIN OUTPUT ======
-        cat "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.output"
+        cat "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.output"
         echo ====== END OUTPUT ======
     fi
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-08 06:35:07.958630000 +0000" end="2026-10-08 06:35:07.962811000 +0000" user="0.000900" system="0.001595"> 
+  <action status="0" start="2026-10-09 00:10:16.671534000 +0000" end="2026-10-09 00:10:16.676328000 +0000" user="0.001087" system="0.002213"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi>parses_json.test]]></jam-target> 
-    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.test]]></path> 
+    <jam-target><![CDATA[<pbin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi>parses_json.test]]></jam-target> 
+    <path><![CDATA[bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.test]]></path> 
     <command><![CDATA[
-    echo passed > "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/exception-handling-off/link-static/target-os-wasi/parses_json.test"
+    echo passed > "bin/libs/demo/test/parses_json.test/clang-darwin-wasip2/debug/cxxstd-20-iso/link-static/target-os-wasi/parses_json.test"
 ]]></command> 
   </action> 
 </build>

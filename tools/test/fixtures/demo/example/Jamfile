@@ -9,5 +9,4 @@ import webcpp ;
 webcpp.targets native wasip2 wasip3 ;
 
 webcpp.example hello.cpp : <library>/webcpp/demo//demo ;
-# It throws, so it is built only where exceptions are on.
-webcpp.example catches.cpp : : native wasip3 ;
+webcpp.example catches.cpp ;

@@ -69,7 +69,8 @@ webcpp/
     webcpp.jam        the Jamfile API (chapter 9): webcpp.targets, webcpp.run, ...
     target.jam        the targets, and the target a toolset builds for, which webcpp.jam and
                       component.jam both read
-    throw_exception.cpp  what Boost calls in place of a throw, built without exceptions
+    throw_exception.cpp  what Boost calls in place of a throw, in a user's build without
+                      exceptions
     boost_json.cpp    Boost.JSON's definitions, built as /webcpp//boost_json (chapter 2)
     boost_test_runner.cpp  Boost.Test's header-only framework, for webcpp.boost-test (chapter 9)
     oracle/           the shared oracle (chapter 5): oracle.jam, twins.py, compare.py and their
@@ -340,7 +341,7 @@ owner's:
    xstate's `build.jam` does: the Jamroot's `boost_json`, `tools/boost_json.cpp`,
    compiles Boost.JSON's definitions (`<boost/json/src.hpp>`, as Boost.JSON
    documents for a header-only build) into a static library, once per variant,
-   so a program built without exceptions gets them built without exceptions
+   so a user's build without exceptions gets them built without exceptions
    too. Compiled Boost libraries are on the roadmap (chapter 13). A library
    that builds WebAssembly components declares the C bindings of its worlds
    there too, with `webcpp.wit-bindings` (chapter 9), as wasi's `build.jam`
@@ -409,8 +410,8 @@ A test's helpers that are shared between tests go in `webcpp::test`
   the same order of events, the same errors, for the same inputs.
 - Every difference is a decision, recorded in the page's appendix
   "Differences": what the original does, what the port does, and why. A
-  difference forced by C++ (no garbage collector, no exceptions on wasip2,
-  value types where the original shares objects) is still recorded.
+  difference forced by C++ (no garbage collector, value types where the
+  original shares objects) is still recorded.
 - Each difference has an example `example/diff_<topic>.cpp`, with its
   `.expected`, and its twin in the original's language (chapter 5), which
   shows the original's behaviour; the page shows both outputs side by side.
@@ -548,31 +549,27 @@ than leave it green on the rest.
 
 ### Exceptions and RTTI
 
-- **wasip2:** a program compiles without exceptions. This is a portability
-  policy, not a toolchain limit: some WebAssembly hosts lack exception
-  handling. The Jamroot sets `<exception-handling>off` and
-  `BOOST_NO_EXCEPTIONS` for `clang-wasip2`, and `webcpp.jam` links
-  `tools/throw_exception.cpp`, a `boost::throw_exception` handler that prints
-  and aborts, into every program built without exceptions. The wasip2 lane is
-  the one place webcpp proves that a library works without exceptions, for a
-  library that declares wasip2.
-- **Everywhere else** (native, emscripten, wasip3), whether a program uses
-  exceptions is the decision of whoever uses the library, never an
-  imposition of the library or of webcpp. webcpp builds no variant without
-  exceptions there. A user who builds with `exception-handling=off` gets the
-  same handler linked, and MSVC's `_HAS_EXCEPTIONS=0`.
-- **wasip3:** exceptions are on. The Jamroot compiles with
-  `-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false` and links with
-  `-fwasm-exceptions -lunwind`. The second flag is needed: wasi-sdk 34 emits
-  the legacy encoding by default, which wasmtime 47 refuses to run
-  ("legacy_exceptions feature required").
-- So a library's headers never `throw`, `try` or `catch` where wasip2
-  reaches them: there they return errors, and a failure that cannot be
-  returned goes through `boost::throw_exception`. Code that throws, tries or
-  catches sits behind `#ifndef BOOST_NO_EXCEPTIONS`, which is the condition,
-  so both wasip2 and a user's own build without exceptions compile. A
-  program that throws on purpose declares only the targets where exceptions
-  are on: `webcpp.example catches.cpp : : native wasip3 ;`.
+- **Every target builds with exceptions on.** Whether a program uses them is
+  the choice of whoever builds it, never an imposition of a library or of
+  webcpp. Natively the compiler's default holds. On wasip2 and wasip3 the
+  Jamroot compiles with `-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false`
+  and links with `-fwasm-exceptions -lunwind` (its region
+  `wasi-exceptions`): wasi-sdk 34 emits the legacy encoding by default, which
+  wasmtime 47 refuses to run ("legacy_exceptions feature required"). A
+  program that uses exceptions on wasip2 needs a host that runs them:
+  wasmtime 47 or later (older ones with `-W exceptions=y`), jco with
+  `jco transpile --bindgen-enable-wasm-exnref`, or another Wasm 3.0 engine.
+- **A user's build without exceptions.** `exception-handling=off` compiles
+  with `-fno-exceptions` on any target, Boost.Config then defines
+  `BOOST_NO_EXCEPTIONS`, and `webcpp.jam` links `tools/throw_exception.cpp`,
+  a `boost::throw_exception` handler that prints and aborts; MSVC also gets
+  `_HAS_EXCEPTIONS=0`. webcpp builds no such variant of its own.
+- **A library works without exceptions.** Its headers compile with
+  `-fno-exceptions`: what throws, tries or catches sits behind
+  `#ifndef BOOST_NO_EXCEPTIONS`, and a failure that cannot be returned goes
+  through `boost::throw_exception`. The lint checks it, by analysing every
+  aggregate translation unit a second time as b2 compiles it with
+  `exception-handling=off` (below).
 - **RTTI** is never restricted by webcpp, on any target, and no variant is
   built without it; a user imposes their own.
 
@@ -587,7 +584,7 @@ rule that failed.
 | Rule | What fails |
 | --- | --- |
 | clang-format | a C++ file not formatted as `.clang-format` says (Google-based, 4 spaces, 100 columns); `clang-format -i` fixes it |
-| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, with every program an own lane builds on that target, or on none (a served component, which only its own lane builds, among them; a served program in no own lane fails it, as it fails `b2 declared-lanes`), and each source that no native program compiles with the command of the first WASI target that compiles it (wasip2, else wasip3): wasi-sdk's `clang++` with that target's `--target`, the one compiler of a WebAssembly command the database accepts, to which the lint adds no host target or SDK, once the dry run of that target has generated the bindings its commands include (so the lint needs wit-bindgen and the WIT, chapter 1); plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, and again, with the handler `tools/throw_exception.cpp`, as b2 compiles it with `exception-handling=off`, so that what only a build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too; or, for a library whose headers build only for WASI, on wasip2 (without exceptions) and on wasip3 (with them), each reading its version's branch. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is not wasi-sdk's `clang++` (emscripten's `em++`, which the lint would analyse as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
+| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, with every program an own lane builds on that target, or on none (a served component, which only its own lane builds, among them; a served program in no own lane fails it, as it fails `b2 declared-lanes`), and each source that no native program compiles with the command of the first WASI target that compiles it (wasip2, else wasip3): wasi-sdk's `clang++` with that target's `--target`, the one compiler of a WebAssembly command the database accepts, to which the lint adds no host target or SDK, once the dry run of that target has generated the bindings its commands include (so the lint needs wit-bindgen and the WIT, chapter 1); plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, or, for a library whose headers build only for WASI, on wasip2 and on wasip3, each reading its version's branch; and each of those commands is followed by its twin, the same unit as b2 compiles it with `exception-handling=off` on the same target (natively with the handler `tools/throw_exception.cpp`), so that what only a user's build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is not wasi-sdk's `clang++` (emscripten's `em++`, which the lint would analyse as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
 | io_context::run | a call of Boost.Asio's `run`, `run_one` or `run_for`, which block; a driver drains with `poll` and `poll_one` |
 | fluent chains | three calls chained in one expression |
 | returns `*this` | a function other than an assignment operator returning `*this` |
@@ -1032,7 +1029,7 @@ webcpp.headers-alone <library> : <include-root> : <only> * : <requirements> * : 
 | Rule | Passes when | Notes |
 | --- | --- | --- |
 | `webcpp.targets t ...` | | the Jamfile's default targets; before its first program, once; each is `native`, `emscripten`, `wasip2` or `wasip3`, or the build stops naming it |
-| `webcpp.run` | the program exits with 0 | built once per target it declares; without exceptions on wasip2, where it links `tools/throw_exception.cpp` |
+| `webcpp.run` | the program exits with 0 | built once per target it declares; a user's `exception-handling=off` links `tools/throw_exception.cpp` |
 | `webcpp.run-fail` | the program exits with another status | |
 | `webcpp.compile` | the sources compile | no program is linked |
 | `webcpp.compile-fail` | the sources do not compile | left out of clang-tidy; any error passes it, the wrong one included |
@@ -1054,7 +1051,7 @@ webcpp.serve-script <name> : <script> : <stem> : <targets> * ;
 | Rule | Passes when | Notes |
 | --- | --- | --- |
 | `webcpp.wit-bindings` | | the target `<name>`, the C bindings wit-bindgen generates for the world `<world>` of `<world-file>`, renamed `<rename>` (`--rename-world`), for the WASI version `<version>`, `p2` or `p3`, with the arguments given: on that version's toolset alone (`clang-wasip2`, `clang-wasip3`) its usage requirements put their directory on the include path and link `<rename>.c` and `<rename>_component_type.o`, and elsewhere they add nothing, so a native build needs no wit-bindgen. The explicit target `<name>-headers` puts the directory on the include path on any toolset, for a native parse such as the reference (chapter 7). The bindings are generated while b2 computes a target's properties, in a dry run too, under `<build-dir>/generated/<library>/<name>/`, and again only when the world file, the WIT, wit-bindgen's version or an argument changed, compared by content. A name declared twice in a library stops the build, naming both |
-| `webcpp.serve` | the transcript of the answers to the requests of `<stem>.requests` equals `<stem>.expected` | builds `<source>` as a reactor component that exports an HTTP handler, for its own targets, which may be only wasip2 and wasip3, else for those of its Jamfile that are, linking `tools/throw_exception.cpp` where it is built without exceptions; `tools/component/serve.py` serves it with `wasmtime serve` (`-S cli` on wasip2, `-S cli,p3 -W component-model-async` on wasip3) on a port the system chooses, sends each request on a connection of its own, and stops wasmtime in every outcome, a SIGKILL of serve.py included, as b2 sends to an action that outlasts its `-l`: wasmtime runs under a keeper that kills it when serve.py's pipe to it ends. A test of b2's, which `--dump-tests` lists and `--out-xml` records, so the report sees it fail (as a run). It runs in an own lane, never in the ordinary ones (Lanes, below) |
+| `webcpp.serve` | the transcript of the answers to the requests of `<stem>.requests` equals `<stem>.expected` | builds `<source>` as a reactor component that exports an HTTP handler, for its own targets, which may be only wasip2 and wasip3, else for those of its Jamfile that are, linking `tools/throw_exception.cpp` in a user's build without exceptions; `tools/component/serve.py` serves it with `wasmtime serve` (`-S cli` on wasip2, `-S cli,p3 -W component-model-async` on wasip3) on a port the system chooses, sends each request on a connection of its own, and stops wasmtime in every outcome, a SIGKILL of serve.py included, as b2 sends to an action that outlasts its `-l`: wasmtime runs under a keeper that kills it when serve.py's pipe to it ends. A test of b2's, which `--dump-tests` lists and `--out-xml` records, so the report sees it fail (as a run). It runs in an own lane, never in the ordinary ones (Lanes, below) |
 | `webcpp.serve-script` | as `webcpp.serve`, with the requests and the transcript of `<stem>` | the component is built by the shell script `<script>`, run as `sh <script> <p2\|p3> <component>` with `WASI_SDK` (wasi-sdk's directory, chapter 1), `WIT_BINDGEN` and `WASI_WIT` (the WIT of the lane's version) in its environment, the tools b2 found: a build by hand that a page shows, run as written. It runs at every build |
 
 `<stem>.requests` holds one request per line, `<METHOD> <target>`.
@@ -1139,7 +1136,8 @@ webcpp.example xactor_asio.cpp : : native ;
   `if (!BOOST_TEST(x.has_value())) { return; }`. A helper, which cannot
   return from its case, calls `require(BOOST_TEST(...))`, which ends the
   program with the errors counted so far
-  (`libs/xactor/test/require.hpp`): a test may be built without exceptions.
+  (`libs/xactor/test/require.hpp`): a user may build a test without
+  exceptions.
 - Boost.Test is for a test that needs it (fixtures, data-driven suites),
   declared with `webcpp.boost-test`, natively only. The CI installs no
   compiled `unit_test_framework`: the suite compiles Boost.Test's header-only

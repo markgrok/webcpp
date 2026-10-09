@@ -5,17 +5,17 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks tools/lint/lint.sh: a clean superproject passes, with the fixture library and without
-any library; each rule, planted alone, fails alone and names the file and the line; and
+"""Checks tools/lint/lint.sh: a clean superproject passes, with the fixture library and without any
+library; each rule, planted alone, fails alone and names the file and the line; and
 tools/lint/compile_commands.py lists what b2 builds, without what b2 expects to fail, plus the
 aggregate translation units of each library: what builds only for WASI, the header of the fixture
 library component_demo's world and its programs that declare no native target, is analysed as
-wasi-sdk's clang++ builds it, with no host target, the header on wasip2 and on wasip3; a public
-header that no target compiles alone, a target whose toolset is not configured, and a WebAssembly
-command whose compiler is not wasi-sdk's clang++, fail the database by name. Each case lints a
-scratch superproject whose libs/demo is the fixture library demo, a repository of its own as a
-library's submodule is, and libs/component_demo too in the cases of WASI. Run with the names of
-some cases to run only those."""
+wasi-sdk's clang++ builds it, with no host target, the header on wasip2 and on wasip3, each with
+exceptions and without them; a public header that no target compiles alone, a target whose toolset
+is not configured, and a WebAssembly command whose compiler is not wasi-sdk's clang++, fail the
+database by name. Each case lints a scratch superproject whose libs/demo is the fixture library
+demo, a repository of its own as a library's submodule is, and libs/component_demo too in the cases
+of WASI. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -308,20 +308,25 @@ def test_compile_database_reads_what_only_wasi_builds(root):
     by_file: dict[Path, list[list[str]]] = {}
     for entry in entries:
         by_file.setdefault(Path(entry['file']), []).append(entry['arguments'])
-    # The header of the world builds only for WASI, so the library's aggregate does: once as
-    # wasip2 builds it, without exceptions and with the macro of p2, and once as wasip3 does,
-    # with exceptions and the macro of p3, each with the bindings of its version.
+    # The header of the world builds only for WASI, so the library's aggregate does, on each
+    # version as it builds there, with exceptions, with the macro and the bindings of that
+    # version, then as b2 builds the same unit with exception-handling=off, which defines
+    # BOOST_NO_EXCEPTIONS through Boost.Config: wasip2 with and without, then wasip3.
     aggregate = root / 'bin/aggregate/component_demo.cpp'
     assert aggregate.read_text().splitlines()[-2:] == [
         '#include <webcpp/component_demo.hpp>', '#include <webcpp/component_demo/world.hpp>'], (
         aggregate.read_text())
-    wasip2, wasip3 = by_file[aggregate]
-    for command, version, without in ((wasip2, 'p2', True), (wasip3, 'p3', False)):
+    commands = by_file[aggregate]
+    assert len(commands) == 4, commands
+    for command, (version, without) in zip(commands, (('p2', False), ('p2', True), ('p3', False),
+                                                      ('p3', True))):
         assert f'--target=wasm32-wasi{version}' in command, command
         assert ('-fno-exceptions' in command) == without, command
+        assert ('-fwasm-exceptions' in command) != without, command
         assert f'-DWEBCPP_COMPONENT_DEMO_{version.upper()}' in command, command
         assert any(word.endswith(f'generated/component_demo/demo-bindings-{version}')
                    for word in command), command
+        assert boost_sees_no_exceptions(root, command) == without, command
     # The programs that declare no native target are analysed as wasip2 builds them, once; the
     # native one natively.
     for source in ('bindings.cpp', 'answers.cpp'):
@@ -656,8 +661,33 @@ def test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles(root):
                     '    return status;\n'
                     '}\n'
                     '\n')
+    # The same block in a header that builds only for WASI, which no WASI program reaches without
+    # exceptions either, since every target builds with them.
+    add_component_demo(root)
+    world = 'libs/component_demo/include/webcpp/component_demo/world.hpp'
+    harness.replace(root / world, '#include <string_view>\n',
+                    '#include <boost/config.hpp>\n'
+                    '\n'
+                    '#include <string_view>\n')
+    harness.replace(root / world, '}  // namespace webcpp::component_demo\n',
+                    '#ifdef BOOST_NO_EXCEPTIONS\n'
+                    '\n'
+                    '/** Returns the value it leaves uninitialized at first.\n'
+                    '\n'
+                    '    @return 2.\n'
+                    '*/\n'
+                    'inline int unexceptional() {\n'
+                    '    int value;\n'
+                    '    value = 2;\n'
+                    '    return value;\n'
+                    '}\n'
+                    '\n'
+                    '#endif\n'
+                    '\n'
+                    '}  // namespace webcpp::component_demo\n')
     expect_alone(lint(root), 'clang-tidy',
-                 [at(root, header, 'int value;'), at(root, handler, 'int status;')])
+                 [at(root, header, 'int value;'), at(root, handler, 'int status;'),
+                  at(root, world, 'int value;')])
 
 
 def test_blocking_io_context_call(root):
