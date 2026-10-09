@@ -14,7 +14,8 @@ wasi-sdk's clang++ builds it, with no host target, the header on wasip2 and on w
 exceptions and without them; the fixture library browser_demo, whose headers no one target builds,
 has an aggregate per target, its emscripten one analysed by wasi-sdk's clang++ with the words of
 em++ --cflags, and its native one, against the fake dependency that throws, twinned without the
-header that needs exceptions; a public header that no target compiles alone, a target whose
+header that needs exceptions and with a native header whose own headers-alone call does not declare
+them; a public header that no target compiles alone, a target whose
 toolset is not configured, and a WebAssembly command whose compiler is neither wasi-sdk's clang++
 nor, on emscripten, Emscripten's em++, fail the database by name. Each case lints a scratch
 superproject whose libs/demo is the fixture library demo, a repository of its own as a library's
@@ -708,6 +709,54 @@ def test_clang_tidy_refuses_a_throw_on_each_target_without_exceptions(root):
         assert (disabled in result.stdout) == ('clang-tidy' in rules), (header,
                                                                         result.stdout[-6000:])
         (root / header).write_text(text)
+
+
+def test_a_native_header_that_needs_no_exceptions_has_its_twin(root):
+    prepare(root)
+    add_browser_demo(root)
+    # plain.hpp builds only natively too, against the fake dependency's directory, but compiles
+    # without exceptions: a header of the native backend that wraps nothing that throws, beside
+    # native.hpp, which does. A call of webcpp.headers-alone of its own, without
+    # <exception-handling>on, puts it in the native twin, which the call of native.hpp leaves it
+    # out of: the database names native.hpp alone as left out, and clang-tidy refuses a throw in
+    # plain.hpp as it does one in browser_demo.hpp.
+    plain = 'libs/browser_demo/include/webcpp/browser_demo/plain.hpp'
+    write(root, 'libs/browser_demo/deps/include/fake_plain.hpp',
+          CPP + '\n#ifndef FAKE_PLAIN_HPP\n#define FAKE_PLAIN_HPP\n\nnamespace fake_plain {\n\n'
+          '// The successor of value.\ninline int next(int value) noexcept {\n'
+          '    return value + 1;\n}\n\n}  // namespace fake_plain\n\n#endif\n')
+    write(root, plain,
+          CPP + '\n#ifndef WEBCPP_BROWSER_DEMO_PLAIN_HPP\n#define WEBCPP_BROWSER_DEMO_PLAIN_HPP\n\n'
+          '#include <fake_plain.hpp>\n\nnamespace webcpp::browser_demo {\n\n'
+          '/** Returns the level after the one it is given.\n\n'
+          '    @param level The level.\n    @return The next level.\n*/\n'
+          'inline int plain_next(int level) noexcept {\n'
+          '    return fake_plain::next(level);\n}\n\n'
+          '}  // namespace webcpp::browser_demo\n\n#endif\n')
+    append(root, 'libs/browser_demo/test/Jamfile',
+           'webcpp.headers-alone browser_demo : ../include : browser_demo/plain.hpp\n'
+           '  : <library>/webcpp/browser_demo//native : native ;\n')
+    completed = compile_database(root)
+    assert completed.returncode == 0, completed.stdout[-6000:]
+    twin = root / 'bin/aggregate/browser_demo-native-exception-handling-off.cpp'
+    assert includes(twin) == ['webcpp/browser_demo.hpp', 'webcpp/browser_demo/plain.hpp'], (
+        twin.read_text())
+    assert ('left out of the analysis without exceptions, their headers-alone units built with '
+            f'exceptions whatever the build asks: {NATIVE}\n') in completed.stdout, (
+        completed.stdout[-6000:])
+    expect_clean(lint(root))
+    harness.replace(root / plain, '#include <fake_plain.hpp>\n',
+                    '#include <fake_plain.hpp>\n\n#include <stdexcept>\n')
+    harness.replace(root / plain, '}  // namespace webcpp::browser_demo\n',
+                    '/** Returns the level it is given, refusing a negative one.\n\n'
+                    '    @param level The level.\n    @return level.\n*/\n'
+                    'inline int planted_strict(int level) {\n    if (level < 0) {\n'
+                    '        throw std::domain_error("a negative level");\n    }\n'
+                    '    return level;\n}\n\n}  // namespace webcpp::browser_demo\n')
+    result = lint(root)
+    expect_failed(result, ['clang-tidy', 'bare throw'],
+                  [f'{at(root, plain, "throw std::domain_error")} a bare throw',
+                   "cannot use 'throw' with exceptions disabled"])
 
 
 def boost_sees_no_exceptions(root: Path, command: list[str]) -> bool:
@@ -1679,6 +1728,7 @@ CASES = [
     test_clang_tidy_reads_what_only_one_target_builds,
     test_a_dependency_s_warnings_are_not_ours,
     test_clang_tidy_refuses_a_throw_on_each_target_without_exceptions,
+    test_a_native_header_that_needs_no_exceptions_has_its_twin,
     test_blocking_io_context_call,
     test_fluent_chain,
     test_returns_this,
