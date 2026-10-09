@@ -1784,6 +1784,36 @@ def test_doc_comment_references(root):
                at(root, header, 'auto a')))
 
 
+def test_doc_comment_code_spans(root):
+    prepare(root)
+    # MrDocs reads __X__ inside a code span of a Doc Comment as bold, and the page shows X: each
+    # such span fails at its line, in a /** */ comment and in a /// run. An escaped one, \__X__,
+    # a single underscore pair, prose, verbatim code and a plain comment are spared.
+    header = 'libs/demo/include/webcpp/demo/answer.hpp'
+    harness.replace(root / header, '    @return 42.\n',
+                    '    @return 42.\n'
+                    '    @note Defined under `__wasip2__` alone.\n'
+                    '    @note Read with `defined(__EMSCRIPTEN__) && x`.\n'
+                    '    @note Escaped, `\\__wasip3__` stays whole.\n'
+                    '    @note A `__prefix` or a `suffix__` alone, and `a_b_c`.\n'
+                    '    @note In prose, __bold__ is not a code span.\n'
+                    '    @code\n'
+                    '    #ifdef __wasm__ // `__wasm__` in code\n'
+                    '    @endcode\n')
+    harness.replace(root / header, 'constexpr int answer()',
+                    '/// Built for `__wasm__`.\n'
+                    '// A plain comment names `__wasm__`.\n'
+                    'constexpr int answer()')
+    expect_alone(lint(root), 'Doc Comment code spans', [
+        at(root, header, 'under `__wasip2__`') + ' `__wasip2__`',
+        at(root, header, 'defined(__EMSCRIPTEN__)') + ' `defined(__EMSCRIPTEN__) && x`',
+        at(root, header, '/// Built for') + ' `__wasm__`',
+        'MrDocs reads __...__ in a code span as bold',
+    ], spared=(at(root, header, 'Escaped'), at(root, header, '`__prefix`'),
+               at(root, header, 'In prose'), at(root, header, '#ifdef __wasm__'),
+               at(root, header, 'plain comment')))
+
+
 def test_pyright(root):
     prepare(root)
     # A warning fails as an error does. lint_test.py itself proves the import paths: it imports
@@ -1973,6 +2003,7 @@ CASES = [
     test_include_boundaries_malformed_json,
     test_doc_comments,
     test_doc_comment_references,
+    test_doc_comment_code_spans,
     test_pyright,
     test_python_line_length,
     test_python_blank_lines,

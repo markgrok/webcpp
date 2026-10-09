@@ -25,8 +25,9 @@
 # declare their programs only with tools/webcpp.jam's rules, that a Doc Comment uses only the
 # commands MrDocs renders and puts no colon after a reference, which MrDocs drops, that every
 # Python file passes Pyright, keeps to 100 columns and has two blank lines before a top-level def
-# or class, that a comment of a Jam file keeps to 80 columns, and that a library header raises
-# through boost::throw_exception, never with a bare throw.
+# or class, that a comment of a Jam file keeps to 80 columns, that a library header raises
+# through boost::throw_exception, never with a bare throw, and that no code span of a Doc Comment
+# holds __X__ unescaped, which MrDocs shows as a bold X.
 #
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
 # for the libraries' tests and examples and for their own lanes, a served component among them,
@@ -651,6 +652,16 @@ if python3 tools/lint/rules.py bare-throw < "${work_directory}/files"; then
     printf 'no library header holds a bare throw\n'
 else
     fail 'a library header throws; raise through boost::throw_exception'
+fi
+
+# 17. A code span of a Doc Comment holds no name between two pairs of underscores, such as
+#     `__wasip2__`, unescaped: MrDocs reads it as Markdown's strong emphasis, even in code, and
+#     the page shows a bold wasip2. `\__wasip2__` is shown as written (tools/lint/rules.py).
+rule 'Doc Comment code spans'
+if python3 tools/lint/rules.py doc-code-spans < "${work_directory}/sources"; then
+    printf 'no code span of a Doc Comment holds __X__ unescaped\n'
+else
+    fail 'a code span of a Doc Comment holds __X__, which MrDocs shows as a bold X; write \__X__'
 fi
 
 printf '\n'

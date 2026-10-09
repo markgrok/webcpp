@@ -19,6 +19,8 @@ Exit 0 when there is none, 1 when there is one, 2 on a usage error.
                       rules of tools/webcpp.jam;
   doc-comments        a Doc Comment uses only the commands webcpp allows, no bare @, and no
                       colon after a reference;
+  doc-code-spans      no code span of a Doc Comment holds __X__ unescaped, which MrDocs shows
+                      as a bold X;
   bare-throw          a library's public header raises an exception through
                       boost::throw_exception alone, never with a bare throw or throw;
   line-length         no line of a Python file is longer than 100 columns, .clang-format's
@@ -382,6 +384,59 @@ def doc_comments(path: str, text: str) -> Iterator[Finding]:
                        f'uses; write \\{character} for a literal {character}')
 
 
+# A name between two pairs of underscores in a code span, __wasip2__ or __EMSCRIPTEN__, whose
+# first pair no backslash escapes and no letter, digit or underscore touches from outside.
+DUNDER = re.compile(r'(?<![\\\w])__\w(?:[^`]*?\w)?__(?!\w)')
+
+# A command that opens or closes a verbatim block of a Doc Comment, @code or \code and their end.
+VERBATIM_COMMAND = re.compile(r'[@\\](code|endcode)(?![A-Za-z])')
+
+
+def code_spans(characters: str) -> Iterator[tuple[int, int]]:
+    """The code spans of a Doc Comment's text, each as the index of its opening backtick and the
+    index just past its closing one: a run of backticks up to the next run of as many, outside
+    @code ... @endcode, which is verbatim."""
+    verbatim = False
+    index = 0
+    while index < len(characters):
+        command = VERBATIM_COMMAND.match(characters, index)
+        if command is not None:
+            verbatim = command.group(1) == 'code'
+            index = command.end()
+            continue
+        if verbatim or characters[index] != '`':
+            index += 1
+            continue
+        run = len(characters[index:]) - len(characters[index:].lstrip('`'))
+        fence = '`' * run
+        close = index + run
+        while True:
+            close = characters.find(fence, close)
+            if close < 0 or characters[close + run:close + run + 1] != '`':
+                break
+            close += run + 1
+        if close < 0:
+            index += run
+            continue
+        yield index, close + run
+        index = close + run
+
+
+def doc_code_spans(path: str, text: str) -> Iterator[Finding]:
+    """No code span of a Doc Comment holds a name between two pairs of underscores unescaped:
+    MrDocs reads `__wasip2__` as Markdown's strong emphasis, even in code, and the page shows a
+    bold wasip2. `\\__wasip2__` is shown as written."""
+    if not path.endswith(('.hpp', '.cpp')):
+        return
+    for comment in doc_comments_of(text):
+        characters = ''.join(character for character, _ in comment)
+        for start, end in code_spans(characters):
+            if DUNDER.search(characters, start, end) is not None:
+                yield (path, comment[start][1],
+                       f'{characters[start:end]} MrDocs reads __...__ in a code span as bold, and '
+                       'shows the name without its underscores; write \\__ for the first pair')
+
+
 # A library's public header: a C or C++ header under libs/<name>/include, or under the same
 # directory of a fixture library, which the tests of the build place in libs/.
 LIBRARY_HEADER = re.compile(r'(libs|tools/test/fixtures)/[^/]+/include/.+\.(hpp|hxx|hh|h|ipp|inl)')
@@ -580,6 +635,7 @@ PER_FILE_RULES: dict[str, Callable[[str, str], Iterator[Finding]]] = {
     'licence': licence,
     'raw-rules': raw_rules,
     'doc-comments': doc_comments,
+    'doc-code-spans': doc_code_spans,
     'bare-throw': bare_throw,
     'line-length': line_length,
     'blank-lines': blank_lines,
