@@ -312,19 +312,42 @@ path-constant WEBCPP_ROOT : . ;
 # target (tools/boost/Jamfile), as /webcpp//boost_json is built from
 # Boost.JSON's headers: a tree of Boost's source archive, at least its
 # boost/version.hpp and the libs/<library>/src of each library built. It is
-# -sBOOST_SOURCE=<dir> on the command line, which wins, else a
-# user-config.jam's modules.poke of BOOST_SOURCE, else .local/boost-source,
-# which `bash tools/ci/actions/boost/install.sh source .local/boost-source`
-# fills. Its version must be the configured Boost's. Both are checked only
-# when a target uses a compiled Boost library.
+# -sBOOST_SOURCE=<dir> on the command line, which wins, else BOOST_SOURCE as
+# a user-config.jam's modules.poke or the environment gives it, else
+# .local/boost-source, which `bash tools/ci/actions/boost/install.sh source
+# .local/boost-source` fills. Its version must be the configured Boost's.
+# Both are checked only when a target uses a compiled Boost library.
+#
+# b2 makes every -s of the command line and every variable of the
+# environment a global variable, which a user-config.jam loaded after them
+# may replace: only ARGV tells the command line apart, and nothing tells
+# user-config.jam's value from the environment's.
+rule boost-source-on-command-line ( )
+{
+    local given previous ;
+    for local word in [ modules.peek : ARGV ]
+    {
+        given += [ MATCH "^-sBOOST_SOURCE=(.+)$" : $(word) ] ;
+        if $(previous) = -s
+        {
+            given += [ MATCH "^BOOST_SOURCE=(.+)$" : $(word) ] ;
+        }
+        previous = $(word) ;
+    }
+    return $(given) ;
+}
+
 .boost-source-local = [ path.join [ path.root [ path.make $(WEBCPP_ROOT) ] [ path.pwd ] ]
     .local/boost-source ] ;
-.boost-source-given = [ MATCH "^-sBOOST_SOURCE=(.+)$" : [ modules.peek : ARGV ] ] ;
+.boost-source-given = [ boost-source-on-command-line ] ;
 .boost-source-origin = "-sBOOST_SOURCE=$(.boost-source-given[-1])" ;
 if ! $(.boost-source-given)
 {
+    # b2 splits an environment variable's value at each space; joined again,
+    # it is the value as the environment gave it.
     .boost-source-given = [ modules.peek : BOOST_SOURCE ] ;
-    .boost-source-origin = "user-config.jam's BOOST_SOURCE, $(.boost-source-given[-1])," ;
+    .boost-source-given = $(.boost-source-given:J=" ") ;
+    .boost-source-origin = "BOOST_SOURCE (user-config.jam or the environment), $(.boost-source-given[-1])," ;
 }
 .boost-source = $(.boost-source-local) ;
 if $(.boost-source-given)
@@ -335,7 +358,8 @@ if $(.boost-source-given)
 path-constant WEBCPP_BOOST_SOURCE : [ path.native $(.boost-source) ] ;
 
 # The check of a compiled Boost library's alias: the tree holds a
-# boost/version.hpp, of the configured Boost's version.
+# boost/version.hpp, of the configured Boost's version, which the build
+# knows only when a `using boost` or BOOST_ROOT names Boost's directory.
 rule boost-source-usable ( properties * )
 {
     local shown = [ path.native $(.boost-source) ] ;
@@ -351,6 +375,20 @@ rule boost-source-usable ( properties * )
             "from, were not found: $(looked). Fill .local/boost-source with `bash"
             "tools/ci/actions/boost/install.sh source .local/boost-source`, or give"
             "-sBOOST_SOURCE=<dir>." ;
+    }
+    if ! $(.boost-found)
+    {
+        local config = [ modules.binding user-config ] ;
+        config ?= user-config.jam ;
+        local prefix = [ boost-installed ] ;
+        prefix = $(prefix[1]) ;
+        prefix ?= /path/to/boost ;
+        errors.user-error "$(shown) holds Boost $(version[2])'s sources, and the configured"
+            "Boost's version is unknown: Boost is on the compiler's default include path,"
+            "whose boost/version.hpp the build does not read, and a compiled Boost library is"
+            "built from the sources of the configured Boost's version. Name Boost's directory"
+            "in $(config) with this line, in place of any other `using boost`:"
+            : "    using boost : 1.92 : <include>$(prefix)/include <library>$(prefix)/lib ;" ;
     }
     if $(version[1]) != $(.boost-found[1])
     {

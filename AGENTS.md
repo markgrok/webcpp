@@ -281,19 +281,27 @@ the configured Boost from its `boost/version.hpp`, with `grep`, or with
 cached check on it; a Boost whose `#define BOOST_VERSION <number>` line it
 cannot read stops the build too, naming the directory.
 
-**Boost's sources.** A compiled Boost library that a webcpp library needs
-is built from Boost's own sources, for every target, as Boost.JSON's
-definitions are: `/webcpp//boost_url` (`tools/boost/Jamfile`). An installed
-Boost has none (Homebrew's ships its own `libboost_url` and no
-`libs/url/src`), so the build reads them from `-sBOOST_SOURCE=<dir>` on b2's
-command line, which wins, else a user-config.jam's `modules.poke :
-BOOST_SOURCE : <dir> ;`, else `.local/boost-source`: a tree with Boost's
-`boost/version.hpp` and the `libs/<library>/src` of each library, which
-`bash tools/ci/actions/boost/install.sh source .local/boost-source` fills
-from the archive the CI uses, checked against its SHA-256. When a target
-needs the tree, the build stops if it is missing, naming both places, if
-its version is not the configured Boost's, naming both versions, and if it
-lacks the library's sources; a build that needs none never looks.
+**Boost's sources.** A compiled Boost library that a webcpp library needs is
+built from Boost's own sources, for every target, as Boost.JSON's definitions
+are: `/webcpp//boost_url` (`tools/boost/Jamfile`). An installed Boost has none
+(Homebrew's ships its own `libboost_url` and no `libs/url/src`), so the build
+reads them from `-sBOOST_SOURCE=<dir>` on b2's command line (or `-s
+BOOST_SOURCE=<dir>`), which wins, else `BOOST_SOURCE` as a user-config.jam's
+`modules.poke : BOOST_SOURCE : <dir> ;` or the environment gives it, which b2
+cannot tell apart (chapter 12), else `.local/boost-source`: a tree with
+Boost's `boost/version.hpp` and the `libs/<library>/src` of each library,
+which `bash tools/ci/actions/boost/install.sh source .local/boost-source`
+fills from the archive the CI uses, checked against its SHA-256. It writes
+last a marker, `.webcpp-boost-source`, with the version and the archive's
+SHA-256, and replaces only a directory that holds one: any other, a user's, an
+installed Boost's include directory or a whole Boost tree, is refused by name
+before anything is downloaded, and a tree it wrote before the marker existed
+is removed by hand once. When a target needs the tree, the build stops if it
+is missing, naming both places, if its version is not the configured Boost's,
+naming both versions, if the configured Boost's version is unknown, Boost
+being on the compiler's default include path, naming the `using boost` line to
+add, and if it lacks the library's sources; a build that needs none never
+looks.
 
 **Machine-local setup.** `.local/` is git-ignored and holds what one machine
 needs: `.local/user-config.jam`, `.local/wasi-sdk/`, `.local/mrdocs/`,
@@ -457,7 +465,9 @@ owner's:
    webcpp from Boost's sources (chapter 1): a library that needs Boost.URL
    adds `<library>/webcpp//boost_url` to its target's usage requirements,
    static, built once per variant with Boost.URL's own macros; never
-   `/boost//url`, which would link the system's. A library that needs
+   `/boost//url`, which would link the system's, nor
+   `/webcpp/boost-libraries//boost_url`, which the Jamroot's alias checks
+   the sources' version for. A library that needs
    Boost.JSON adds `<library>/webcpp//boost_json` to its target's usage
    requirements, as xstate's `build.jam` does: the Jamroot's `boost_json`,
    `tools/boost_json.cpp`, compiles Boost.JSON's definitions
@@ -2030,21 +2040,21 @@ wrapper each quoted as one word of Jam.
 - `boost` downloads `boost_1_92_0.tar.gz` from
   `https://archives.boost.io/release/1.92.0/source/`, checked against the
   SHA-256 it records: the gzip archive, since Windows Server 2022's `tar.exe`
-  has no bzip2. It builds b2 with `bootstrap`, installs Boost's headers
-  (`--with-headers`), keeps in `<prefix>/source` the archive's
-  `boost/version.hpp` and every `libs/<library>/src`, which `configure` names
-  in `.local/user-config.jam` with `modules.poke : BOOST_SOURCE`, and that b2
-  into a prefix cached per image, writes the `using boost` line of
-  `.local/user-config.jam`, and puts b2 on `PATH`, on Linux, macOS and
-  Windows. The headers are installed with `--layout=system`, in
-  `<prefix>/include/boost`, and b2 with `b2-install-layout=standard`, in
-  `<prefix>/bin`: on Windows, Boost's default is the versioned layout,
-  `<prefix>/include/boost-1_92`, and b2's the portable one, which ignores
-  `--bindir` and puts b2 in the prefix itself. A prefix that lacks the
-  headers, b2 or the sources after the install fails the action before it is
-  cached. It refuses an empty or relative prefix: b2 given an empty
-  `--prefix` installs into `/usr/local`. `install.sh source <dir>` fills such
-  a tree alone, for a machine whose Boost comes from elsewhere.
+  has no bzip2. It builds b2 with `bootstrap`, and installs Boost's headers
+  (`--with-headers`) and that b2 into a prefix cached per image. It keeps
+  beside them, in `<prefix>/source`, the archive's `boost/version.hpp`, every
+  `libs/<library>/src` and the marker `.webcpp-boost-source` (chapter 1). It
+  writes the `using boost` line of `.local/user-config.jam`, with the
+  `modules.poke : BOOST_SOURCE` that names `<prefix>/source`, and puts b2 on
+  `PATH`, on Linux, macOS and Windows. The headers are installed with
+  `--layout=system`, in `<prefix>/include/boost`, and b2 with
+  `b2-install-layout=standard`, in `<prefix>/bin`: on Windows, Boost's default
+  is the versioned layout, `<prefix>/include/boost-1_92`, and b2's the
+  portable one, which ignores `--bindir` and puts b2 in the prefix itself. A
+  prefix that lacks the headers, b2 or the sources after the install fails the
+  action before it is cached. It refuses an empty or relative prefix: b2 given
+  an empty `--prefix` installs into `/usr/local`. `install.sh source <dir>`
+  fills such a tree alone, for a machine whose Boost comes from elsewhere.
 - `wasi-sdk` installs wasi-sdk 34 into `.local/wasi-sdk`, `wasmtime`
   installs wasmtime 47.0.3 on `PATH`, `mrdocs` installs MrDocs 2026.9.29 into
   `.local/mrdocs`, and `node` sets up Node 26.7.0, with npm's cache keyed on
@@ -2415,6 +2425,13 @@ Each of these was measured; each has cost time.
 - **b2 5.5.3's `--command-database` writes nothing,** so the compilation
   database comes from `tools/lint/compile_commands.py`, which reads b2's dry
   run (`b2 -n -a`).
+- **Every `-s` of the command line and every variable of the environment
+  is a global variable,** which `modules.peek` reads and a `user-config.jam`
+  loaded after them may replace with its `modules.poke`: only `ARGV` tells
+  the command line's value apart, in both its forms, `-sNAME=<value>` and
+  `-s NAME=<value>`, and nothing tells user-config.jam's from the
+  environment's. An environment value is split at each space, a `*PATH` one
+  at the path separator, so it is joined again (`$(value:J=" ")`).
 - **A free feature plays no part in a target's build directory:** an
   example's output from one launcher would read as up to date under another,
   which is why `webcpp.example` always runs again.

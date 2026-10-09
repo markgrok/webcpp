@@ -37,49 +37,72 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=SCRIPTDIR/../../helpers.sh
 . "${here}/../../helpers.sh"
 
-# Stops when destination exists and is no tree of Boost's sources: .local itself, or a directory
-# of the user's, is never replaced.
+# The file that install.sh writes last into a tree of Boost's sources it made, with the version
+# and the archive's SHA-256: the one sign that a directory is such a tree, which it may replace.
+marker=.webcpp-boost-source
+
+# What install.sh made and removes when it ends, however it ends: the extracted archive, a tree
+# it was filling, the tree it replaced.
+made=()
+trap 'rm -rf ${made[@]+"${made[@]}"}' EXIT
+
+# Stops, before anything is downloaded, when destination exists and holds no marker: a directory
+# that install.sh did not write, such as one of the user's, an installed Boost's include directory
+# or a whole Boost tree, is never replaced.
 refuse_foreign() {
-    if [ -e "$1" ] && [ ! -f "$1/boost/version.hpp" ]; then
-        printf 'install.sh: %s exists and holds no boost/version.hpp, so it is left as it is\n' \
-            "$1" >&2
+    if [ -e "$1" ] && [ ! -f "$1/${marker}" ]; then
+        printf 'install.sh: %s exists and holds no %s, so install.sh did not write it, and it %s' \
+            "$1" "${marker}" 'is left as it is; if it is a tree of Boost'"'"'s sources that you' >&2
+        printf ' no longer need, remove it yourself and run install.sh source again\n' >&2
         exit 1
     fi
 }
 
 # Copies into destination what webcpp builds Boost's compiled libraries from: boost/version.hpp,
-# which the Jamroot compares with the configured Boost's, and every libs/<library>/src of the
-# source tree. It fills a sibling first and moves it into place, so that a build reading the old
-# tree never sees half of the new one.
+# which the Jamroot compares with the configured Boost's, every libs/<library>/src of the source
+# tree, and last the marker. It fills a sibling of its own first and swaps it into place, so that
+# a build reading the old tree never sees half of the new one.
 keep_sources() {
     local tree="$1" destination="${2%/}"
     refuse_foreign "${destination}"
-    local filling="${destination}.filling"
-    rm -rf "${filling}"
-    mkdir -p "${filling}/boost" "${filling}/libs"
+    mkdir -p "$(dirname "${destination}")"
+    local filling
+    filling="$(mktemp -d "${destination}.filling.XXXXXX")"
+    made+=("${filling}")
+    chmod 755 "${filling}"
+    mkdir "${filling}/boost" "${filling}/libs"
     cp "${tree}/boost/version.hpp" "${filling}/boost/version.hpp"
     local src library
     for src in "${tree}"/libs/*/src; do
         [ -d "${src}" ] || continue
         library="$(basename "$(dirname "${src}")")"
-        mkdir -p "${filling}/libs/${library}"
+        mkdir "${filling}/libs/${library}"
         cp -R "${src}" "${filling}/libs/${library}/src"
     done
-    rm -rf "${destination}"
+    printf '# Written by tools/ci/actions/boost/install.sh, which may replace this tree.\n' \
+        > "${filling}/${marker}"
+    printf 'version=%s\nsha256=%s\n' "${version}" "${sha256}" >> "${filling}/${marker}"
+    if [ -e "${destination}" ]; then
+        local old
+        old="$(mktemp -d "${destination}.old.XXXXXX")"
+        made+=("${old}")
+        mv "${destination}" "${old}/tree"
+    fi
     mv "${filling}" "${destination}"
 }
 
 # Fills directory with the sources install keeps, from the same archive, checked the same way: a
-# machine's .local/boost-source, where the Jamroot looks when no -sBOOST_SOURCE is given.
+# machine's .local/boost-source, where the Jamroot looks when no BOOST_SOURCE is given.
 source_tree() {
-    local directory="$1"
-    refuse_foreign "${directory%/}"
+    local directory="${1%/}"
+    refuse_foreign "${directory}"
     local work
-    work="$(mktemp -d)"
+    # Named in full: macOS's mktemp -d alone ignores TMPDIR.
+    work="$(mktemp -d "${TMPDIR:-/tmp}/webcpp-boost-source.XXXXXX")"
+    made+=("${work}")
     "${here}/../../download.sh" "${url}" "${sha256}" "${work}/${archive}"
     tar -xzf "${work}/${archive}" -C "${work}"
     keep_sources "${work}/boost_${version//./_}" "${directory}"
-    rm -rf "${work}"
 }
 
 key() {

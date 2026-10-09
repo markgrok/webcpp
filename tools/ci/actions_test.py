@@ -13,9 +13,10 @@ in <prefix>/include/boost on every runner, Windows's included, where the default
 b2 in <prefix> itself and the headers in <prefix>/include/boost-1_92, keeps in <prefix>/source the
 archive's boost/version.hpp and every libs/<library>/src, which configure names in
 user-config.jam, and fails, before the prefix is cached, when the prefix holds no headers, no b2 or
-no sources after the install; its source step fills a directory with the same tree alone, in
-place of one it wrote, and refuses one that holds no boost/version.hpp before it downloads
-anything. The wit-bindgen action
+no sources after the install; its source step fills a directory with the same tree alone, and
+the marker it writes last, in place of a tree whose marker says the action wrote it, refuses any
+other directory before it downloads anything, and leaves the tree as it was and nothing behind
+when it fails. The wit-bindgen action
 installs the build of the runner's system and processor, the program alone, in .local/wit-bindgen,
 where the build looks for it, in place of what was there, and refuses a runner it pins no build
 for before it downloads anything; the wasi-wit action installs the wit/deps directory of each
@@ -252,14 +253,31 @@ def test_boost_install_fails_when_the_prefix_is_incomplete(scratch: Path) -> Non
 
 
 # What install keeps in <prefix>/source, and source writes into a directory: the archive's
-# boost/version.hpp and every libs/<library>/src, nothing else.
-KEPT_SOURCES = ['boost/version.hpp', 'libs/json/src/src.cpp', 'libs/url/src/detail/pattern.hpp',
-                'libs/url/src/url.cpp']
+# boost/version.hpp and every libs/<library>/src, and the marker that says the action wrote the
+# tree, nothing else.
+MARKER = '.webcpp-boost-source'
+KEPT_SOURCES = [MARKER, 'boost/version.hpp', 'libs/json/src/src.cpp',
+                'libs/url/src/detail/pattern.hpp', 'libs/url/src/url.cpp']
+
+# Where source runs: no runner around it.
+NO_RUNNER = {'RUNNER_OS': '', 'RUNNER_TEMP': '', 'GITHUB_PATH': ''}
 
 
 def files_under(directory: Path) -> list[str]:
     return sorted(str(path.relative_to(directory)) for path in directory.rglob('*')
                   if path.is_file())
+
+
+def pinned_sha256() -> str:
+    found = re.search(r'^sha256=([0-9a-f]{64})$', BOOST.read_text(), re.MULTILINE)
+    assert found, BOOST
+    return found.group(1)
+
+
+def expect_marker(tree: Path) -> None:
+    """Asserts that tree's marker names the version and the archive's SHA-256."""
+    text = (tree / MARKER).read_text()
+    assert 'version=1.92.0\n' in text and f'sha256={pinned_sha256()}\n' in text, text
 
 
 def test_boost_keeps_the_sources_of_its_compiled_libraries(scratch: Path) -> None:
@@ -268,6 +286,7 @@ def test_boost_keeps_the_sources_of_its_compiled_libraries(scratch: Path) -> Non
     result = run(script, 'install', prefix, env=runner)
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
     assert files_under(prefix / 'source') == KEPT_SOURCES, files_under(prefix / 'source')
+    expect_marker(prefix / 'source')
     result = subprocess.run(['bash', str(script), 'configure', str(prefix)], capture_output=True,
                             text=True, check=False, cwd=scratch, env={**os.environ, **runner})
     assert result.returncode == 0, (result.returncode, result.stderr)
@@ -280,30 +299,78 @@ def test_boost_source_fills_a_directory_alone(scratch: Path) -> None:
     # .local/boost-source from the same archive, checked the same way, with no runner around it.
     script, _ = boost_install_tree(scratch)
     directory = scratch / 'local sources'
+    temp = scratch / 'tmp'
+    temp.mkdir()
     for _ in range(2):
-        # The second run replaces the tree the first wrote.
-        result = run(script, 'source', directory,
-                     env={'RUNNER_OS': '', 'RUNNER_TEMP': '', 'GITHUB_PATH': ''})
+        # The second run replaces the tree the first wrote, which its marker says.
+        result = run(script, 'source', directory, env={**NO_RUNNER, 'TMPDIR': str(temp)})
         assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
         assert files_under(directory) == KEPT_SOURCES, files_under(directory)
+        expect_marker(directory)
+        # Nothing is left beside it, nor in the temporary directory.
+        assert sorted(path.name for path in scratch.glob('local sources*')) == [
+            'local sources'], list(scratch.iterdir())
+        assert list(temp.iterdir()) == [], list(temp.iterdir())
     assert not (scratch / '.local').exists()
-    assert not (scratch / 'local sources.filling').exists()
 
 
 def test_boost_source_refuses_a_directory_it_did_not_write(scratch: Path) -> None:
-    # A tree of Boost's sources is replaced; anything else (.local itself, a directory of the
-    # user's) is left as it is, before anything is downloaded: the stand-in download.sh only says
-    # it was called.
+    # Only a tree that install.sh wrote, which its marker says, is replaced; anything else is left
+    # as it is, before anything is downloaded (the stand-in download.sh only says it was called):
+    # a directory of the user's, an installed Boost's include directory, a whole Boost tree, and a
+    # tree of the same shape as the action's that holds no marker, as one written before the
+    # marker existed.
     script = boost_tree(scratch)
-    directory = scratch / 'mine'
-    directory.mkdir()
-    (directory / 'keep.txt').write_text('mine\n')
-    result = run(script, 'source', directory,
-                 env={'RUNNER_OS': '', 'RUNNER_TEMP': '', 'GITHUB_PATH': ''})
-    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
-    assert f'install.sh: {directory} exists and holds no boost/version.hpp' in result.stderr
-    assert CALLED not in result.stderr, result.stderr
-    assert files_under(directory) == ['keep.txt'], files_under(directory)
+    for name, files in (('mine', ['keep.txt']),
+                        ('include', ['boost/version.hpp', 'boost/url.hpp', 'zlib.h']),
+                        ('boost_1_92_0', ['boost/version.hpp', 'boost/url.hpp', 'b2',
+                                          'libs/url/doc/index.html', 'libs/url/src/url.cpp']),
+                        ('unmarked', ['boost/version.hpp', 'libs/url/src/url.cpp'])):
+        directory = scratch / name
+        for file in files:
+            (directory / file).parent.mkdir(parents=True, exist_ok=True)
+            (directory / file).write_text(f'{file}\n')
+        result = run(script, 'source', directory, env=NO_RUNNER)
+        assert result.returncode == 1, (name, result.returncode, result.stdout, result.stderr)
+        assert (f'install.sh: {directory} exists and holds no {MARKER}, so install.sh did not '
+                'write it, and it is left as it is') in result.stderr, (name, result.stderr)
+        assert 'remove it yourself' in result.stderr, (name, result.stderr)
+        assert CALLED not in result.stderr, (name, result.stderr)
+        assert files_under(directory) == sorted(files), (name, files_under(directory))
+
+
+def broken_archive(scratch: Path, how: str) -> None:
+    """Replaces the stand-in archive with one that cannot be read, or one without
+    boost/version.hpp, so that source fails after it made its temporary directories."""
+    archive = scratch / 'boost_1_92_0.tar.gz'
+    if how == 'unreadable':
+        archive.write_bytes(b'not a gzip archive\n')
+        return
+    tree = scratch / 'broken/boost_1_92_0'
+    (tree / 'libs/url/src').mkdir(parents=True)
+    (tree / 'libs/url/src/url.cpp').write_text('// url\n')
+    with tarfile.open(archive, 'w:gz') as tar:
+        tar.add(tree, arcname='boost_1_92_0')
+
+
+def test_boost_source_that_fails_leaves_the_tree_and_no_files(scratch: Path) -> None:
+    # A source that fails, in the archive or while it copies, leaves the tree it wrote before as
+    # it was, and removes what it made: the extracted archive, and the tree it was filling.
+    script, _ = boost_install_tree(scratch)
+    directory = scratch / 'local sources'
+    temp = scratch / 'tmp'
+    temp.mkdir()
+    environment = {**NO_RUNNER, 'TMPDIR': str(temp)}
+    result = run(script, 'source', directory, env=environment)
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    for how in ('unreadable', 'without version.hpp'):
+        broken_archive(scratch, how)
+        result = run(script, 'source', directory, env=environment)
+        assert result.returncode != 0, (how, result.returncode, result.stdout, result.stderr)
+        assert files_under(directory) == KEPT_SOURCES, (how, files_under(directory))
+        assert sorted(path.name for path in scratch.glob('local sources*')) == [
+            'local sources'], (how, list(scratch.iterdir()))
+        assert list(temp.iterdir()) == [], (how, list(temp.iterdir()))
 
 
 def place_helpers(scratch: Path) -> None:
@@ -1630,6 +1697,7 @@ CASES: list[Callable[[Path], None]] = [
     test_boost_keeps_the_sources_of_its_compiled_libraries,
     test_boost_source_fills_a_directory_alone,
     test_boost_source_refuses_a_directory_it_did_not_write,
+    test_boost_source_that_fails_leaves_the_tree_and_no_files,
     test_wit_bindgen_installs_the_runners_build_alone,
     test_wit_bindgen_refuses_a_runner_it_pins_no_build_for,
     test_wasi_wit_installs_each_crates_wit_deps,

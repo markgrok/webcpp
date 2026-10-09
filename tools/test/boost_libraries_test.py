@@ -92,13 +92,25 @@ def test_boost_url_links_on_every_target(root: Path) -> None:
         # libboost_url, which Homebrew ships.
         assert len(archives(root)) == count, (request, archives(root))
         assert '-lboost_url' not in result.stdout, (request, result.stdout[-4000:])
+        # The usage requirements reach the program: Boost.URL's macros of a static library,
+        # which keep MSVC's auto-link and dllimport off.
+        compiles = [line for line in result.stdout.splitlines()
+                    if 'urls.cpp' in line and ' -c ' in line]
+        assert compiles, (request, result.stdout[-4000:])
+        for define in ('-DBOOST_URL_STATIC_LINK=1', '-DBOOST_URL_NO_LIB=1'):
+            assert all(define in line for line in compiles), (request, define, compiles)
 
 
 def test_without_the_library_a_program_does_not_link(root: Path) -> None:
     add_urls(root, URLS_JAMFILE.replace(' : <library>/webcpp//boost_url', ''))
     result = harness.run_b2(root, '-a', 'libs/urls/test')
     harness.expect(result, False)
-    assert re.search(r'^\.\.\.failed .*urls', result.stdout, re.MULTILINE), result.stdout[-4000:]
+    # The link fails, on a definition of Boost.URL's compiled sources, not the compile.
+    assert re.search(r'^\.\.\.failed \S+\.link .*urls', result.stdout, re.MULTILINE), (
+        result.stdout[-4000:])
+    assert 'ipv4_address' in result.stdout, result.stdout[-4000:]
+    assert not re.search(r'^\.\.\.failed \S+\.compile', result.stdout, re.MULTILINE), (
+        result.stdout[-4000:])
 
 
 def test_missing_sources_are_refused_naming_the_fix(root: Path) -> None:
@@ -138,7 +150,26 @@ def test_sources_named_by_user_config(root: Path) -> None:
     missing = root / 'no sources'
     harness.configure(root, text + f'modules.poke : BOOST_SOURCE : "{missing}" ;\n')
     harness.expect(harness.run_b2(root, 'libs/urls/test'), False,
-                   f"user-config.jam's BOOST_SOURCE, {missing}, holds no boost/version.hpp")
+                   f'BOOST_SOURCE (user-config.jam or the environment), {missing}, holds no '
+                   'boost/version.hpp')
+
+
+def test_sources_named_by_the_environment(root: Path) -> None:
+    # b2 reads the environment's variables as it reads user-config.jam's, so an environment's
+    # BOOST_SOURCE is honoured, and named as coming from either. b2 splits its value at each
+    # space, as it splits every variable of the environment but a *PATH, so the tree is given
+    # through a path that holds spaces.
+    harness.without_boost_source(root)
+    spaced = root / 'the  boost sources'
+    spaced.symlink_to(harness.boost_source())
+    add_urls(root)
+    result = harness.run_b2(root, 'libs/urls/test', env_extra={'BOOST_SOURCE': str(spaced)})
+    harness.expect(result, True)
+    assert passed(result) == {'urls'}, (passed(result), result.stdout[-4000:])
+    missing = root / 'no sources'
+    harness.expect(harness.run_b2(root, 'libs/urls/test', env_extra={'BOOST_SOURCE': str(missing)}),
+                   False, f'BOOST_SOURCE (user-config.jam or the environment), {missing}, holds '
+                   'no boost/version.hpp')
 
 
 def test_the_command_line_wins(root: Path) -> None:
@@ -153,9 +184,36 @@ def test_the_command_line_wins(root: Path) -> None:
     result = harness.run_b2(root, f'-sBOOST_SOURCE={harness.boost_source()}', 'libs/urls/test')
     harness.expect(result, True)
     assert passed(result) == {'urls'}, (passed(result), result.stdout[-4000:])
+    # b2 also takes -s and the assignment as two words.
+    result = harness.run_b2(root, '-s', f'BOOST_SOURCE={harness.boost_source()}', 'libs/urls/test')
+    harness.expect(result, True)
     missing = root / 'no sources'
-    harness.expect(harness.run_b2(root, f'-sBOOST_SOURCE={missing}', 'libs/urls/test'), False,
-                   f'-sBOOST_SOURCE={missing} holds no boost/version.hpp')
+    for words in ((f'-sBOOST_SOURCE={missing}',), ('-s', f'BOOST_SOURCE={missing}')):
+        harness.expect(harness.run_b2(root, *words, 'libs/urls/test'), False,
+                       f'-sBOOST_SOURCE={missing} holds no boost/version.hpp')
+
+
+# The include directory of a user-config.jam's `using boost`, and its first native toolset's line.
+USING_BOOST_INCLUDE = re.compile(r'^\s*using\s+boost\b[^;]*<include>"?([^";\s]+)"?', re.MULTILINE)
+NATIVE_USING = re.compile(r'^\s*using\s+(?:clang|gcc)\b(?![^;]*wasip)[^;]*;', re.MULTILINE)
+
+
+def test_boost_on_the_default_include_path_is_refused_naming_the_fix(root: Path) -> None:
+    # Boost found on the compiler's own include path, with no `using boost`: the build cannot read
+    # the configured Boost's version, so it asks for the line that names its directory.
+    text = harness.user_config(root).read_text()
+    include = USING_BOOST_INCLUDE.search(text)
+    native = NATIVE_USING.search(text)
+    assert include and native, text
+    words = native.group(0).rstrip(';').rstrip()
+    words += ' :' * (3 - words.count(':'))
+    flagged = f'{words} <cxxflags>"-isystem{include.group(1)}" ;'
+    harness.configure(root, harness.USING_BOOST.sub('', text.replace(native.group(0), flagged)))
+    add_urls(root)
+    harness.expect(harness.run_b2(root, 'libs/urls/test'), False,
+                   "the configured Boost's version is unknown",
+                   'using boost : 1.92 : <include>')
+    harness.expect(harness.run_b2(root, 'libs/demo/test//pass'), True)
 
 
 CASES = [
@@ -165,7 +223,9 @@ CASES = [
     test_sources_of_another_version_are_refused,
     test_a_tree_without_the_library_s_sources_is_refused,
     test_sources_named_by_user_config,
+    test_sources_named_by_the_environment,
     test_the_command_line_wins,
+    test_boost_on_the_default_include_path_is_refused_naming_the_fix,
 ]
 
 
