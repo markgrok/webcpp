@@ -595,7 +595,9 @@ local rule load-jamfiles ( directories * )
 # (native when there are none). A lane-only program, served or driven, is named
 # by such a lane on every target it is built for, which lanes checks. Only a
 # Jamfile under the library's test or example directory, which lanes loads, may
-# declare one.
+# declare one. The alias compiles nothing, so it leaves the Jamroot's check of
+# Boost, and the libraries its project's requirements name, whose targets would
+# run it, to the targets it names.
 rule lane ( name : b2-targets + : targets * )
 {
     local found = [ where ] ;
@@ -629,15 +631,19 @@ rule lane ( name : b2-targets + : targets * )
         }
     }
     local key = $(found[3])/$(name) ;
+    local requirements = [ $(found[1]).get requirements ] ;
+    local libraries = [ $(requirements).get <library> ] ;
+    local unchecked = <webcpp-boost-check>off -<library>$(libraries) ;
     if $(targets)
     {
         .lane-targets.$(key) = $(targets) ;
         .lane-shown.$(key) = "webcpp.lane $(name) in $(found[4])" ;
-        alias $(name) : $(b2-targets) : <webcpp-lane>$(key) <conditional>@webcpp%lane-target ;
+        alias $(name) : $(b2-targets)
+          : <webcpp-lane>$(key) <conditional>@webcpp%lane-target $(unchecked) ;
     }
     else
     {
-        alias $(name) : $(b2-targets) ;
+        alias $(name) : $(b2-targets) : $(unchecked) ;
     }
     $(found[1]).mark-target-as-explicit $(name) $(b2-targets) ;
     .lane-keys += $(key) ;

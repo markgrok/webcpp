@@ -25,7 +25,10 @@
 # by one generator or by two of the Jamfile.
 # A lane names generated-<name> (webcpp.lane), and the ordinary lanes never
 # build it: a generator may need the network. Neither target compiles
-# anything, so they leave the Jamroot's check of Boost out.
+# anything, so they leave out the Jamroot's check of Boost, and the libraries
+# their project's requirements name, whose targets would run that check, and
+# whatever else their usage requirements do, such as generating a world's
+# bindings.
 #
 # This file is loaded as the module webcpp-generated. Its rule receives
 # first where its Jamfile is, as tools/webcpp.jam's `where` finds it.
@@ -100,14 +103,17 @@ rule generated ( found + : name : script : arguments * : outputs + )
         [ sequence.length $(committed) ] $(committed) ;
     local build-dir = [ path.root [ $(found[1]).build-dir ] [ path.pwd ] ] ;
     .build.$(key) = [ path.native $(build-dir)/generated ] ;
+    local requirements = [ $(found[1]).get requirements ] ;
+    local libraries = [ $(requirements).get <library> ] ;
+    local unchecked = <webcpp-boost-check>off -<library>$(libraries) ;
     notfile generated-$(name) : @webcpp-generated%check
-      : : <webcpp-generated>$(key) <webcpp-generated-name>$(name) <webcpp-boost-check>off ;
+      : : <webcpp-generated>$(key) <webcpp-generated-name>$(name) $(unchecked) ;
     $(found[1]).mark-target-as-explicit generated-$(name) ;
     if ! $(.update.$(key))
     {
         .update.$(key) = true ;
         notfile update-generated : @webcpp-generated%update
-          : : <webcpp-generated>$(key) <webcpp-boost-check>off ;
+          : : <webcpp-generated>$(key) $(unchecked) ;
         $(found[1]).mark-target-as-explicit update-generated ;
     }
 }
