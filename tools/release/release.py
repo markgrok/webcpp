@@ -433,7 +433,11 @@ HIGHLIGHTS = ('<!-- At most five highlights, each "- **<category>**: <one senten
               'words>.", in this\norder, a category with nothing to say left out: '
               + ', '.join(CATEGORIES) + '. Written from the\nrelease notes, inventing nothing; '
               'the owner approves them before the tag. -->')
+# The marker pattern anywhere in the section - inside a code span or a link's text included -
+# and the same marker as a line reads it: its own first characters, no leading space, which is
+# the only occurrence a reader's rendered Markdown shows as a highlight.
 HIGHLIGHT = re.compile(r'- \*\*(?P<category>[^*]+)\*\*: ')
+HIGHLIGHT_LINE = re.compile(r'^- \*\*(?P<category>[^*]+)\*\*: ', re.MULTILINE)
 
 
 def markdown(text: str) -> str:
@@ -490,10 +494,10 @@ def whats_new(root: Path, version: Version) -> list[str]:
 def whats_new_findings(root: Path, version: Version) -> list[str]:
     """What breaks the form of the version's What's new once its highlights are written: at
     most five, each a category of CATEGORIES, in their order, each once, one sentence of at
-    most 20 words, and one highlight per line. A highlight is read wherever it starts, as the
-    Markdown a reader sees it, never by splitting its section on raw newlines, so two or more
-    packed onto one line are read as that many highlights, not as one; such a line is refused
-    outright, naming the file and the line."""
+    most 20 words, and a marker only where it starts a line - a reader's rendered Markdown
+    shows no other occurrence as a highlight, a code span or a link's text included, and such
+    an occurrence is refused outright, naming the file and the line. A highlight's sentence may
+    span lines up to the next highlight's own line or the section's end."""
     relative = f'doc/releases/{version.name}.whats-new.md'
     if not (root / relative).is_file():
         return []
@@ -514,19 +518,16 @@ def whats_new_findings(root: Path, version: Version) -> list[str]:
     def line_of(position: int) -> int:
         return text.count('\n', 0, offset + position) + 1
 
-    items = list(HIGHLIGHT.finditer(body))
-    findings = []
+    items = list(HIGHLIGHT_LINE.finditer(body))
+    starts = {item.start() for item in items}
+    findings = [f'{relative}:{line_of(stray.start())}: a highlight marker that does not start '
+               'a line' for stray in HIGHLIGHT.finditer(body) if stray.start() not in starts]
     leading = body[:items[0].start()] if items else body
-    if leading.strip():
-        findings.append(f'{relative}:{line_of(0)}: a highlight is "- **<category>**: '
-                        f'<sentence>", its category one of {", ".join(CATEGORIES)}')
-    by_line: dict[int, int] = {}
-    for item in items:
-        line = line_of(item.start())
-        by_line[line] = by_line.get(line, 0) + 1
-    for line in sorted(line for line, count in by_line.items() if count > 1):
-        findings.append(f'{relative}:{line}: a line holds {by_line[line]} highlights, and each '
-                        '"- **<category>**: <sentence>." is on its own line')
+    stray_text = re.search(r'\S', leading)
+    if stray_text is not None:
+        findings.append(f'{relative}:{line_of(stray_text.start())}: a highlight is '
+                        f'"- **<category>**: <sentence>", its category one of '
+                        f'{", ".join(CATEGORIES)}')
     categories = []
     for index, item in enumerate(items):
         end = items[index + 1].start() if index + 1 < len(items) else len(body)

@@ -591,20 +591,20 @@ def test_whats_new_highlights_are_checked(directory: Path) -> None:
     # A duplicated category, with no reordering and no smuggling, is "each once"'s own case.
     highlights('- **Dependencies**: one.', '- **Dependencies**: two.')
     expect(release.check(tree.root, V010), 'the highlights come in the order')
-    # Two or more highlights packed onto one physical line are read as that many highlights, as
-    # a reader of the Markdown sees them, not as one: the line is refused outright, named by its
-    # number, and each highlight it holds still counts towards the five, the order and the
-    # categories, so none of the three checks is fooled by where a line break falls.
+    # A marker packed onto a line after a real highlight is refused outright, named by its
+    # line, and never counted as a highlight of its own: this is also why packing extra
+    # markers onto one line can no longer inflate the count past five (fix round 2).
     highlights('- **New libraries**: five. - **Dependencies**: one.')
-    expect(release.check(tree.root, V010), 'a line holds 2 highlights')
+    expect(release.check(tree.root, V010), 'a highlight marker that does not start a line')
     highlights('- **Dependencies**: one. - **Dependencies**: two. - **Dependencies**: three.',
                '- **Dependencies**: four.', '- **Dependencies**: five.',
                '- **Dependencies**: six.')
-    expect(release.check(tree.root, V010), 'a line holds 3 highlights',
-           '6 highlights, and there are at most 5')
-    highlights('- **New libraries**: one. - **New libraries**: two.')
-    expect(release.check(tree.root, V010), 'a line holds 2 highlights',
+    found = release.check(tree.root, V010)
+    expect(found, 'a highlight marker that does not start a line',
            'the highlights come in the order')
+    assert not any('there are at most 5' in finding for finding in found), found
+    highlights('- **New libraries**: one. - **New libraries**: two.')
+    expect(release.check(tree.root, V010), 'a highlight marker that does not start a line')
 
 
 def test_whats_new_names_unreadable_files(directory: Path) -> None:
@@ -657,6 +657,75 @@ def test_whats_new_names_unreadable_files(directory: Path) -> None:
         assert str(broken).startswith('doc/releases/0.2.0.whats-new.md cannot be read: '), broken
     else:
         raise AssertionError("whats_new_findings read a What's new that is not UTF-8")
+
+
+def test_whats_new_highlight_markers_must_start_a_line(directory: Path) -> None:
+    # A highlight is a line whose first characters are its marker, no leading space: a
+    # reader's rendered Markdown shows no other occurrence of "- **<category>**: " as a
+    # highlight, a code span or a link's text included, and such an occurrence is refused,
+    # named by its line, never silently read as a second, well-ordered highlight.
+    tree = scratch.make_tree(directory)
+    release.whats_new(tree.root, V010)
+    written = tree.root / 'doc/releases/0.1.0.whats-new.md'
+    skeleton = written.read_text(encoding='utf-8')
+
+    def highlights(body: str) -> None:
+        tree.commit_file('doc/releases/0.1.0.whats-new.md',
+                         re.sub(r'<!--.*?-->', body, skeleton, flags=re.DOTALL))
+
+    # A marker inside a code span is never a real highlight.
+    highlights('- **New libraries**: one.\n\n'
+              '`- **Developer experience**: fake extra credit.`')
+    found = release.check(tree.root, V010)
+    expect(found, 'a highlight marker that does not start a line')
+    assert not any('come in the order' in finding for finding in found), found
+    # Nor is one inside a link's text.
+    highlights('- **New libraries**: one.\n\n'
+              '[- **Developer experience**: fake extra credit.](https://example.com/x)')
+    found = release.check(tree.root, V010)
+    expect(found, 'a highlight marker that does not start a line')
+    assert not any('come in the order' in finding for finding in found), found
+    # A marker indented by even one space does not start the line either.
+    highlights(' - **New libraries**: one.')
+    expect(release.check(tree.root, V010), 'a highlight marker that does not start a line')
+    # A marker at the very end of the section, its sentence empty, is still read, named there.
+    highlights('- **New libraries**: one.\n- **Dependencies**: ')
+    expect(release.check(tree.root, V010), 'a highlight is "- **<category>**: <sentence>"')
+    # CRLF line endings: read_text's universal-newline translation normalizes them before any
+    # regex runs, so a clean body still checks clean, and an indented one is still refused.
+    clean_crlf = ('- **New libraries**: five header-only libraries arrive.\r\n'
+                 '- **Developer experience**: every changelog line is checked.\r\n')
+    commit_bytes(tree, None, 'doc/releases/0.1.0.whats-new.md',
+                re.sub(r'<!--.*?-->', clean_crlf, skeleton, flags=re.DOTALL)
+                .replace('\n', '\r\n').encode('utf-8'))
+    assert release.check(tree.root, V010) == []
+    indented_crlf = ' - **New libraries**: one.\r\n'
+    commit_bytes(tree, None, 'doc/releases/0.1.0.whats-new.md',
+                re.sub(r'<!--.*?-->', indented_crlf, skeleton, flags=re.DOTALL)
+                .replace('\n', '\r\n').encode('utf-8'))
+    expect(release.check(tree.root, V010), 'a highlight marker that does not start a line')
+
+
+def test_whats_new_leading_text_is_named_by_its_own_line(directory: Path) -> None:
+    # The "text before the first highlight" finding cites the line where the stray text
+    # itself begins, not the Highlights section's own first line (or any line of its
+    # placeholder comment).
+    tree = scratch.make_tree(directory)
+    release.whats_new(tree.root, V010)
+    written = tree.root / 'doc/releases/0.1.0.whats-new.md'
+    text = written.read_text(encoding='utf-8')
+    marker = 'the owner approves them before the tag. -->\n\n'
+    stray = 'Summary of this release:\n\n- **New libraries**: config lands.\n\n'
+    assert marker in text, text
+    new_text = text.replace(marker, marker + stray)
+    tree.commit_file('doc/releases/0.1.0.whats-new.md', new_text)
+    stray_line = next(number for number, line in enumerate(new_text.split('\n'), 1)
+                      if line.strip() == 'Summary of this release:')
+    found = release.check(tree.root, V010)
+    expect(found, f'doc/releases/0.1.0.whats-new.md:{stray_line}: a highlight is '
+           '"- **<category>**: <sentence>"')
+    assert not any(f':{stray_line - 1}:' in finding or f':{stray_line - 2}:' in finding
+                  for finding in found), found
 
 
 def git_checkout(root: Path) -> None:
@@ -790,6 +859,8 @@ CASES: list[Callable[[Path], None]] = [
     test_whats_new_lists_updated_libraries,
     test_whats_new_highlights_are_checked,
     test_whats_new_names_unreadable_files,
+    test_whats_new_highlight_markers_must_start_a_line,
+    test_whats_new_leading_text_is_named_by_its_own_line,
 ]
 
 B2_CASES: list[Callable[[Path], None]] = [
