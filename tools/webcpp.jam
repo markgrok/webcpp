@@ -19,6 +19,7 @@
 #     webcpp.headers-alone library : include-root : only * : requirements *
 #       : targets * ;
 #     webcpp.link name : sources + : requirements * : targets * ;
+#     webcpp.data directories + ;  (requirements: a run's data on WASI)
 #
 # the rule with which any test or example Jamfile of a library declares one
 # of its own lanes, which `b2 declared-lanes` lists, once per target it
@@ -82,6 +83,7 @@ import regex ;
 import sequence ;
 import set ;
 import testing ;
+import toolset ;
 
 # A program's targets, which filter reads. Free, so that a program's
 # targets play no part in its build directory.
@@ -100,6 +102,17 @@ feature.feature webcpp-lane : : free incidental ;
 # the library that needs it out. Incidental, so that it plays no part in a
 # build directory, and propagated, so that it reaches each library's alias.
 feature.feature webcpp-require-external : on : optional incidental propagated ;
+
+# What a test that reads the host's files at run time gets under wasmtime:
+# each value is wasmtime's option --dir="<directory>", which preopens that
+# directory of the host at the same path in the program, and webcpp.data
+# writes it, on WASI alone. testing.jam's capture-output, the action of
+# webcpp.run and webcpp.run-fail, puts the values after testing.launcher's
+# own words, so that the command is `wasmtime --dir="<directory>" <program>`.
+# Natively and on emscripten (-sNODERAWFS=1) a program reads the host's
+# files already.
+feature.feature webcpp-data : : free incidental ;
+toolset.flags testing.capture-output LAUNCHER : <webcpp-data> : unchecked ;
 
 # What links tools/throw_exception.cpp, the handler Boost calls in place of
 # a throw, into a program a user builds with exception-handling=off, on any
@@ -317,6 +330,25 @@ rule run-fail ( name : sources + : requirements * : targets * )
 {
     testing.run-fail $(sources) : : : $(requirements) [ program run-fail : $(name) : $(targets) ]
         $(.handler) $(.node-raw-fs) : $(name) ;
+}
+
+# The requirements, or usage requirements, that give a program of webcpp.run
+# or webcpp.run-fail the directories at run time, each absolute, as a
+# path-constant gives it: the program reads them at the same path on every
+# target. Quoted whole, for a path that holds a space.
+rule data ( directories + )
+{
+    local result ;
+    for local directory in $(directories)
+    {
+        if ! [ path.is-rooted [ path.make $(directory) ] ]
+        {
+            errors.user-error "webcpp.data: $(directory) is not absolute; give the directory"
+                "as a path-constant gives it" ;
+        }
+        result += <target-os>wasi:<webcpp-data>"--dir=\"$(directory)\"" ;
+    }
+    return $(result) ;
 }
 
 # A test that passes when its program, built from sources, links, which it

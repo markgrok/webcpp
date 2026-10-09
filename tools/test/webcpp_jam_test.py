@@ -19,9 +19,10 @@ original's language; what it names leaves the ordinary lanes, a build of it for 
 by name, and every served program runs in one on every target it is served on; the programs of a
 library are recorded by kind, a link-only program and a driven test among them; a Boost.Test suite
 is built and run natively only, its framework always with exceptions; Boost.JSON's definitions link
-on every target; and every program sees C++20 and exceptions, on every target. Each case builds a
-scratch superproject with the fixture library demo. Run with the names of some cases to run only
-those."""
+on every target; every program sees C++20 and exceptions, on every target; and a test reads the
+directory webcpp.data gives it, which must be absolute, at the same path on every target, wasmtime
+being given it on WASI. Each case builds a scratch superproject with the fixture library demo. Run
+with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -972,6 +973,71 @@ def test_no_variant_is_built_without_rtti(root):
             assert '-fno-rtti' not in line and 'rtti-off' not in line, (request, line)
 
 
+# A test that reads a file of a directory whose name holds a space, which webcpp.data gives it.
+DATA_JAMFILE = r'''import regex ;
+import webcpp ;
+
+webcpp.targets native wasip2 wasip3 ;
+
+path-constant DATA : "the data" ;
+local data = [ regex.replace $(DATA) "\\\\" "/" ] ;
+webcpp.run reads_data : reads_data.cpp
+  : <define>"\"WEBCPP_TEST_DATA=\\\"$(data)\\\"\"" [ webcpp.data $(DATA) ] ;
+'''
+
+READS_DATA_SOURCE = r'''#include <fstream>
+#include <iostream>
+#include <string>
+
+int main() {
+    std::ifstream file(WEBCPP_TEST_DATA "/answer.txt");
+    std::string line;
+    if (!std::getline(file, line)) {
+        std::cout << "cannot read " WEBCPP_TEST_DATA "/answer.txt\n";
+        return 1;
+    }
+    std::cout << line << '\n';
+    return line == "42" ? 0 : 1;
+}
+'''
+
+
+def add_data_reader(root, jamfile=DATA_JAMFILE):
+    harness.add_library(root, 'data_reader', jamfile, {'reads_data.cpp': READS_DATA_SOURCE})
+    (root / 'libs/data_reader/test/the data').mkdir()
+    (root / 'libs/data_reader/test/the data/answer.txt').write_text('42\n')
+
+
+def test_a_test_reads_its_data_on_every_target(root):
+    add_data_reader(root)
+    for request in ((), WASIP2, WASIP3):
+        result = harness.run_b2(root, '-a', '-d+2', *request, 'libs/data_reader/test')
+        harness.expect(result, True)
+        assert passed(result) == {'reads_data'}, (request, passed(result), result.stdout[-4000:])
+        assert output_of(root, 'reads_data.output').startswith('42\n'), request
+        # wasmtime is given the directory after its own name, quoted whole; natively nothing is.
+        given = re.search(r'wasmtime --dir="[^"]*/the data" ', result.stdout)
+        assert bool(given) == bool(request), (request, result.stdout[-4000:])
+        shutil.rmtree(root / 'bin')
+
+
+def test_without_its_data_a_wasi_test_reads_nothing(root):
+    # The reason webcpp.data exists: natively the program reads the host's files, under wasmtime
+    # it sees none it was not given.
+    add_data_reader(root, DATA_JAMFILE.replace(' [ webcpp.data $(DATA) ]', ''))
+    harness.expect(harness.run_b2(root, '-a', 'libs/data_reader/test'), True)
+    shutil.rmtree(root / 'bin')
+    result = harness.run_b2(root, '-a', *WASIP2, 'libs/data_reader/test')
+    harness.expect(result, False)
+    assert output_of(root, 'reads_data.output').startswith('cannot read '), result.stdout[-4000:]
+
+
+def test_data_must_be_absolute(root):
+    add_data_reader(root, DATA_JAMFILE.replace('[ webcpp.data $(DATA) ]', '[ webcpp.data data ]'))
+    harness.expect(harness.run_b2(root, 'libs/data_reader/test'), False,
+                   'webcpp.data: data is not absolute')
+
+
 CASES = [
     test_native_builds_exactly_the_declared_programs,
     test_wasip2_skips_native_only_and_has_exceptions,
@@ -1003,6 +1069,9 @@ CASES = [
     test_every_program_sees_cxx20_and_exceptions_on_every_target,
     test_a_users_build_without_exceptions_links_the_handler,
     test_no_variant_is_built_without_rtti,
+    test_a_test_reads_its_data_on_every_target,
+    test_without_its_data_a_wasi_test_reads_nothing,
+    test_data_must_be_absolute,
 ]
 
 

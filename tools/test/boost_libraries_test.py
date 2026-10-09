@@ -270,8 +270,7 @@ int main() {
 }
 '''
 
-# translates reads its catalog natively and on emscripten, which read the host's files, alone
-# until webcpp.data gives it the directory on WASI.
+# translates reads its catalog on every target, from the directory webcpp.data gives it.
 LOCALE_JAMFILE = r'''import regex ;
 import webcpp ;
 
@@ -282,10 +281,8 @@ local catalogs = [ regex.replace $(CATALOGS) "\\\\" "/" ] ;
 webcpp.run converts : converts.cpp : <library>/webcpp//boost_locale ;
 webcpp.run translates : translates.cpp
   : <library>/webcpp//boost_locale <define>"\"WEBCPP_TEST_CATALOGS=\\\"$(catalogs)\\\"\""
-  : native emscripten ;
+    [ webcpp.data $(CATALOGS) ] ;
 '''
-
-TRANSLATES_ON_WASI = False
 
 CONVERTS_SOURCE = r'''#include <boost/locale.hpp>
 
@@ -375,15 +372,12 @@ def test_boost_locale_on_every_target(root: Path) -> None:
     add_locales(root)
     gcc = harness.gcc_request(root)
     for request in ((), WASIP2, WASIP3, EMSCRIPTEN, *((gcc,) if gcc else ())):
-        wasi = request in (WASIP2, WASIP3)
         result = harness.run_b2(root, '-a', '-d+2', *request, 'libs/locales/test')
         harness.expect(result, True)
-        expected = {'converts', 'translates'} if TRANSLATES_ON_WASI or not wasi else {'converts'}
-        assert passed(result) == expected, (request, passed(result), result.stdout[-4000:])
+        assert passed(result) == {'converts', 'translates'}, (request, passed(result),
+                                                              result.stdout[-4000:])
         assert output_of(root, 'converts.output').startswith('posix std |café|1\n'), request
-        if 'translates' in expected:
-            assert output_of(root, 'translates.output').startswith(
-                'Olá Mundo|café\n'), request
+        assert output_of(root, 'translates.output').startswith('Olá Mundo|café\n'), request
         assert '-lboost_locale' not in result.stdout, (request, result.stdout[-4000:])
         shutil.rmtree(root / 'bin')
 
@@ -534,8 +528,8 @@ def test_boost_locale_is_refused_without_exceptions(root: Path) -> None:
     for request in ((), WASIP2):
         result = harness.run_b2(root, '-a', *request, 'exception-handling=off', 'libs/locales/test')
         harness.expect(result, True)
-        expected = {'converts', 'translates'} if not request else {'converts'}
-        assert passed(result) == expected, (request, passed(result), result.stdout[-4000:])
+        assert passed(result) == {'converts', 'translates'}, (request, passed(result),
+                                                              result.stdout[-4000:])
 
 
 CASES = [

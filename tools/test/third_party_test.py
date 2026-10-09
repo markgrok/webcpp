@@ -7,15 +7,17 @@
 
 """Checks third_party/: the JSON Schema Test Suite, pinned, reaches a test that names
 /webcpp/third_party//json-schema-test-suite at the directory its define gives, natively and on
-emscripten; a changed file of the suite runs such a test again; and a suite that is not checked out
-stops a build that needs it, naming the command that checks it out, and no other build. Each case
-builds a scratch superproject with the fixture library demo, whose path holds a space. Run with the
-names of some cases to run only those."""
+emscripten, and on wasip2 and wasip3, where wasmtime is given that directory; a changed file of the
+suite runs such a test again; and a suite that is not checked out stops a build that needs it,
+naming the command that checks it out, and no other build. Each case builds a scratch superproject
+with the fixture library demo, whose path holds a space. Run with the names of some cases to run
+only those."""
 
 from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -23,6 +25,8 @@ from pathlib import Path
 
 import harness
 
+WASIP2 = ('toolset=clang-wasip2', 'testing.launcher=wasmtime')
+WASIP3 = ('toolset=clang-wasip3', 'testing.launcher=wasmtime')
 EMSCRIPTEN = ('toolset=emscripten',)
 
 PASSED = re.compile(r'^\*\*passed\*\* (.*)$', re.MULTILINE)
@@ -107,6 +111,16 @@ def test_the_suite_reaches_a_test_on_emscripten(root: Path) -> None:
     expect_read(root)
 
 
+def test_the_suite_reaches_a_test_on_wasi(root: Path) -> None:
+    add_reader(root)
+    for request in (WASIP2, WASIP3):
+        result = harness.run_b2(root, '-a', *request, 'libs/suite_reader/test')
+        harness.expect(result, True)
+        assert passed(result) == {'reads_suite'}, (request, passed(result), result.stdout[-4000:])
+        expect_read(root)
+        shutil.rmtree(root / 'bin')
+
+
 def test_a_changed_suite_file_runs_the_test_again(root: Path) -> None:
     # The suite of the case's own: a date set through the link would be the checkout's.
     harness.third_party_of_its_own(root, 'JSON-Schema-Test-Suite')
@@ -146,6 +160,7 @@ CASES = [
     test_the_suite_is_pinned,
     test_the_suite_reaches_a_native_test,
     test_the_suite_reaches_a_test_on_emscripten,
+    test_the_suite_reaches_a_test_on_wasi,
     test_a_changed_suite_file_runs_the_test_again,
     test_a_suite_not_checked_out_is_refused,
 ]

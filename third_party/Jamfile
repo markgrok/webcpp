@@ -13,6 +13,7 @@
 import errors ;
 import path ;
 import regex ;
+import webcpp ;
 
 project /webcpp/third_party ;
 
@@ -21,10 +22,11 @@ project /webcpp/third_party ;
 # json-schema-test-suite reads it at run time from the directory
 # WEBCPP_TEST_JSON_SCHEMA_TEST_SUITE names, with forward slashes, the whole
 # define quoted for a checkout whose path holds a space, and runs again when
-# one of its files changes. The files are a usage requirement, so b2 gives
-# them to every action of the test: a changed file compiles and links it
-# again too, not only runs it. That costs a rebuild; a narrower dependency
-# must still run the test again on every file.
+# one of its files changes; under wasmtime the directory is given to it
+# (webcpp.data). The files are a usage requirement, so b2 gives them to every
+# action of the test: a changed file compiles and links it again too, not
+# only runs it. That costs a rebuild; a narrower dependency must still run
+# the test again on every file.
 path-constant JSON_SCHEMA_TEST_SUITE : libs/JSON-Schema-Test-Suite ;
 .suite = [ regex.replace $(JSON_SCHEMA_TEST_SUITE) "\\\\" "/" ] ;
 .suite-files = [ glob-tree-ex libs/JSON-Schema-Test-Suite/tests
@@ -43,6 +45,7 @@ rule suite-checked-out ( properties * )
 
 alias json-schema-test-suite : : <conditional>@suite-checked-out : :
     <define>"\"WEBCPP_TEST_JSON_SCHEMA_TEST_SUITE=\\\"$(.suite)\\\"\""
+    [ webcpp.data $(JSON_SCHEMA_TEST_SUITE) ]
     <dependency>$(.suite-files) ;
 
 explicit json-schema-test-suite ;

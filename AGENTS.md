@@ -546,7 +546,7 @@ update --init third_party/libs/<name>`; a build that needs none never looks.
 
 | Target | What it is | Licence |
 | --- | --- | --- |
-| `json-schema-test-suite` | the JSON Schema Test Suite at `5b0ee16` (2026-09-21), test data: a test that names it reads the suite at run time from the directory its define `WEBCPP_TEST_JSON_SCHEMA_TEST_SUITE` gives, and runs again when a file of the suite changes | MIT |
+| `json-schema-test-suite` | the JSON Schema Test Suite at `5b0ee16` (2026-09-21), test data: a test that names it reads the suite at run time from the directory its define `WEBCPP_TEST_JSON_SCHEMA_TEST_SUITE` gives, on every target (wasmtime is given it, `webcpp.data`), and runs again when a file of the suite changes | MIT |
 
 ## 3. Names
 
@@ -1455,6 +1455,7 @@ webcpp.boost-test   <name> : <sources> + : <requirements> * ;
 webcpp.example      <source> : <requirements> * : <targets> * ;
 webcpp.headers-alone <library> : <include-root> : <only> * : <requirements> * : <targets> * ;
 webcpp.link         <name> : <sources> + : <requirements> * : <targets> * ;
+webcpp.data         <directory> + ;   (requirements)
 ```
 
 | Rule | Passes when | Notes |
@@ -1469,6 +1470,7 @@ webcpp.link         <name> : <sources> + : <requirements> * : <targets> * ;
 | `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | its standard input is `<stem>.input` beside it, else empty, never the terminal, on every target (wasmtime passes it through, and node under `-sNODERAWFS=1`); run through `testing.launcher` for WASI, and on emscripten with the node on `PATH`, not the one b2's toolset registered, which b2 gives only to its own testing rules, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again, and `<stem>.input` is a source of the run |
 | `webcpp.link` | the program links | never run: a program for a browser, which node refuses to run (`-sENVIRONMENT=web`), or one that needs the network; b2's `link` test, which `--dump-tests` lists and the report shows as a link test; never linked with `-sNODERAWFS=1`. The explicit target `<name>-program` is the same program, an `exe` of the same sources and requirements, `<name>-program.js` on emscripten, for a target that needs its files, such as a page that loads it. An example Jamfile's is shown on the page by its code, and has no `.expected` (chapter 8) |
 | `webcpp.headers-alone` | each public header compiles alone | one test per header, `alone-<path>` with `/` as `-` (`alone-xactor-scheduler`), against `/webcpp/<library>//<library>` and the requirements given, for the targets given or the Jamfile's; `only` restricts a call to the public headers its globs match, relative to `<include-root>/webcpp/` (`wasi/http/response.hpp`), a glob that matches none stopping the build; a library may call it several times, and a header two calls take stops the build, naming it |
+| `webcpp.data` | | requirements, or usage requirements, that give a program of `webcpp.run` or `webcpp.run-fail` the absolute directories, each read at the same path on every target: on wasip2 and wasip3 wasmtime preopens it (`wasmtime --dir="<directory>" <program>`); natively and on emscripten (`-sNODERAWFS=1`) the program reads the host's files already. A relative directory stops the build |
 
 **WebAssembly components** (`tools/component/component.jam`). A library's
 `build.jam` declares the C bindings of a world, and its test and example
@@ -1638,6 +1640,11 @@ webcpp.example xactor_asio.cpp : : native ;
   declared with `webcpp.boost-test`, natively only. The CI installs no
   compiled `unit_test_framework`: the suite compiles Boost.Test's header-only
   framework, `tools/boost_test_runner.cpp`, as an object of its own.
+- A test that reads files at run time is given their directory by a
+  `path-constant`, a `WEBCPP_TEST_*` define with forward slashes, quoted
+  whole, and `[ webcpp.data <directory> ]` in its requirements;
+  `/webcpp/third_party//json-schema-test-suite` gives all three for the JSON
+  Schema Test Suite.
 - Every test runs on every target its Jamfile declares. What a target cannot
   build is excluded by declaration (`: native`), and inside a program by the
   same condition the library uses (`#ifndef __wasi__`), never by skipping
