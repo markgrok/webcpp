@@ -508,14 +508,16 @@ rule doc-check ( targets * : sources * : properties * )
     PAGE on $(targets) = [ path.native $(.source.$(id)) ] ;
     SECTIONS on $(targets) = [ natives $(.sections.$(id)) ] ;
     # Each empty for the index page, which leaves its option out, and TWINS
-    # for a library that declares none.
+    # for a library that declares none. WEBCPP_ROOT is given to every
+    # page, the index included: its release notes include a library's
+    # changelog through {webcpp-root}/libs/<library>/....
     COMPLETE on $(targets) = ;
     EXAMPLES on $(targets) = ;
     TWINS on $(targets) = ;
     REPOSITORY on $(targets) = ;
     LIBRARY on $(targets) = ;
     README on $(targets) = ;
-    WEBCPP_ROOT on $(targets) = ;
+    WEBCPP_ROOT on $(targets) = [ path.native $(.root) ] ;
     LIBRARY_ROOT on $(targets) = ;
     LINKED on $(targets) = ;
     if $(id) != index
@@ -528,7 +530,6 @@ rule doc-check ( targets * : sources * : properties * )
         REPOSITORY on $(targets) = [ path.native $(library) ] ;
         LIBRARY on $(targets) = $(id) ;
         README on $(targets) = [ path.native $(library)/README.md ] ;
-        WEBCPP_ROOT on $(targets) = [ path.native $(.root) ] ;
         LIBRARY_ROOT on $(targets) = [ path.native $(library) ] ;
         LINKED on $(targets) = [ modules.call-in webcpp : linked-of $(id) ] ;
     }
@@ -598,17 +599,19 @@ rule convert ( targets * : sources * : properties * )
     # against the page's own directory.
     CWD on $(targets) = [ path.native [ path.pwd ] ] ;
     local docinfo = [ path.native $(.here) ] ;
+    local root = [ path.native $(.root) ] ;
+    # webcpp-root is given to every page, the index included: its release
+    # notes include a library's changelog through
+    # {webcpp-root}/libs/<library>/....
     local attributes = source-highlighter=hljs-static source-language=cpp docinfo=shared
-        docinfodir=$(docinfo) webfonts! reproducible nofooter ;
+        docinfodir=$(docinfo) webfonts! reproducible nofooter webcpp-root=$(root) ;
     if $(id) != index
     {
         local examples = [ path.native $(.root)/libs/$(id)/example ] ;
         local twins = [ twins-of $(id) ] ;
         local layout = [ layout ] ;
-        local root = [ path.native $(.root) ] ;
         local library = [ path.native $(.root)/libs/$(id) ] ;
-        attributes += examples=$(examples) twins=$(twins[2]) webcpp-root=$(root)
-            library-root=$(library)
+        attributes += examples=$(examples) twins=$(twins[2]) library-root=$(library)
             webcpp-libs=$(.webcpp-libs.$(layout)) webcpp-page=$(.webcpp-page.$(layout))
             [ counts $(id) : $(twins) ] ;
     }

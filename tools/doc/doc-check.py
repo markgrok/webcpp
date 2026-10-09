@@ -16,12 +16,15 @@ the page would show what no program printed. Any other `include::`, one of a sec
 example's or a twin's own source, names a file that is not there, or one that exists but strays
 outside `doc/`, `{examples}` and `{twins}` - Asciidoctor resolves it (with `-S unsafe`) wherever
 it points. The one other place an include may reach is the superproject, `--webcpp-root`, which
-webcpp.doc gives a library's page as `{webcpp-root}`, so that the page shows the build's own
-configuration as it is: `include::{webcpp-root}/<path>[tag=<name>]`, or `tags=` with several
-names, includes a region of a file the superproject's git tracks, which holds each region it
-names, `tag::<name>[]` to `end::<name>[]`. A file it does not track, one that is not there or
-lies outside it, a whole file, lines chosen by number, which drift, and a region the file does not
-hold are each a fault, and so is such an include when the check is not given `--webcpp-root`.
+webcpp.doc gives every page, the index included, as `{webcpp-root}`, so that a page shows the
+build's own configuration as it is, and the index's release notes a library's changelog:
+`include::{webcpp-root}/<path>[tag=<name>]`, or `tags=` with several names, includes a region of
+a file the superproject's git tracks, which holds each region it names, `tag::<name>[]` to
+`end::<name>[]`; under `libs/<library>/`, the region is of a file that library's own git tracks
+instead, since the superproject's tracks the library itself, as one gitlink. A file neither
+tracks, one that is not there or lies outside the superproject, a whole file, lines chosen by
+number, which drift, and a region the file does not hold are each a fault, and so is such an
+include when the check is not given `--webcpp-root`.
 The library's own files are reached the same way, `--library-root`, which webcpp.doc gives a
 library's page as `{library-root}`, so that the page shows its library's build as it is, the
 dependencies its build.jam declares or a test Jamfile's lines: `include::{library-root}/<path>`
@@ -148,6 +151,9 @@ REFERENCE = '{reference}'
 ANCHOR = re.compile(r'^\[#([\w-]+)[\],.]|\[\[([\w-]+)\]\]')
 # A library's name, the directory of libs/ that holds it.
 LIBRARY_NAME = r'[a-z][a-z0-9_]*'
+# An include of {webcpp-root}/libs/<library>/<path>: that library's own git tracks <path>, not
+# the superproject's, which tracks the library itself, as one gitlink.
+LIBRARY_PATH = re.compile(rf'^libs/({LIBRARY_NAME})/(.+)$')
 # `doc: #<a>`, or a list or a range of anchors, `doc: #<a>, #<b> and #<c>` or `doc: #<a> to
 # #<b>`, on one line; each an anchor of another library's page when a library's name comes
 # before the first, `doc: <library>#<a> and #<b>`.
@@ -369,9 +375,10 @@ class Library:
     def tracked(self, root: Path) -> set[str] | None:
         """The files root's own git tracks, by their path there, read once per root: None when it
         is not the top of a git checkout, or git is not there to list them. root is the
-        superproject for an include of {webcpp-root}, or the library's own directory for one of
-        {library-root}, since the superproject tracks a library itself, as one gitlink; a
-        directory with no git of its own would list the files of the git around it."""
+        superproject for an include of {webcpp-root}, a library's own directory for one of
+        {webcpp-root} under libs/<library>/ or of {library-root}, since the superproject tracks a
+        library itself, as one gitlink; a directory with no git of its own would list the files
+        of the git around it."""
         key = root.resolve()
         if key not in self.listed:
             try:
@@ -462,7 +469,8 @@ def tracked_region_fault(path: Path, root: Path, owner: str, given: dict[str, st
 
 def superproject_fault(relative: str, given: dict[str, str], library: Library) -> str | None:
     """What is wrong with an include of the superproject's file `relative`, with the attributes
-    `given`, or None: a region, by its tag, of a file the superproject's git tracks."""
+    `given`, or None: a region, by its tag, of a file the superproject's git tracks, or, under
+    `libs/<library>/`, of a file that library's own git tracks instead."""
     top = library.webcpp_root
     if top is None:
         return 'includes a file of the superproject, and the check was not given --webcpp-root'
@@ -471,7 +479,10 @@ def superproject_fault(relative: str, given: dict[str, str], library: Library) -
         return 'includes a file outside the superproject'
     if not path.is_file():
         return 'includes a file that is not there'
-    return tracked_region_fault(path, top, 'the superproject', given, library)
+    nested = LIBRARY_PATH.fullmatch(relative)
+    root, owner = (top / 'libs' / nested.group(1), f'libs/{nested.group(1)}') \
+        if nested is not None else (top, 'the superproject')
+    return tracked_region_fault(path, root, owner, given, library)
 
 
 def library_file_fault(relative: str, given: dict[str, str], library: Library) -> str | None:

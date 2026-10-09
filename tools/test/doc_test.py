@@ -528,6 +528,36 @@ def test_an_override_spelled_through_an_alias_is_the_derived_class_s_own(root):
         re.findall(r'id="(webcpp-demo-[a-z_]+-give[^"]*)"', html))
 
 
+def test_index_includes_a_library_s_changelog(root):
+    # The index page too shows a tagged region through {webcpp-root}, as its release notes
+    # reach a library's changelog: libs/demo/doc/changelog.adoc[tag=unreleased], under
+    # libs/demo/, which that library's own git tracks, not the superproject's, which would track
+    # only the library itself, as one gitlink.
+    prepare(root)
+    subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=root, check=True)
+    (root / 'libs/demo/doc/changelog.adoc').write_text(
+        '// tag::unreleased[]\n* Added something a reader of the index should see.\n'
+        '// end::unreleased[]\n')
+    # demo's own page reaches its changelog too, as a real library's does (chapter 8).
+    edit(root, 'libs/demo/doc/demo.adoc', 'include::{reference}[leveloffset=+1]\n',
+         'include::{reference}[leveloffset=+1]\n\ninclude::changelog.adoc[]\n')
+    edit(root, 'doc/index.adoc', 'include::releases/0.1.0.adoc[leveloffset=+2]\n',
+         '[#webcpp-0-1-0-demo]\n=== link:{library-pages}demo/{library-page}[demo]\n\n'
+         'include::{webcpp-root}/libs/demo/doc/changelog.adoc[tag=unreleased]\n\n'
+         'include::releases/0.1.0.adoc[leveloffset=+2]\n')
+    # Untracked by libs/demo's own git, named by the library, not by the superproject, which
+    # never held that file either way.
+    harness.expect(harness.run_b2(root, 'doc'), False,
+                   'includes a file libs/demo does not track: '
+                   '{webcpp-root}/libs/demo/doc/changelog.adoc')
+    assert not (root / 'doc/html/index.html').exists()
+    subprocess.run(['git', 'add', 'doc/changelog.adoc'], cwd=root / 'libs/demo', check=True)
+    harness.expect(harness.run_b2(root, 'doc'), True)
+    html = (root / 'doc/html/index.html').read_text()
+    assert 'Added something a reader of the index should see.' in html, html
+    assert 'tag::unreleased' not in html, html
+
+
 def test_page_shows_the_counts_of_its_programs(root):
     # Counted from what demo's test and example Jamfiles declare, as b2 recorded it: each program
     # once, and each header compiled alone one.
@@ -1116,6 +1146,7 @@ CASES = [
     test_page_includes_a_file_of_the_superproject,
     test_page_includes_a_file_of_its_library,
     test_an_override_spelled_through_an_alias_is_the_derived_class_s_own,
+    test_index_includes_a_library_s_changelog,
     test_page_shows_the_counts_of_its_programs,
     test_page_shows_twins_and_their_counts,
     test_page_shows_its_linked_and_driven_programs,
