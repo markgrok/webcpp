@@ -318,7 +318,10 @@ def third_party_of_its_own(root: Path, name: str, checked_out: bool = True) -> P
     """Gives the scratch superproject root a third_party/libs/<name> of its own, which a case may
     change: the link to the checkout's third_party/libs becomes a directory of links, one per
     entry, and <name> a copy of the checkout's, or, unless checked_out, an empty directory, as a
-    clone without that submodule has it. Returns it."""
+    clone without that submodule has it. Returns it.
+
+    The copy leaves out the submodule's .git, whose gitdir would name the checkout's repository,
+    and what a copy leaves out at any depth (built), the suite's bin/ among it."""
     libs = root / 'third_party/libs'
     if libs.is_symlink():
         source = libs.resolve()
@@ -329,8 +332,12 @@ def third_party_of_its_own(root: Path, name: str, checked_out: bool = True) -> P
     own = libs / name
     source = own.resolve()
     own.unlink()
+
+    def left_out(directory: str, names: list[str]) -> set[str]:
+        return built(directory, names) | ({'.git'} & set(names))
+
     if checked_out:
-        shutil.copytree(source, own, ignore=built)
+        shutil.copytree(source, own, ignore=left_out)
     else:
         own.mkdir()
     return own

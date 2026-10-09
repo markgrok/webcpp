@@ -89,9 +89,9 @@ webcpp/
   libs/<name>/        a library: a repository of its own, a submodule here (xactor,
                       xstate, pratt, wasi, trystero)
   third_party/        third-party code the libraries and their tests use, not webcpp's: each
-                      a submodule under libs/, pinned at a commit and keeping its own licence,
-                      and the Jamfile that declares it as /webcpp/third_party//<target>
-                      (chapter 2)
+                      a submodule under third_party/libs/, pinned at a commit and keeping its
+                      own licence, and the Jamfile that declares it as
+                      /webcpp/third_party//<target> (chapter 2)
   doc/                the index page (index.adoc, Jamfile)
   site/               the site, a repository of its own, webcpporg/webcpporg.github.io, a
                       submodule here: its pages, components, tools and tests (chapter 9)

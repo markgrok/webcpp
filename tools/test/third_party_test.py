@@ -52,7 +52,7 @@ int main() {
         std::cout << "cannot read " WEBCPP_TEST_JSON_SCHEMA_TEST_SUITE "\n";
         return 1;
     }
-    std::cout << "read the suite\n";
+    std::cout << "read the suite\n" << WEBCPP_TEST_JSON_SCHEMA_TEST_SUITE << "\n";
     return 0;
 }
 '''
@@ -71,8 +71,17 @@ def output_of(root: Path, name: str) -> str:
 
 
 def add_reader(root: Path) -> None:
-    """Adds the library suite_reader, whose one test reads a file of the suite."""
+    """Adds the library suite_reader, whose one test reads a file of the suite, then prints the
+    directory the define names."""
     harness.add_library(root, 'suite_reader', READER_JAMFILE, {'reads_suite.cpp': READER_SOURCE})
+
+
+def expect_read(root: Path) -> None:
+    """Asserts that reads_suite read the suite at the directory its define names: the scratch
+    superproject's, absolute, with forward slashes and no trailing slash, as b2 sees the root
+    (macOS's $TMPDIR is reached through a link, /var being /private/var)."""
+    lines = output_of(root, 'reads_suite.output').splitlines()
+    assert lines[:2] == ['read the suite', (root.resolve() / SUITE).as_posix()], lines
 
 
 def test_the_suite_is_pinned(_: Path) -> None:
@@ -86,7 +95,7 @@ def test_the_suite_reaches_a_native_test(root: Path) -> None:
     result = harness.run_b2(root, '-a', 'libs/suite_reader/test')
     harness.expect(result, True)
     assert passed(result) == {'reads_suite'}, (passed(result), result.stdout[-4000:])
-    assert output_of(root, 'reads_suite.output').startswith('read the suite\n')
+    expect_read(root)
 
 
 def test_the_suite_reaches_a_test_on_emscripten(root: Path) -> None:
@@ -95,7 +104,7 @@ def test_the_suite_reaches_a_test_on_emscripten(root: Path) -> None:
     result = harness.run_b2(root, '-a', *EMSCRIPTEN, 'libs/suite_reader/test')
     harness.expect(result, True)
     assert passed(result) == {'reads_suite'}, (passed(result), result.stdout[-4000:])
-    assert output_of(root, 'reads_suite.output').startswith('read the suite\n')
+    expect_read(root)
 
 
 def test_a_changed_suite_file_runs_the_test_again(root: Path) -> None:
@@ -106,11 +115,21 @@ def test_a_changed_suite_file_runs_the_test_again(root: Path) -> None:
     again = harness.run_b2(root, 'libs/suite_reader/test')
     harness.expect(again, True)
     assert passed(again) == set(), again.stdout[-4000:]
-    later = time.time() + 60
-    os.utime(root / SUITE / 'tests/draft2020-12/type.json', (later, later))
-    result = harness.run_b2(root, 'libs/suite_reader/test')
-    harness.expect(result, True)
-    assert passed(result) == {'reads_suite'}, (passed(result), result.stdout[-4000:])
+    # A file of tests/, then one of remotes/, which json_schema reads too: each runs it again.
+    # Each file gets its date back afterwards, and a run then finds the test up to date, so that
+    # the next file is the one that runs it again, not a date still in the future.
+    for changed in ('tests/draft2020-12/type.json', 'remotes/integer.json'):
+        path = root / SUITE / changed
+        dates = path.stat()
+        later = time.time() + 60
+        os.utime(path, (later, later))
+        result = harness.run_b2(root, 'libs/suite_reader/test')
+        harness.expect(result, True)
+        assert passed(result) == {'reads_suite'}, (changed, passed(result), result.stdout[-4000:])
+        os.utime(path, ns=(dates.st_atime_ns, dates.st_mtime_ns))
+        again = harness.run_b2(root, 'libs/suite_reader/test')
+        harness.expect(again, True)
+        assert passed(again) == set(), (changed, again.stdout[-4000:])
 
 
 def test_a_suite_not_checked_out_is_refused(root: Path) -> None:

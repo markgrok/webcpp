@@ -1877,7 +1877,7 @@ def test_a_library_webcpp_does_not_build_missing_is_named(root):
 def test_third_party_code_is_never_read(root):
     # Third-party code keeps its own style, licence and notices: a file under third_party/libs/
     # that breaks the lint's rules, and the suite's own files, plain files here rather than a
-    # submodule, leave the lint clean.
+    # submodule, leave the lint clean; what third_party/ holds outside libs/ is still read.
     prepare(root)
     harness.third_party_of_its_own(root, 'JSON-Schema-Test-Suite')
     planted = root / 'third_party/libs/planted'
@@ -1887,6 +1887,10 @@ def test_third_party_code_is_never_read(root):
     (planted / 'notes.txt').write_text(f'{EM_DASH} {WORD}\n')
     commit(root, 'Third-party code')
     expect_clean(lint(root))
+    write(root, 'third_party/notes.txt', f'webcpp{EM_DASH}s own\n')
+    commit(root, 'A file of webcpp under third_party')
+    expect_alone(lint(root), 'em dash', ['third_party/notes.txt:1:'],
+                 spared=('third_party/libs/',))
 
 
 CASES = [

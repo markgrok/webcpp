@@ -17,6 +17,7 @@ it gets its own."""
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -272,6 +273,18 @@ def test_third_party_is_linked_and_made_a_case_s_own(root):
     own = harness.third_party_of_its_own(root, 'JSON-Schema-Test-Suite', checked_out=False)
     assert not libs.is_symlink() and own.is_dir() and not own.is_symlink(), libs
     assert not any(own.iterdir()), own
+    # Checked out, in a scratch superproject of its own: a copy of the checkout's files, without
+    # its .git, which would name the checkout's repository; every other entry stays a link.
+    fresh = harness.copy_tree(harness.ROOT)
+    try:
+        own = harness.third_party_of_its_own(fresh, 'JSON-Schema-Test-Suite')
+        assert own.is_dir() and not own.is_symlink(), own
+        assert (own / 'tests/draft2020-12/type.json').is_file(), own
+        assert not (own / '.git').exists(), own
+        others = [entry for entry in own.parent.iterdir() if entry != own]
+        assert all(entry.is_symlink() for entry in others), others
+    finally:
+        shutil.rmtree(fresh)
     # The checkout's own suite is untouched.
     assert (checkout / 'JSON-Schema-Test-Suite/tests/draft2020-12/type.json').is_file()
 
