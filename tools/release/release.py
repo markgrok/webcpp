@@ -440,12 +440,16 @@ HIGHLIGHTS = ('<!-- At most five highlights, each "- **<category>**: <one senten
 # highlight. A highlight: its marker, a category of CATEGORIES verbatim, one space after the
 # colon, then its sentence, which does not start with a space. A continuation of the previous
 # highlight's sentence: indented by exactly two spaces, its own text not starting with a space
-# either. A line that opens a fence by CommonMark's rule, at most three spaces, then three
-# backticks or three tildes, then anything, an info string included, refuses every line from it
-# to the section's end, closed or not: a reader's rendered Markdown never shows a highlight out
-# of a fence, and no closing line is looked for, so no spelling of one can let a line count.
+# either, nor with what starts a Markdown block inside the bullet (BLOCK): a list item's marker
+# and its space, "#", ">", "|", or a line of only "-", "=", "*", "_" and spaces, a thematic
+# break or a setext underline, one character long too. A line that opens a fence by
+# CommonMark's rule, at most three spaces, then three backticks or three tildes, then anything,
+# an info string included, refuses every line from it to the section's end, closed or not: a
+# reader's rendered Markdown never shows a highlight out of a fence, and no closing line is
+# looked for, so no spelling of one can let a line count.
 HIGHLIGHT = re.compile(r'- \*\*(?P<category>[^*]*)\*\*: (?P<text>\S.*)')
 CONTINUATION = re.compile(r'  (?P<text>\S.*)')
+BLOCK = re.compile(r'[-*+] |\d+[.)] |[#>|]|[-=*_ ]+$')
 FENCE = re.compile(r' {0,3}(?:```|~~~)')
 # HTML, which a What's new holds none of but the placeholder HIGHLIGHTS right below its heading:
 # what starts a tag, a closing tag, a comment, a declaration or a processing instruction, and
@@ -590,6 +594,11 @@ def whats_new_findings(root: Path, version: Version) -> list[str]:
             continue
         continuation = CONTINUATION.fullmatch(line)
         if continuation is not None:
+            if BLOCK.match(continuation.group('text')):
+                findings.append(f'{relative}:{number}: line {number}: a continuation may not '
+                                'start a Markdown block')
+                has_open_item = False
+                continue
             if not has_open_item:
                 findings.append(f'{relative}:{number}: line {number} is not a highlight: a '
                                 'continuation with no highlight before it')

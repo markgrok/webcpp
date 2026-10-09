@@ -822,6 +822,11 @@ class Highlights:
         return f'{WHATS_NEW}:{number}: line {number} is not a highlight' + (
             f': {fault}' if fault else '')
 
+    def block(self, index: int) -> str:
+        """The finding that line index of a body is a continuation starting a Markdown block."""
+        number = self.first + index
+        return f'{WHATS_NEW}:{number}: line {number}: a continuation may not start a Markdown block'
+
     def html(self, index: int) -> str:
         """The finding that line index of a body holds HTML."""
         return html(self.first + index)
@@ -963,7 +968,8 @@ def test_whats_new_every_adversarial_input(directory: Path) -> None:
          [case.at(0, 'a tab')]),
         ('a star in the category, first', case.text('- **New*libraries**: fake.'),
          [case.at(0)]),
-        ('a nested list item', case.text(real, '  - a nested item.'), []),
+        # Task 8b: a nested list item starts a Markdown block, which no continuation may.
+        ('a nested list item', case.text(real, '  - a nested item.'), [case.block(1)]),
         ('no highlights at all', case.text(), []),
         ('a category outside ASCII', case.text('- **Café**: one.'), [case.at(0, CATEGORY)]),
         ('a byte order mark', '﻿' + case.text(*clean), []),
@@ -1084,6 +1090,42 @@ def test_whats_new_section_ends_at_a_heading(directory: Path) -> None:
     assert case.check(case.text(real).removesuffix('\n')) == []
 
 
+def test_whats_new_a_continuation_starts_no_markdown_block(directory: Path) -> None:
+    # Task 8b: a continuation's text, after its two spaces, is more of the highlight's sentence
+    # only when Markdown reads it so: one that starts a block (a list item, a heading, a quote,
+    # a table row, a thematic break or a setext underline) shows the reader that block inside
+    # the bullet instead, and is named on its line.
+    case = Highlights(directory)
+    real = '- **New libraries**: real one.'
+    for first, continuation in ((real, '  - **Dependencies**: a nested bullet.'),
+                                (real, '  ---'),
+                                ('- **New libraries**: a | b', '  | --- | --- |'),
+                                (real, '  # a heading'),
+                                (real, '  > a quote')):
+        found = case.check(case.text(first, continuation))
+        assert found == [case.block(1)], (continuation, found)
+    # Every marker: a bullet before a space, an ordered item's number before "." or ")" and a
+    # space, "#", ">", "|", and a line of only "-", "=", "*" or "_" and spaces, a thematic break
+    # or a setext underline, one character long too, since "=" or "-" alone underlines a
+    # paragraph.
+    for continuation in ('  - x', '  * x', '  + x', '  1. x', '  12) x', '  #x', '  ## x',
+                         '  >x', '  |x', '  ***', '  ___', '  ===', '  - - -', '  * * *',
+                         '  _ _ _', '  --- ', '  = = =', '  =', '  -'):
+        found = case.check(case.text(real, continuation))
+        assert found == [case.block(1)], (continuation, found)
+    # A fence opener in a continuation's place stays a fence's own finding.
+    found = case.check(case.text(real, '  ```'))
+    assert found == [case.opens(1)], found
+    # Text, a code span, a link, emphasis, and a marker's character not followed by a space
+    # stay a continuation, in LF and in CRLF.
+    for continuation in ('  and more words.', '  `code` in a span.',
+                         '  [a link](https://example.com).', '  -x without a space.',
+                         '  +x too.', '  *emphasis* and _more_.', '  1.5 times faster.'):
+        assert case.check(case.text(real, continuation)) == [], continuation
+        assert case.check(case.text(real, continuation).replace('\n', '\r\n')) == [], (
+            continuation)
+
+
 def test_whats_new_five_highlights_with_continuations_check_clean(directory: Path) -> None:
     # The legitimate path: five highlights, one per category in CATEGORIES' order, three of
     # them continued on lines of their own, a blank line between two, and backticks inside a
@@ -1099,6 +1141,7 @@ def test_whats_new_five_highlights_with_continuations_check_clean(directory: Pat
             '- **Developer experience**: `b2 whats-new` writes this page,',
             '  and the owner approves it.')
     assert case.check(case.text(*five)) == []
+    assert case.check(case.text(*five).replace('\n', '\r\n')) == []
     assert case.check(case.text(release.HIGHLIGHTS, '', *five)) == []
     assert case.check(case.text(release.HIGHLIGHTS, '', *five).replace('\n', '\r\n')) == []
 
@@ -1241,6 +1284,7 @@ CASES: list[Callable[[Path], None]] = [
     test_whats_new_every_adversarial_input,
     test_whats_new_holds_no_html_but_its_placeholder,
     test_whats_new_section_ends_at_a_heading,
+    test_whats_new_a_continuation_starts_no_markdown_block,
     test_whats_new_five_highlights_with_continuations_check_clean,
 ]
 
