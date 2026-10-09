@@ -119,8 +119,12 @@ and run the tests and the examples with wasmtime, one toolset per command:
 
 Every target builds with exceptions: whether a program uses them is the
 choice of whoever builds it, and webcpp builds no variant without them, and
-none without RTTI. A program that a library does not declare for a target is
-skipped there.
+none without RTTI. Each library has its own `WEBCPP_<NAME>_NO_EXCEPTIONS`, in
+`<webcpp/<name>/config.hpp>`, as Boost.Asio has `BOOST_ASIO_NO_EXCEPTIONS`:
+defined in a build without exceptions, and definable by a program to turn a
+library's exceptions off in a build that has them. A library raises an
+exception through `boost::throw_exception` alone. A program that a library
+does not declare for a target is skipped there.
 `b2 declared-targets -d0` lists the targets each library declares.
 
 A library may also run some of its programs in lanes of its own, which

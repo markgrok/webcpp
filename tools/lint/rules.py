@@ -18,6 +18,8 @@ Exit 0 when there is none, 1 when there is one, 2 on a usage error.
                       rules of tools/webcpp.jam;
   doc-comments        a Doc Comment uses only the commands webcpp allows, no bare @, and no
                       colon after a reference;
+  bare-throw          a library's public header raises an exception through
+                      boost::throw_exception alone, never with a bare throw or throw;
   line-length         no line of a Python file is longer than 100 columns, .clang-format's
                       ColumnLimit;
   blank-lines         two blank lines come before a top-level def or class of a Python file,
@@ -212,59 +214,47 @@ RAW_STRING = re.compile(r'(?<![A-Za-z0-9_])(?:u8|[uUL])?R"([^()\\\s]{0,16})\(')
 
 Character = tuple[str, int]
 
+# A piece of C++ text, as cpp_tokens reads it: its kind, its text and the line it starts on.
+Token = tuple[str, str, int]
 
-def doc_comments_of(text: str) -> Iterator[list[Character]]:
-    """Each Doc Comment of the C++ text as its characters, each with its line.
 
-    A Doc Comment is a /** */ or /*! */ block, or a run of /// or //! comments on consecutive
-    lines, which clang reads as one. A marker inside a string or a character literal, raw or not,
-    opens nothing, and neither does a digit separator: 1'000."""
+def cpp_tokens(text: str) -> Iterator[Token]:
+    """Each token of the C++ text that the rules read, with the line it starts on.
+
+    The kinds are 'line-comment', its text after the //; 'block-comment', its text between /* and
+    */ (to the end of the text when it is not closed); 'literal', a string or a character literal,
+    raw or not; 'word', an identifier or a number, a number with its digit separators (1'000);
+    and 'other', any other character. A comment marker inside a literal opens nothing, and a word
+    inside a comment or a literal is no word."""
     position = 0
     line = 1
-    run: list[Character] = []
-    run_line = 0
     while position < len(text):
         character = text[position]
         if character.isspace():
             line += character == '\n'
             position += 1
             continue
-        if run and not text.startswith('//', position):
-            yield run
-            run = []
         if text.startswith('//', position):
             end = text.find('\n', position)
             end = len(text) if end < 0 else end
-            body = text[position + 2:end]
-            if body[:1] in ('/', '!') and not body.startswith('//'):
-                if run and line != run_line + 1:
-                    yield run
-                    run = []
-                run.extend((part, line) for part in body[1:] + '\n')
-                run_line = line
-            elif run:
-                yield run
-                run = []
+            yield 'line-comment', text[position + 2:end], line
             position = end
             continue
         if text.startswith('/*', position):
             end = text.find('*/', position + 2)
             end = len(text) if end < 0 else end
-            body = text[position + 2:end]
-            comment: list[Character] = []
-            for part in body:
-                comment.append((part, line))
-                line += part == '\n'
-            if body[:1] in ('*', '!') and not body.startswith('**') and body != '*':
-                yield comment[1:]
+            yield 'block-comment', text[position + 2:end], line
+            line += text.count('\n', position, end)
             position = end + 2
             continue
+        start, start_line = position, line
         raw = RAW_STRING.match(text, position) if character in 'uULR' else None
         if raw:
             close = text.find(f'){raw.group(1)}"', raw.end())
             close = len(text) if close < 0 else close + len(raw.group(1)) + 2
             line += text.count('\n', position, close)
             position = close
+            yield 'literal', text[start:position], start_line
             continue
         if character in '"\'':
             # The literal ends at its closing quote, or at a newline that no backslash splices:
@@ -278,14 +268,49 @@ def doc_comments_of(text: str) -> Iterator[list[Character]]:
                 position += 1
             if text[position:position + 1] == character:
                 position += 1
+            yield 'literal', text[start:position], start_line
             continue
         if character.isalnum() or character == '_':
             # A number may hold digit separators, which an identifier cannot.
             word = NUMBER if character.isdigit() else IDENTIFIER
             matched = word.match(text, position)
             position = matched.end() if matched else position + 1
+            yield 'word', text[start:position], start_line
             continue
         position += 1
+        yield 'other', character, start_line
+
+
+def doc_comments_of(text: str) -> Iterator[list[Character]]:
+    """Each Doc Comment of the C++ text as its characters, each with its line.
+
+    A Doc Comment is a /** */ or /*! */ block, or a run of /// or //! comments on consecutive
+    lines, which clang reads as one. A marker inside a string or a character literal, raw or not,
+    opens nothing, and neither does a digit separator: 1'000."""
+    run: list[Character] = []
+    run_line = 0
+    for kind, body, line in cpp_tokens(text):
+        if kind == 'line-comment':
+            if body[:1] in ('/', '!') and not body.startswith('//'):
+                if run and line != run_line + 1:
+                    yield run
+                    run = []
+                run.extend((part, line) for part in body[1:] + '\n')
+                run_line = line
+            elif run:
+                yield run
+                run = []
+            continue
+        if run:
+            yield run
+            run = []
+        if kind == 'block-comment' and body[:1] in ('*', '!') and not body.startswith('**') \
+                and body != '*':
+            comment: list[Character] = []
+            for part in body:
+                comment.append((part, line))
+                line += part == '\n'
+            yield comment[1:]
     if run:
         yield run
 
@@ -336,6 +361,34 @@ def doc_comments(path: str, text: str) -> Iterator[Finding]:
             elif command not in DOC_COMMANDS:
                 yield (path, line, f'{character}{command} is not a Doc Comment command webcpp '
                        f'uses; write \\{character} for a literal {character}')
+
+
+# A library's public header: a C or C++ header under libs/<name>/include, or under the same
+# directory of a fixture library, which the tests of the build place in libs/.
+LIBRARY_HEADER = re.compile(r'(libs|tools/test/fixtures)/[^/]+/include/.+\.(hpp|hxx|hh|h|ipp|inl)')
+
+
+def bare_throw(path: str, text: str) -> Iterator[Finding]:
+    """A library's public header holds no throw expression, outside its comments and its
+    literals: an exception is raised through boost::throw_exception, which a build without
+    exceptions turns into a call of the program's handler. A throw inside a region that only a
+    build with exceptions compiles is refused too, and so is a rethrow, throw;, which
+    std::rethrow_exception replaces. The words noexcept, throws and throw_exception are other
+    words. Unlike the build without exceptions that clang-tidy analyses, this reads a template
+    that nothing instantiates."""
+    if not LIBRARY_HEADER.fullmatch(path):
+        return
+    tokens = [token for token in cpp_tokens(text) if not token[0].endswith('-comment')]
+    for index, (kind, word, line) in enumerate(tokens):
+        if kind != 'word' or word != 'throw':
+            continue
+        if tokens[index + 1:index + 2] and tokens[index + 1][1] == ';':
+            yield (path, line, 'a bare throw; in a library header; rethrow with '
+                   'std::rethrow_exception(std::current_exception()), or not at all')
+        else:
+            yield (path, line, 'a bare throw in a library header; raise the exception with '
+                   'boost::throw_exception, which a build without exceptions turns into a call '
+                   'of the program\'s handler')
 
 
 LINE_LIMIT = 100
@@ -508,6 +561,7 @@ PER_FILE_RULES: dict[str, Callable[[str, str], Iterator[Finding]]] = {
     'licence': licence,
     'raw-rules': raw_rules,
     'doc-comments': doc_comments,
+    'bare-throw': bare_throw,
     'line-length': line_length,
     'blank-lines': blank_lines,
     'jam-comments': jam_comments,

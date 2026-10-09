@@ -174,9 +174,16 @@ def expect_alone(result: subprocess.CompletedProcess, rule: str, named: list[str
                  spared: tuple[str, ...] = ()) -> None:
     """Asserts that rule failed and no other did, that the output names each of named, and that
     it names none of spared."""
+    expect_failed(result, [rule], named, spared)
+
+
+def expect_failed(result: subprocess.CompletedProcess, rules: list[str], named: list[str],
+                  spared: tuple[str, ...] = ()) -> None:
+    """Asserts that the rules failed, in the lint's order, and no other did, that the output names
+    each of named, and that it names none of spared."""
     output = result.stdout
     assert result.returncode == 1, (result.returncode, output[-6000:])
-    assert FAILED.findall(output) == [rule], (rule, FAILED.findall(output), output[-6000:])
+    assert FAILED.findall(output) == rules, (rules, FAILED.findall(output), output[-6000:])
     for text in named:
         assert text in output, (text, output[-6000:])
     for text in spared:
@@ -662,7 +669,8 @@ def test_clang_tidy_refuses_a_throw_a_build_without_exceptions_cannot_compile(ro
     # A public header that throws outside #ifndef BOOST_NO_EXCEPTIONS: once in an inline
     # function, which the aggregate compiled without exceptions refuses, and once in a template,
     # which clang refuses only where it is instantiated: in the test that calls it, compiled
-    # without exceptions too. Each fails the lint, naming its line.
+    # without exceptions too. Each fails clang-tidy, naming its line, and the bare throw rule,
+    # which reads the header's text, fails too.
     header = 'libs/demo/include/webcpp/demo/checked.hpp'
     write(root, header, CPP + '\n'
           '#ifndef WEBCPP_DEMO_CHECKED_HPP\n'
@@ -713,10 +721,10 @@ def test_clang_tidy_refuses_a_throw_a_build_without_exceptions_cannot_compile(ro
           '}\n')
     append(root, 'libs/demo/test/Jamfile',
            'webcpp.run checks : checks.cpp : <library>/webcpp/demo//demo ;\n')
-    expect_alone(lint(root), 'clang-tidy',
-                 [at(root, header, 'throw std::invalid_argument'),
-                  at(root, header, 'throw std::domain_error'),
-                  "cannot use 'throw' with exceptions disabled"])
+    expect_failed(lint(root), ['clang-tidy', 'bare throw'],
+                  [at(root, header, 'throw std::invalid_argument'),
+                   at(root, header, 'throw std::domain_error'),
+                   "cannot use 'throw' with exceptions disabled"])
 
 
 def test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles(root):
@@ -912,6 +920,104 @@ def test_world_rule(root):
         at(root, header, 'std::filesystem'),
         at(root, header, 'filesystem::path'),
     ], spared=(at(root, header, 'lint-world:'), 'libs/demo/test/pass.cpp'))
+
+
+def test_bare_throw(root):
+    prepare(root)
+    # A library header raises through boost::throw_exception alone. A throw in a template that
+    # nothing instantiates, which no build compiles, fails, and so does a rethrow inside the
+    # region a build with exceptions compiles; what only reads as a throw does not: the
+    # function, a string, a comment, a Doc Comment, a raw string, noexcept(false), and a name
+    # that holds the word. A test or an example may throw: catches.cpp does.
+    header = 'libs/demo/include/webcpp/demo/raising.hpp'
+    write(root, header, CPP + '\n'
+          '#ifndef WEBCPP_DEMO_RAISING_HPP\n'
+          '#define WEBCPP_DEMO_RAISING_HPP\n'
+          '\n'
+          '#include <boost/config.hpp>\n'
+          '#include <boost/throw_exception.hpp>\n'
+          '\n'
+          '#include <exception>\n'
+          '#include <stdexcept>\n'
+          '\n'
+          '#if defined(BOOST_NO_EXCEPTIONS) && !defined(WEBCPP_DEMO_NO_EXCEPTIONS)\n'
+          '#define WEBCPP_DEMO_NO_EXCEPTIONS\n'
+          '#endif\n'
+          '\n'
+          'namespace webcpp::demo {\n'
+          '\n'
+          '/** Returns the count it is given, refusing a negative one.\n'
+          '\n'
+          '    @tparam Count A signed type.\n'
+          '    @param count The count.\n'
+          '    @return count.\n'
+          '*/\n'
+          'template <typename Count>\n'
+          'Count planted_uninstantiated(Count count) {\n'
+          '    if (count < 0) {\n'
+          '        throw std::invalid_argument("a negative count");\n'
+          '    }\n'
+          '    return count;\n'
+          '}\n'
+          '\n'
+          '#ifndef WEBCPP_DEMO_NO_EXCEPTIONS\n'
+          '\n'
+          '/** Runs the work it is given, and lets what it throws go on.\n'
+          '\n'
+          '    @tparam Work A callable.\n'
+          '    @param work The work.\n'
+          '*/\n'
+          'template <typename Work>\n'
+          'void planted_rethrow(Work work) {\n'
+          '    try {\n'
+          '        work();\n'
+          '    } catch (...) {\n'
+          '        throw;\n'
+          '    }\n'
+          '}\n'
+          '\n'
+          '#endif\n'
+          '\n'
+          '// A comment may say throw, and a Doc Comment may say that a function throws.\n'
+          '\n'
+          '/** Returns the level it is given; throws, the one way, on a negative one.\n'
+          '\n'
+          '    @param level The level.\n'
+          '    @return level.\n'
+          '*/\n'
+          'inline int planted_raises(int level) noexcept(false) {\n'
+          '    if (level < 0) {\n'
+          '        boost::throw_exception(std::domain_error("throw"));\n'
+          '    }\n'
+          '    return level;\n'
+          '}\n'
+          '\n'
+          '/** Returns the text of a throw, which is no throw.\n'
+          '\n'
+          '    @return The text.\n'
+          '*/\n'
+          'inline const char* planted_text() noexcept {\n'
+          '    return R"(throw x;)";\n'
+          '}\n'
+          '\n'
+          '/** Rethrows the exception it is given, the one way to.\n'
+          '\n'
+          '    @param thrown The exception.\n'
+          '*/\n'
+          '[[noreturn]] inline void planted_rethrow_exception(const std::exception_ptr& thrown) {\n'
+          '    std::rethrow_exception(thrown);\n'
+          '}\n'
+          '\n'
+          '}  // namespace webcpp::demo\n'
+          '\n'
+          '#endif\n')
+    expect_alone(lint(root), 'bare throw', [
+        at(root, header, 'throw std::invalid_argument') + ' a bare throw',
+        at(root, header, 'throw;') + ' a bare throw;',
+    ], spared=(at(root, header, 'say throw'), at(root, header, 'throws, the one way'),
+               at(root, header, 'boost::throw_exception('), at(root, header, 'R"(throw'),
+               at(root, header, 'noexcept(false)'), at(root, header, 'std::rethrow_exception('),
+               'libs/demo/example/catches.cpp:'))
 
 
 def test_raw_rules(root):
@@ -1358,6 +1464,7 @@ CASES = [
     test_licence_notice,
     test_banned_word,
     test_world_rule,
+    test_bare_throw,
     test_raw_rules,
     test_include_boundaries_angle_brackets,
     test_include_boundaries_quotes,

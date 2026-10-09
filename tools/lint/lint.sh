@@ -22,7 +22,8 @@
 # declare their programs only with tools/webcpp.jam's rules, that a Doc Comment uses only the
 # commands MrDocs renders and puts no colon after a reference, which MrDocs drops, that every
 # Python file passes Pyright, keeps to 100 columns and has two blank lines before a top-level def
-# or class, and that a comment of a Jam file keeps to 80 columns.
+# or class, that a comment of a Jam file keeps to 80 columns, and that a library header raises
+# through boost::throw_exception, never with a bare throw.
 #
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
 # for the libraries' tests and examples and for their own lanes, a served component among them,
@@ -594,6 +595,20 @@ if python3 tools/lint/rules.py include-boundaries < "${work_directory}/files"; t
     printf 'every library keeps to its declared include boundaries\n'
 else
     fail 'a library crosses an include boundary its meta/include-boundaries.json declares'
+fi
+
+# 16. A library's public header raises an exception through boost::throw_exception alone, never
+#     with a throw expression: a build without exceptions turns the call into one of the
+#     program's handler, where it refuses a throw. A throw inside the library's region for a
+#     build with exceptions, #ifndef WEBCPP_<NAME>_NO_EXCEPTIONS, is refused too, and so is a
+#     rethrow, throw;, which std::rethrow_exception replaces. Comments and literals are not read.
+#     clang-tidy's analysis without exceptions refuses a throw only in code a program compiles;
+#     this reads a template that nothing instantiates too (tools/lint/rules.py).
+rule 'bare throw'
+if python3 tools/lint/rules.py bare-throw < "${work_directory}/files"; then
+    printf 'no library header holds a bare throw\n'
+else
+    fail 'a library header throws; raise through boost::throw_exception'
 fi
 
 printf '\n'

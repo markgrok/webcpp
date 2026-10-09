@@ -388,6 +388,7 @@ owner's:
 | convenience header | `<webcpp/<name>.hpp>`, which includes every public header, but may leave out one that brings an optional heavy dependency (below) | `<webcpp/xactor.hpp>` |
 | headers | `<webcpp/<name>/...>`, one per responsibility, `snake_case` | `<webcpp/xactor/scheduler.hpp>` |
 | macros | `WEBCPP_<NAME>_*` | `WEBCPP_XACTOR_*` |
+| configuration | `<webcpp/<name>/config.hpp>`, which every public header includes first, with `WEBCPP_<NAME>_NO_EXCEPTIONS` (chapter 6) | `<webcpp/xactor/config.hpp>` |
 | test-only macros | `WEBCPP_TEST_*` | |
 | include guards | `WEBCPP_<NAME>_<HEADER>_HPP` | `WEBCPP_XACTOR_ACTOR_LOGIC_HPP` |
 | b2 target | `/webcpp/<name>//<name>` | `/webcpp/xactor//xactor` |
@@ -565,15 +566,40 @@ than leave it green on the rest.
   `BOOST_NO_EXCEPTIONS`, and `webcpp.jam` links `tools/throw_exception.cpp`,
   a `boost::throw_exception` handler that prints and aborts; MSVC also gets
   `_HAS_EXCEPTIONS=0`. webcpp builds no such variant of its own.
+- **Each library has its own configuration macro,**
+  `WEBCPP_<NAME>_NO_EXCEPTIONS`, as Boost.Asio has
+  `BOOST_ASIO_NO_EXCEPTIONS`, in `<webcpp/<name>/config.hpp>`, which the
+  convenience header and every public header include first. It is defined
+  automatically when the code is compiled without exceptions
+  (`BOOST_NO_EXCEPTIONS`, which Boost.Config defines under `-fno-exceptions`
+  and so under `exception-handling=off`), and a developer may define it to
+  turn a library's exceptions off in a build that has them. A program sets it
+  for every library alike, without knowing which one throws, so a library
+  that raises no exception of its own has it too, and says so in its Doc
+  Comment. Its test, `test/config_test.cpp`, is built twice: as the build
+  asks, where the macro is defined exactly when `BOOST_NO_EXCEPTIONS` is, and
+  with the macro defined on the command line. MrDocs parses a library as a
+  build with exceptions does, so `config.hpp` defines the macro for the
+  reference under `#ifdef __MRDOCS__` and undefines it at once: the
+  reference lists it, and every API that throws stays in the parse.
+- **An exception is raised through `boost::throw_exception`, never a bare
+  `throw`,** and every API that throws sits behind
+  `#ifndef WEBCPP_<NAME>_NO_EXCEPTIONS`, so that code that uses it does not
+  compile without exceptions. The lint's bare throw rule refuses a `throw`
+  expression in a library's public header, outside comments and literals,
+  wherever it is: inside that `#ifndef` region too, in a template that
+  nothing instantiates, and as a rethrow, `throw;`, which
+  `std::rethrow_exception` replaces.
 - **A library works without exceptions.** Its headers compile with
   `-fno-exceptions`: what throws, tries or catches sits behind
-  `#ifndef BOOST_NO_EXCEPTIONS`, and a failure that cannot be returned goes
-  through `boost::throw_exception`. The lint checks it, by analysing every
-  aggregate translation unit, and every test and example, a second time as
-  b2 compiles them with `exception-handling=off` (below). Clang refuses a
-  `throw`, a `try` or a `catch` there, in a template only where a test or an
-  example instantiates it: a template that none of them instantiates is not
-  checked.
+  `#ifndef WEBCPP_<NAME>_NO_EXCEPTIONS`, and a failure that cannot be
+  returned goes through `boost::throw_exception`. The lint checks it, by
+  analysing every aggregate translation unit, and every test and example, a
+  second time as b2 compiles them with `exception-handling=off` (below).
+  Clang refuses a `throw`, a `try` or a `catch` there, in a template only
+  where a test or an example instantiates it: in a template that none of them
+  instantiates, only the bare throw rule sees a `throw`, and a `try` or a
+  `catch` is not checked.
 - **A program that needs exceptions says so.** A test or an example that
   throws, tries or catches on purpose declares `<exception-handling>on` in
   its requirements, as the fixture demo's
@@ -611,6 +637,7 @@ rule that failed.
 | Python blank lines | a top-level `def` or `class` without two blank lines before it, its decorators and the comments just above it |
 | Jam comment width | a comment line of a Jam file (`.jam`, `Jamroot`, `Jamfile`) over 80 columns, the width Jam comments are wrapped at |
 | include boundaries | an `#include` that crosses a boundary the library declares in its `meta/include-boundaries.json` (below), at its line, with the boundary's reason; and a malformed file, or a glob that matches no file of the library |
+| bare throw | a `throw` expression in a library's public header (`libs/*/include/**`), outside comments and literals, at its line: inside `#ifndef WEBCPP_<NAME>_NO_EXCEPTIONS` too, in a template that nothing instantiates, which clang-tidy's analysis without exceptions does not see, and as a rethrow, `throw;`; `boost::throw_exception` is the one way to raise, `std::rethrow_exception` the one way to rethrow (above) |
 
 A source b2 expects not to compile (`webcpp.compile-fail`), and one that
 must stop with the error it states (`webcpp.compile-diagnostic`), are left
