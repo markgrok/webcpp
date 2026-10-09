@@ -118,7 +118,7 @@ def test_plan_of_every_library(root):
 EMSCRIPTEN_LANE = {'id': 'emscripten', 'name': 'Emscripten 6.0.11 (node)', 'os': 'ubuntu-24.04',
                    'target': 'emscripten', 'lane': 'emscripten', 'toolset': 'emscripten',
                    'using': '{emsdk.jam}', 'detect': '', 'options': [], 'wasm': False,
-                   'emsdk': True}
+                   'emsdk': True, 'node': True}
 
 
 def test_plan_of_a_library_on_emscripten(root):
@@ -133,7 +133,7 @@ def test_plan_of_a_library_on_emscripten(root):
     projects = emscripten.pop('projects')
     assert projects == ['libs/browser_demo/test', 'libs/browser_demo/example'], projects
     assert emscripten == EMSCRIPTEN_LANE, emscripten
-    assert not any(lane['emsdk'] for lane in lanes[:-1]), lanes
+    assert not any(lane['emsdk'] or lane['node'] for lane in lanes[:-1]), lanes
     # Every library's plan has it once, for the libraries that declare emscripten alone.
     by_id = {lane['id']: lane for lane in planned(root)}
     assert by_id['emscripten']['projects'] == projects, by_id['emscripten']
@@ -199,13 +199,13 @@ def test_own_lanes_of_every_library_and_of_one(root):
     # Every entry names its job and its image, which the job reads from here alone.
     alpha = [{'library': 'alpha', 'lane': 'browser', 'directories': ['libs/alpha/example/browser'],
               'name': 'Own lane (alpha, browser)', 'os': 'ubuntu-24.04', 'wasm': False,
-              'emsdk': False},
+              'emsdk': False, 'node': True},
              {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
               'name': 'Own lane (alpha, http)', 'os': 'ubuntu-24.04', 'wasm': False,
-              'emsdk': False}]
+              'emsdk': False, 'node': True}]
     beta = [{'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
              'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False,
-             'emsdk': False}]
+             'emsdk': False, 'node': True}]
     assert own_lanes(root) == alpha + beta
     assert own_lanes(root, '--library', 'beta') == beta
     assert own_lanes(root, '--library', 'demo') == []
@@ -257,27 +257,31 @@ def test_own_lanes_on_targets(root):
         'webcpp.lane oracle : twins ;\n')
     alpha = [{'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/example'],
               'platform': 'native', 'id': 'native.alpha.http', 'name': 'Own lane (alpha, http, '
-              'native)', 'os': 'ubuntu-24.04', 'wasm': False, 'emsdk': False},
+              'native)', 'os': 'ubuntu-24.04', 'wasm': False, 'emsdk': False, 'node': True},
              {'library': 'alpha', 'lane': 'http',
               'directories': ['libs/alpha/example', 'libs/alpha/test'], 'platform': 'wasip2',
               'id': 'wasip2.alpha.http', 'name': 'Own lane (alpha, http, wasip2)',
-              'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False},
+              'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False, 'node': True},
              {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
               'platform': 'wasip3', 'id': 'wasip3.alpha.http', 'name': 'Own lane (alpha, http, '
-              'wasip3)', 'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False}]
+              'wasip3)', 'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False, 'node': True}]
     beta = {'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
             'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False,
-            'emsdk': False}
+            'emsdk': False, 'node': True}
     assert own_lanes(root) == [*alpha, beta]
     assert own_lanes(root, '--library', 'alpha') == alpha
     assert run(root, 'own-lanes', '--library', 'beta').stdout == (
         '{"include":[{"library":"beta","lane":"oracle","directories":["libs/beta/test/oracle"],'
-        '"name":"Own lane (beta, oracle)","os":"ubuntu-24.04","wasm":false,"emsdk":false}]}\n')
+        '"name":"Own lane (beta, oracle)","os":"ubuntu-24.04","wasm":false,"emsdk":false,'
+        '"node":true}]}\n')
     # Each entry is read back as the lane it is, and runs in each of its directories.
     for entry in alpha:
         own = matrix.parsed_own_lane(json.dumps(entry))
         assert own_lane_entry_of(own) == entry, (own, entry)
         assert own.requests == [f'{directory}//http' for directory in entry['directories']]
+    # Every own lane has Node, the version the CI pins, whatever its target: an oracle runs npm
+    # and its original under node, and a driven test its driver, natively too (webcpp.drive).
+    assert all(entry['node'] for entry in own_lanes(root)), own_lanes(root)
     # An own lane on emscripten shares the emscripten lane's setup: emsdk and Node.
     harness.add_library(root, 'gamma',
                         'import webcpp ;\n'
@@ -288,7 +292,7 @@ def test_own_lanes_on_targets(root):
     gamma = {'library': 'gamma', 'lane': 'browser', 'directories': ['libs/gamma/test'],
              'platform': 'emscripten', 'id': 'emscripten.gamma.browser',
              'name': 'Own lane (gamma, browser, emscripten)', 'os': 'ubuntu-24.04', 'wasm': False,
-             'emsdk': True}
+             'emsdk': True, 'node': True}
     assert own_lanes(root) == [*alpha, beta, gamma]
     assert own_lanes(root, '--library', 'gamma') == [gamma]
     own = matrix.parsed_own_lane(json.dumps(gamma))

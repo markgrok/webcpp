@@ -10,7 +10,8 @@ leaves none of its actions running. b2 gives each action a process group of its 
 b2's group alone would leave them running. Lanes run at once start on a bin that exists, and a
 lane that fails stops the others, with what they started. Run with the names of some cases to run
 only those. b2 gets one environment, without CPATH and its kin, however it is started, with
-Emscripten's cache of the run's own; and a scratch superproject gets the emsdk it is given."""
+Emscripten's cache the shell's, else the run's own; and a scratch superproject gets the emsdk it
+is given."""
 
 from __future__ import annotations
 
@@ -194,32 +195,41 @@ def test_every_b2_gets_one_environment(root):
     assert printed == [expected] * 3, printed
 
 
-def test_emscripten_has_one_cache_per_run(root):
-    # Emscripten writes its cache where EM_CACHE names, else inside the emsdk, which is read-only:
-    # every b2 gets the run's own cache, over the shell's, beside the run's scratch superprojects,
-    # made once and shared by the cases, since Emscripten locks it, and named by its resolved
-    # path. Emscripten's sanity check, which a fresh cache would print, is skipped. env_extra may
-    # name another cache.
+def test_emscripten_cache_is_the_shells_else_one_per_run(root):
+    # Emscripten writes its cache where EM_CACHE names, else inside the emsdk, which is read-only.
+    # Every b2 gets the cache the shell names, as the CI's emsdk action names the one it restores
+    # with its system libraries built, so that no test builds them again; else the run's own,
+    # beside the run's scratch superprojects, made once and shared by the cases. Either is shared,
+    # since Emscripten locks it, and named by its resolved path. Emscripten's sanity check, which a
+    # fresh cache would print, is skipped. env_extra may name another cache.
     tools = root / 'fake tools'
     tools.mkdir()
     (tools / 'b2').write_text(ENVIRONMENT_B2.format(python=sys.executable))
     (tools / 'b2').chmod(0o755)
     extra = {'PATH': f'{tools}{os.pathsep}{os.environ["PATH"]}',
              'SHOWN': 'EM_CACHE EMCC_SKIP_SANITY_CHECK'}
-    cache = harness.emscripten_cache()
-    assert cache == harness.emscripten_cache() and cache.is_dir(), cache
-    assert cache.parent == root.parent.resolve() and cache.name == 'emscripten-cache', (cache, root)
+    shells = root / 'shell cache'
+    linked = root / 'shell cache link'
+    linked.symlink_to(shells)
     saved = os.environ.get('EM_CACHE')
-    os.environ['EM_CACHE'] = str(harness.ROOT / '.local/emscripten-cache')
     try:
+        os.environ.pop('EM_CACHE', None)
+        own = harness.emscripten_cache()
+        assert own == harness.emscripten_cache() and own.is_dir(), own
+        assert own.parent == root.parent.resolve() and own.name == 'emscripten-cache', (own, root)
+        printed = harness.run_b2(root, env_extra=extra).stdout
+        assert printed == f'EM_CACHE={own}\nEMCC_SKIP_SANITY_CHECK=1\n', printed
+        # The shell's, by its resolved path, made when it is not there yet.
+        os.environ['EM_CACHE'] = str(linked)
+        assert harness.emscripten_cache() == shells.resolve() and shells.is_dir(), shells
         printed = harness.run_b2(root, env_extra=extra).stdout
         given = harness.run_b2(root, env_extra={**extra, 'EM_CACHE': '/elsewhere'}).stdout
     finally:
         if saved is None:
-            del os.environ['EM_CACHE']
+            os.environ.pop('EM_CACHE', None)
         else:
             os.environ['EM_CACHE'] = saved
-    assert printed == f'EM_CACHE={cache}\nEMCC_SKIP_SANITY_CHECK=1\n', printed
+    assert printed == f'EM_CACHE={shells.resolve()}\nEMCC_SKIP_SANITY_CHECK=1\n', printed
     assert given == 'EM_CACHE=/elsewhere\nEMCC_SKIP_SANITY_CHECK=1\n', given
 
 
@@ -256,7 +266,7 @@ def test_link_emsdk_links_the_emsdk_it_is_given(root):
 
 CASES = [
     test_every_b2_gets_one_environment,
-    test_emscripten_has_one_cache_per_run,
+    test_emscripten_cache_is_the_shells_else_one_per_run,
     test_link_emsdk_links_the_emsdk_it_is_given,
     test_a_timeout_stops_every_action,
     test_lanes_start_on_bin_and_a_failure_stops_the_others,

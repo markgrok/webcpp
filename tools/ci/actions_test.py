@@ -17,19 +17,23 @@ where the build looks for it, in place of what was there, and refuses a runner i
 for before it downloads anything; the wasi-wit action installs the wit/deps directory of each
 crate, wasip2's and wasip3's, in .local/wasi-wit/p2 and .local/wasi-wit/p3, in place of what was
 there, and fails, naming the crate, on one that holds no WIT. The emsdk action installs the emsdk
-of its pinned commit in .local/emsdk, in place of what was there, with every archive emsdk
-installs downloaded and checked first, and fails on one emsdk would download unpinned; it refuses
-a runner other than Linux and macOS on x86-64 and arm64 before it downloads anything; and its
-configure step fails, naming both versions, on an emcc that is not Emscripten 6.0.11, installs the
-node wrapper, which refuses b2's probe of --experimental-wasm-threads without a word, gives the jobs
-EM_CACHE by its resolved path, outside the emsdk, and warms that cache, so that no b2 meets
-Emscripten's sanity check. Nothing is fetched from the network: the downloads are file:// URLs,
-and install.sh runs against a download.sh that only says it was called, or that hands it a
-stand-in archive. Run with the names of some cases to run only those."""
+repository at its pinned commit, fetched with git, in .local/emsdk, in place of what was there,
+and fails when another commit is checked out; every archive emsdk installs is downloaded and
+checked first, a release without Emscripten's node_modules fails before emsdk runs, and so does
+one emsdk would download unpinned, before emsdk activate; it refuses a runner other than Linux and
+macOS on x86-64 and arm64 before it downloads anything; its configure step fails, naming both
+versions, on an emcc that is not Emscripten 6.0.11, installs the node wrapper, which refuses b2's
+probe of --experimental-wasm-threads without a word, gives the jobs EM_CACHE by its resolved path,
+outside the emsdk, and warms that cache, so that no b2 meets Emscripten's sanity check; and its
+libraries step builds the system libraries the lanes link into that cache. Nothing is fetched
+from the network: the downloads are file:// URLs, git is a stand-in, and install.sh runs against
+a download.sh that only says it was called, or that hands it a stand-in archive. Run with the
+names of some cases to run only those."""
 
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import shutil
 import subprocess
@@ -390,7 +394,7 @@ def test_wasi_wit_fails_on_a_crate_without_its_wit(scratch: Path) -> None:
 
 
 EMSDK_COMMIT = 'dd8e25632640cfc1fb570c7fa4cc374e8a5e5a72'
-EMSDK_ARCHIVE = f'https://github.com/emscripten-core/emsdk/archive/{EMSDK_COMMIT}.tar.gz'
+EMSDK_REPOSITORY = 'https://github.com/emscripten-core/emsdk'
 RELEASE = 'f6264d4a4dd9ba24a9f0a5702835a44d1463de13'
 BUILDS = 'https://storage.googleapis.com/webassembly/emscripten-releases-builds'
 
@@ -422,13 +426,50 @@ EMSDK_DOWNLOADS = {
 
 EMSCRIPTEN_VERSION = '6.0.11 (a0014542110d6078c3a1a7941fa1ddb3a2281f16)'
 
+# The system libraries the action builds into the cache it saves: those that em++ links a program
+# with at -O2 and at -O0 -g, with and without -fwasm-exceptions.
+SYSTEM_LIBRARIES = [
+    'libGL-getprocaddr', 'libal', 'libc', 'libc-debug', 'libc++-debug-legacyexcept',
+    'libc++-debug-noexcept', 'libc++-legacyexcept', 'libc++-noexcept',
+    'libc++abi-debug-legacyexcept', 'libc++abi-debug-noexcept', 'libc++abi-legacyexcept',
+    'libc++abi-noexcept', 'libclang_rt.builtins', 'libclang_rt.builtins-legacysjlj', 'libdlmalloc',
+    'libdlmalloc-debug', 'libhtml5', 'libnoexit', 'libsockets', 'libstubs', 'libstubs-debug',
+    'libunwind-legacyexcept',
+]
+
+# A stand-in of git, for the commands the action runs: `init -q <dir>`, `-C <dir> fetch --depth 1
+# <repository> <commit>`, which logs its repository and commit to git.log and copies the stand-in
+# emsdk, STAND_IN_EMSDK, into <dir>, `-C <dir> checkout -q FETCH_HEAD`, and `-C <dir> rev-parse
+# HEAD`, which prints STAND_IN_HEAD, else the commit fetched.
+FAKE_GIT = r'''#!/usr/bin/env bash
+set -euo pipefail
+if [ "$1" = init ]; then
+    mkdir -p "$3/.git"
+    exit 0
+fi
+[ "$1" = -C ] || { echo "git: not a command of the stand-in: $*" >&2; exit 1; }
+directory="$2"
+shift 2
+case "$*" in
+    'fetch --depth 1 '*)
+        printf '%s %s\n' "$4" "$5" >> "${STAND_IN_LOG}"
+        cp -R "${STAND_IN_EMSDK}/." "${directory}/"
+        echo "$5" > "${directory}/.git/FETCH_HEAD"
+        ;;
+    'checkout -q FETCH_HEAD') ;;
+    'rev-parse HEAD') echo "${STAND_IN_HEAD:-$(cat "${directory}/.git/FETCH_HEAD")}" ;;
+    *) echo "git: not a command of the stand-in: $*" >&2; exit 1 ;;
+esac
+'''
+
 # A stand-in of emsdk's own script: `install 6.0.11` installs nothing it would have to download,
 # so it needs each archive the action pins in downloads/ and EMSDK_KEEP_DOWNLOADS=1, under which
 # emsdk takes a file there for the download; it writes STAND_IN_EXTRA there too when that names a
 # file, as an emsdk that downloads more than the action pins would. It installs an emcc and an
 # em++ that print STAND_IN_VERSION, else 6.0.11's, and check Emscripten's configuration the first
-# time they meet a cache, as Emscripten does, saying so on standard error. `activate 6.0.11`
-# writes the configuration.
+# time they meet a cache, as Emscripten does, saying so on standard error; and an embuilder that
+# logs what it is asked to build, and with which cache, to embuilder.log. `activate 6.0.11` writes
+# the configuration, and fails when an unpinned download is still there.
 FAKE_EMSDK = r'''#!/usr/bin/env bash
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -441,7 +482,7 @@ case "$*" in
         if [ -n "${STAND_IN_EXTRA-}" ]; then
             echo extra > "$here/downloads/$STAND_IN_EXTRA"
         fi
-        mkdir -p "$here/upstream/emscripten"
+        mkdir -p "$here/upstream/emscripten/node_modules"
         for tool in emcc em++; do
             cat > "$here/upstream/emscripten/$tool" <<'TOOL'
 #!/usr/bin/env bash
@@ -454,39 +495,75 @@ echo "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) ${v
 TOOL
             chmod +x "$here/upstream/emscripten/$tool"
         done
+        cat > "$here/upstream/emscripten/embuilder" <<'TOOL'
+#!/usr/bin/env bash
+printf '%s %s\n' "$EM_CACHE" "$*" >> "$(dirname "$0")/../../embuilder.log"
+TOOL
+        chmod +x "$here/upstream/emscripten/embuilder"
         ;;
-    'activate 6.0.11') echo "LLVM_ROOT = '$here/upstream/bin'" > "$here/.emscripten" ;;
+    'activate 6.0.11')
+        if [ -n "${STAND_IN_EXTRA-}" ] && [ -e "$here/downloads/$STAND_IN_EXTRA" ]; then
+            echo 'emsdk: activated with an unpinned download' >&2
+            exit 1
+        fi
+        echo "LLVM_ROOT = '$here/upstream/bin'" > "$here/.emscripten"
+        ;;
     *) echo "emsdk: not a command of the stand-in: $*" >&2; exit 1 ;;
 esac
 '''
 
 
-def emsdk_tree(scratch: Path, system: str, processor: str) -> tuple[Path, dict[str, str]]:
-    """The emsdk action's files where they live, beside a download.sh that serves
-    the stand-in emsdk archive and a stand-in of each archive the action pins for the runner, and
-    the runner's variables, its workspace reached through a link."""
-    tree = scratch / 'archive' / f'emsdk-{EMSDK_COMMIT}'
+def release_archive(path: Path, node_modules: bool) -> Path:
+    """A stand-in of the release's binaries, an xz tarball under install/, with Emscripten's
+    node_modules unless node_modules is False."""
+    with tarfile.open(path, 'w:xz') as tar:
+        for name in ('install/emscripten/emcc.py',
+                     *(['install/emscripten/node_modules/acorn/package.json']
+                       if node_modules else [])):
+            data = f'{name}\n'.encode()
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            tar.addfile(member, io.BytesIO(data))
+    return path
+
+
+def emsdk_tree(scratch: Path, system: str, processor: str,
+               node_modules: bool = True) -> tuple[Path, dict[str, str]]:
+    """The emsdk action's files where they live, beside a download.sh that serves a stand-in of
+    each archive the action pins for the runner, a stand-in git that serves the stand-in emsdk,
+    and the runner's variables, its workspace reached through a link."""
+    tree = scratch / 'stand-in emsdk'
     tree.mkdir(parents=True)
     script = tree / 'emsdk'
     script.write_text(FAKE_EMSDK)
     script.chmod(0o755)
     downloads = EMSDK_DOWNLOADS.get((system, processor), {})
     (tree / 'expected-downloads').write_text(''.join(f'{name}\n' for name in downloads.values()))
-    archives = {EMSDK_ARCHIVE: tar_gz(scratch / 'emsdk.tar.gz', tree, f'emsdk-{EMSDK_COMMIT}')}
+    (scratch / 'archive').mkdir()
+    archives = {}
     for url, name in downloads.items():
         stand_in = scratch / 'archive' / name
-        stand_in.write_text(f'{url}\n')
+        if 'wasm-binaries' in name:
+            release_archive(stand_in, node_modules)
+        else:
+            stand_in.write_text(f'{url}\n')
         archives[url] = stand_in
     install = serving_tree(scratch, 'emsdk', EMSDK, archives)
     for name in ('node.sh', 'action.yml'):
         shutil.copy2(EMSDK.parent / name, install.parent / name)
+    tools = scratch / 'tools-on-path'
+    tools.mkdir()
+    (tools / 'git').write_text(FAKE_GIT)
+    (tools / 'git').chmod(0o755)
     # The workspace, by a link to it: what is installed lands in scratch itself.
     workspace = scratch / 'workspace link'
     workspace.symlink_to(scratch)
     return install, {'RUNNER_OS': system, 'RUNNER_ARCH': processor,
                      'RUNNER_TEMP': str(scratch / 'temp'), 'GITHUB_WORKSPACE': str(workspace),
                      'GITHUB_ENV': str(scratch / 'github-env'),
-                     'GITHUB_OUTPUT': str(scratch / 'github-output')}
+                     'GITHUB_OUTPUT': str(scratch / 'github-output'),
+                     'PATH': f'{tools}{os.pathsep}{os.environ["PATH"]}',
+                     'STAND_IN_EMSDK': str(tree), 'STAND_IN_LOG': str(scratch / 'git.log')}
 
 
 def emsdk_step(scratch: Path, script: Path, step: str, runner: dict[str, str],
@@ -496,6 +573,12 @@ def emsdk_step(scratch: Path, script: Path, step: str, runner: dict[str, str],
     environment.pop('EM_CACHE', None)
     return subprocess.run(['bash', str(script), step], capture_output=True, text=True,
                           check=False, cwd=runner['GITHUB_WORKSPACE'], env=environment)
+
+
+def fetched(scratch: Path) -> list[str]:
+    """The (repository, commit) of each fetch the stand-in git was asked for, one line each."""
+    log = scratch / 'git.log'
+    return log.read_text().splitlines() if log.exists() else []
 
 
 def test_emsdk_installs_the_pinned_emsdk_into_local_emsdk(scratch: Path) -> None:
@@ -513,9 +596,12 @@ def test_emsdk_installs_the_pinned_emsdk_into_local_emsdk(scratch: Path) -> None
         assert (emsdk / 'emsdk').is_file() and not stale.exists(), sorted(emsdk.iterdir())
         assert (emsdk / 'upstream/emscripten/emcc').is_file(), sorted(emsdk.iterdir())
         assert (emsdk / '.emscripten').is_file(), sorted(emsdk.iterdir())
+        # emsdk is the repository at the pinned commit, without its git directory.
+        assert fetched(root) == [f'{EMSDK_REPOSITORY} {EMSDK_COMMIT}'], fetched(root)
+        assert not (emsdk / '.git').exists(), sorted(emsdk.iterdir())
         # The archives emsdk installed from are checked, then left out of what is cached.
         assert not (emsdk / 'downloads').exists(), sorted((emsdk / 'downloads').iterdir())
-        assert [url for url, _ in downloads(root)] == [EMSDK_ARCHIVE, *pinned], downloads(root)
+        assert [url for url, _ in downloads(root)] == [*pinned], downloads(root)
         digests = [digest for _, digest in downloads(root)]
         assert all(len(d) == 64 and set(d) <= set('0123456789abcdef') for d in digests), digests
         assert len(set(digests)) == len(digests), digests
@@ -524,7 +610,31 @@ def test_emsdk_installs_the_pinned_emsdk_into_local_emsdk(scratch: Path) -> None
         result = emsdk_step(root, script, 'key', runner)
         assert result.returncode == 0, (result.returncode, result.stderr)
         key = (root / 'github-output').read_text()
-        assert key.startswith(f'key=emsdk-6.0.11-') and f'-{processor}-' in key, key
+        assert key.startswith('key=emsdk-6.0.11-') and f'-{processor}-' in key, key
+
+
+def test_emsdk_fails_on_another_commit(scratch: Path) -> None:
+    # The commit is the pin: a fetch that checks out another fails the install, naming both.
+    script, runner = emsdk_tree(scratch, 'Linux', 'X64')
+    other = '1' * 40
+    result = emsdk_step(scratch, script, 'install', runner, STAND_IN_HEAD=other)
+    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
+    assert (f'install.sh: {EMSDK_REPOSITORY} at {EMSDK_COMMIT} checked out {other}') in (
+        result.stderr), result.stderr
+    assert not (scratch / '.local/emsdk').exists()
+    assert downloads(scratch) == []
+
+
+def test_emsdk_fails_on_a_release_without_its_node_modules(scratch: Path) -> None:
+    # emsdk would run npm ci against the registry for a release without Emscripten's
+    # node_modules: the install fails first, naming the archive, and emsdk installs nothing.
+    script, runner = emsdk_tree(scratch, 'Linux', 'X64', node_modules=False)
+    result = emsdk_step(scratch, script, 'install', runner)
+    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
+    assert (f'install.sh: {RELEASE}-wasm-binaries.tar.xz holds no install/emscripten/'
+            'node_modules, which emsdk would install with npm from the registry') in (
+                result.stderr), result.stderr
+    assert not (scratch / '.local/emsdk').exists()
 
 
 def test_emsdk_configure_installs_the_wrapper_and_warms_the_cache(scratch: Path) -> None:
@@ -562,6 +672,18 @@ def test_emsdk_configure_installs_the_wrapper_and_warms_the_cache(scratch: Path)
     assert 'Running sanity checks' not in result.stdout + result.stderr, result.stderr
 
 
+def test_emsdk_builds_the_system_libraries_into_the_cache(scratch: Path) -> None:
+    # The cache the action saves holds the system libraries the lanes link, built with embuilder
+    # in the cache configure gives the jobs, so that no lane builds them.
+    script, runner = emsdk_tree(scratch, 'Linux', 'X64')
+    for step in ('install', 'configure', 'libraries'):
+        result = emsdk_step(scratch, script, step, runner)
+        assert result.returncode == 0, (step, result.returncode, result.stdout, result.stderr)
+    cache = scratch.resolve() / '.local/emscripten-cache'
+    built = (scratch / '.local/emsdk/embuilder.log').read_text().splitlines()
+    assert built == [f'{cache} build {" ".join(SYSTEM_LIBRARIES)}'], built
+
+
 def test_emsdk_configure_fails_naming_both_versions(scratch: Path) -> None:
     script, runner = emsdk_tree(scratch, 'Linux', 'X64')
     result = emsdk_step(scratch, script, 'install', runner)
@@ -576,11 +698,13 @@ def test_emsdk_configure_fails_naming_both_versions(scratch: Path) -> None:
 
 
 def test_emsdk_fails_on_a_download_it_does_not_pin(scratch: Path) -> None:
+    # Before emsdk activate, which runs on macOS with the Python the install just unpacked.
     script, runner = emsdk_tree(scratch, 'Linux', 'X64')
     result = emsdk_step(scratch, script, 'install', runner, STAND_IN_EXTRA='llvm.tar.xz')
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
     assert ('install.sh: emsdk downloaded llvm.tar.xz, which this action does not pin') in (
         result.stderr), result.stderr
+    assert 'activated with an unpinned download' not in result.stderr, result.stderr
     assert not (scratch / '.local/emsdk').exists()
 
 
@@ -589,13 +713,13 @@ def test_emsdk_refuses_a_runner_it_pins_nothing_for(scratch: Path) -> None:
         root = scratch / f'runner {system or "none"}'
         root.mkdir()
         script, runner = emsdk_tree(root, system, processor)
-        for step in ('install', 'configure'):
+        for step in ('install', 'configure', 'libraries'):
             result = emsdk_step(root, script, step, runner)
             assert result.returncode == 1, (system, processor, step, result.returncode)
             assert (f'install.sh: no emsdk 6.0.11 is pinned for {system} on {processor}: the '
                     'action runs on Linux and macOS, on X64 and ARM64') in result.stderr, (
                         result.stderr)
-        assert downloads(root) == []
+        assert downloads(root) == [] and fetched(root) == []
         assert not (root / '.local').exists()
 
 
@@ -612,7 +736,10 @@ CASES: list[Callable[[Path], None]] = [
     test_wasi_wit_installs_each_crates_wit_deps,
     test_wasi_wit_fails_on_a_crate_without_its_wit,
     test_emsdk_installs_the_pinned_emsdk_into_local_emsdk,
+    test_emsdk_fails_on_another_commit,
+    test_emsdk_fails_on_a_release_without_its_node_modules,
     test_emsdk_configure_installs_the_wrapper_and_warms_the_cache,
+    test_emsdk_builds_the_system_libraries_into_the_cache,
     test_emsdk_configure_fails_naming_both_versions,
     test_emsdk_fails_on_a_download_it_does_not_pin,
     test_emsdk_refuses_a_runner_it_pins_nothing_for,

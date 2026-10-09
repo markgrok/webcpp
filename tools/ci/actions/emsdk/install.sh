@@ -14,18 +14,24 @@
 #
 #   install.sh key        writes the cache key, the version, the runner and this action's files,
 #                         to GITHUB_OUTPUT;
-#   install.sh install    downloads the emsdk repository at the commit of its tag 6.0.11, and
-#                         every archive `emsdk install 6.0.11` installs from, each checked against
-#                         the SHA-256 pinned here, then runs `emsdk install` and `emsdk activate`
-#                         on those files alone, in .local/emsdk;
+#   install.sh install    fetches the emsdk repository at the commit of its tag 6.0.11 with git,
+#                         and downloads every archive `emsdk install 6.0.11` installs from, each
+#                         checked against the SHA-256 pinned here, then runs `emsdk install` and
+#                         `emsdk activate` on those files alone, in .local/emsdk;
 #   install.sh configure  checks that .local/emsdk's emcc is Emscripten 6.0.11, installs the node
-#                         wrapper, gives the job's later steps EM_CACHE, and warms that cache.
+#                         wrapper, gives the job's later steps EM_CACHE, and warms that cache;
+#   install.sh libraries  builds into that cache the system libraries the lanes link, before the
+#                         action saves it.
 #
-# emsdk downloads its archives without checking them, so each is downloaded here first, with
-# tools/ci/download.sh, into .local/emsdk/downloads under the name emsdk gives it there, and
+# The commit is the pin: git fetches it by its hash, and the install fails unless HEAD is that
+# commit. emsdk downloads its archives without checking them, so each is downloaded here first,
+# with tools/ci/download.sh, into .local/emsdk/downloads under the name emsdk gives it there, and
 # emsdk runs with EMSDK_KEEP_DOWNLOADS=1, under which it installs from a file it finds there
 # rather than download it again. An archive emsdk downloads besides those fails the install,
-# naming it. The archives are removed once installed: the action caches what they installed.
+# naming it, before `emsdk activate`, which on macOS runs with the Python the install unpacked.
+# A release without Emscripten's node_modules fails before emsdk runs: emsdk would install them
+# with `npm ci`, from the registry, unchecked. The archives are removed once installed: the
+# action caches what they installed.
 #
 # EM_CACHE is .local/emscripten-cache, outside the emsdk, which Emscripten would otherwise write
 # its cache into, by its resolved path: Emscripten 6.0.11 builds a system library from a relative
@@ -38,21 +44,38 @@
 # log is the action's, and the cache it leaves is saved with the emsdk: no b2 of a job meets a
 # cache that is not checked, and the check still runs, as Emscripten means it to, when the
 # version or the emsdk's directory changes.
+#
+# Emscripten builds a system library the first time a link needs it, into the cache, which costs
+# a lane its first links and races when two links need the same one. libraries builds them with
+# embuilder before the cache is saved, so that the cache every job restores holds them; one not
+# listed is still built when a link needs it.
 set -euo pipefail
 
 version=6.0.11
 # What `emcc --version` names: the version and the commit of emscripten it was built from.
 emscripten="${version} (a0014542110d6078c3a1a7941fa1ddb3a2281f16)"
 # The commit of emsdk's tag 6.0.11 (gh api repos/emscripten-core/emsdk/git/ref/tags/6.0.11).
+repository=https://github.com/emscripten-core/emsdk
 commit=dd8e25632640cfc1fb570c7fa4cc374e8a5e5a72
-archive="emsdk-${commit}.tar.gz"
-url="https://github.com/emscripten-core/emsdk/archive/${commit}.tar.gz"
-sha256=f57126eb845e04325a3d3d7711dbddc159ff0e8516c331d28cf01476bf72dc0b
 # The build of emscripten-releases that emsdk's emscripten-releases-tags.json names for 6.0.11.
 release=f6264d4a4dd9ba24a9f0a5702835a44d1463de13
 builds=https://storage.googleapis.com/webassembly/emscripten-releases-builds
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The system libraries em++ 6.0.11 links a program with, measured from the libraries a fresh cache
+# generates for a C++ program with <iostream> and <string> linked at -O2 and at -O0 -g, each
+# with -fno-exceptions, with no flag and with -fwasm-exceptions (webcpp's, in Emscripten's legacy
+# encoding), and at -O3 with -fwasm-exceptions -sNODERAWFS=1: the C and C++ libraries and their
+# debug, legacyexcept and noexcept variants, compiler-rt, dlmalloc, the unwinder and the default
+# stubs, which together build every program of the lanes without a library left to build.
+libraries=(
+    libGL-getprocaddr libal libc libc-debug libc++-debug-legacyexcept libc++-debug-noexcept
+    libc++-legacyexcept libc++-noexcept libc++abi-debug-legacyexcept libc++abi-debug-noexcept
+    libc++abi-legacyexcept libc++abi-noexcept libclang_rt.builtins libclang_rt.builtins-legacysjlj
+    libdlmalloc libdlmalloc-debug libhtml5 libnoexit libsockets libstubs libstubs-debug
+    libunwind-legacyexcept
+)
 
 # The archives emsdk installs 6.0.11 from on the runner, one line each: its URL, the name emsdk
 # saves it under, and its SHA-256. The release's binaries, then Node 24.19.0, whose archives are
@@ -128,40 +151,62 @@ key() {
         "${ImageOS:-image}" "${files:0:16}" >> "${GITHUB_OUTPUT}"
 }
 
+# Fails the install, naming why, and leaves no emsdk to be cached.
+refuse() {
+    printf 'install.sh: %s\n' "$1" >&2
+    rm -rf .local/emsdk
+    exit 1
+}
+
 install() {
     local downloads
     downloads="$(pinned)"
-    "${here}/../../download.sh" "${url}" "${sha256}" "${RUNNER_TEMP}/${archive}"
     rm -rf .local/emsdk
+    git init -q .local/emsdk
+    git -C .local/emsdk fetch --depth 1 "${repository}" "${commit}"
+    git -C .local/emsdk checkout -q FETCH_HEAD
+    local head
+    head="$(git -C .local/emsdk rev-parse HEAD)"
+    [ "${head}" = "${commit}" ] \
+        || refuse "${repository} at ${commit} checked out ${head}"
+    rm -rf .local/emsdk/.git
     mkdir -p .local/emsdk/downloads
-    tar -xzf "${RUNNER_TEMP}/${archive}" -C .local/emsdk --strip-components=1
-    rm "${RUNNER_TEMP}/${archive}"
     local names=()
     local download name hash
     while read -r download name hash; do
         "${here}/../../download.sh" "${download}" "${hash}" ".local/emsdk/downloads/${name}"
         names+=("${name}")
     done <<< "${downloads}"
-    (cd .local/emsdk && EMSDK_KEEP_DOWNLOADS=1 ./emsdk install "${version}" \
-        && ./emsdk activate "${version}")
+    # The release's binaries are the first archive pinned.
+    local release="${names[0]}"
+    tar -tJf ".local/emsdk/downloads/${release}" install/emscripten/node_modules > /dev/null 2>&1 \
+        || refuse "${release} holds no install/emscripten/node_modules, which emsdk would\
+ install with npm from the registry"
+    (cd .local/emsdk && EMSDK_KEEP_DOWNLOADS=1 ./emsdk install "${version}")
+    [ -d .local/emsdk/upstream/emscripten/node_modules ] \
+        || refuse 'emsdk installed no upstream/emscripten/node_modules'
     local found
     for found in .local/emsdk/downloads/*; do
         name="$(basename "${found}")"
         if [[ " ${names[*]} " != *" ${name} "* ]]; then
-            printf 'install.sh: emsdk downloaded %s, which this action does not pin\n' "${name}" >&2
-            rm -rf .local/emsdk
-            exit 1
+            refuse "emsdk downloaded ${name}, which this action does not pin"
         fi
     done
     rm -rf .local/emsdk/downloads
+    (cd .local/emsdk && ./emsdk activate "${version}")
+}
+
+# Emscripten's cache, .local/emscripten-cache by its resolved path, made and exported.
+use_cache() {
+    EM_CACHE="$(cd "${GITHUB_WORKSPACE}" && pwd -P)/.local/emscripten-cache"
+    mkdir -p "${EM_CACHE}"
+    export EM_CACHE
 }
 
 configure() {
     pinned > /dev/null
-    local cache
-    cache="$(cd "${GITHUB_WORKSPACE}" && pwd -P)/.local/emscripten-cache"
-    mkdir -p "${cache}"
-    export EM_CACHE="${cache}"
+    use_cache
+    local cache="${EM_CACHE}"
     local emcc=.local/emsdk/upstream/emscripten/emcc
     local output printed
     output="$("${emcc}" --version)" || {
@@ -190,12 +235,19 @@ configure() {
     printf 'install.sh: EM_CACHE=%s, warmed; node wrapper .local/emscripten/node\n' "${cache}"
 }
 
+libraries() {
+    pinned > /dev/null
+    use_cache
+    .local/emsdk/upstream/emscripten/embuilder build "${libraries[@]}"
+}
+
 case "${1-}" in
     key) key ;;
     install) install ;;
     configure) configure ;;
+    libraries) libraries ;;
     *)
-        printf 'usage: install.sh key | install | configure\n' >&2
+        printf 'usage: install.sh key | install | configure | libraries\n' >&2
         exit 2
         ;;
 esac

@@ -233,16 +233,20 @@ directories `$WIT_BINDGEN_ROOT`, `$WASI_WIT_ROOT` and `$WASI_SDK` name, into
 its scratch copy, one that needs Emscripten `.local/emsdk`, or `$EMSDK_ROOT`,
 and one that needs MrDocs `.local/mrdocs`, or `$MRDOCS_ROOT`. Emscripten
 writes its cache where `EM_CACHE` names, else inside the emsdk: every b2 of a
-test gets the cache of its run, beside its scratch copies, by its resolved
-path, over the shell's `EM_CACHE`, so that no test writes
-`.local/emscripten-cache`; the resolved path, since Emscripten 6.0.11 builds a
-system library from a relative path that misses its sources through a link, as
-macOS's `$TMPDIR` is one. It also gets `EMCC_SKIP_SANITY_CHECK=1`: Emscripten
-checks its configuration when it first meets a cache, which a test's is in
-every run, and prints "Running sanity checks" into the output of the b2 that
-configures the toolset, which a test compares whole
-(`b2 -d0 declared-targets`); the check's one other use, clearing a cache made
-by another toolchain, has nothing to clear in a cache of the run's own. The
+test gets the cache the shell's `EM_CACHE` names, as the CI's emsdk action
+names the one it restores with its system libraries built, so that no test
+builds them again; else one of its run, beside its scratch copies. Either is
+named by its resolved path, since Emscripten 6.0.11 builds a system library
+from a relative path that misses its sources through a link, as macOS's
+`$TMPDIR` is one. Sharing it is safe: Emscripten builds a library that is
+missing under a lock of the cache's own and looks again once it holds it, and
+three test runs at once on one empty cache pass. Each b2 also gets
+`EMCC_SKIP_SANITY_CHECK=1`: Emscripten checks its configuration when it first
+meets a cache, which a run's own is in every run, and prints "Running sanity
+checks" into the output of the b2 that configures the toolset, which a test
+compares whole (`b2 -d0 declared-targets`); the check's one other use,
+clearing a cache made by another toolchain, has nothing to clear in a cache of
+the run's own, and the CI's was checked when the action warmed it. The
 doc build finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only
 when told: `b2 --user-config=.local/user-config.jam ...`.
 
@@ -1406,9 +1410,10 @@ jobs:
   directories}`, every directory that declares the lane there, for an own
   lane that names no target, and one per target for one that names targets,
   which adds `platform`, its target, and `id`, its name in the report; every
-  entry has `name`, its job's, and the `os`, `wasm` and `emsdk` of the lane
-  whose setup it shares, the target's own, and the oracle's Clang 18 for
-  native and for none, which the job reads from it alone.
+  entry has `name`, its job's, the `os`, `wasm` and `emsdk` of the lane whose
+  setup it shares, the target's own, and the oracle's Clang 18 for native and
+  for none, and `node`, true for every own lane, which the job reads from it
+  alone.
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
@@ -1422,7 +1427,7 @@ jobs:
   | `clang-darwin-<version>` | macos-15 | Apple Clang, its version read from `clang++ -dumpversion` |
   | `msvc-14.3` | windows-2022 | Visual Studio 2022 |
   | `msvc-14.5` | windows-2025 | Visual Studio 2026 |
-  | `emscripten` | ubuntu-24.04 | `emscripten`: Emscripten 6.0.11 from emsdk, and Node 26.7.0 through the wrapper of the emsdk action |
+  | `emscripten` | ubuntu-24.04 | `emscripten`: Emscripten 6.0.11 from emsdk, its system libraries built in the cache the action restores, and Node 26.7.0 through the wrapper of the emsdk action (its entry's `node`) |
   | `wasip2`, `wasip3` | ubuntu-24.04 | `clang-wasip2`, `clang-wasip3`: wasi-sdk 34, wasmtime 47.0.3, wit-bindgen 0.62.0 and the WASI WIT, for every library |
 
   The Clang lanes on libstdc++ stay: a regression of xactor's guarantee 28 is
@@ -1443,26 +1448,34 @@ jobs:
     entry's image: the Boost action and what the target's lane installs, the
     same steps by their YAML anchors (`&wasi-sdk`, `&wasmtime`,
     `&wit-bindgen`, `&wasi-wit`, `&emsdk`), so that a step added to a WASI or
-    emscripten lane is added to it too, and Node on emscripten; then `b2 -a
+    emscripten lane is added to it too, and the Node action; then `b2 -a
     --dump-tests --out-xml=<id>.xml toolset=<toolset> [<options>]
     <directory>//<lane> ...`, and it uploads `<id>.xml` as a lane uploads its
     XML, the artifact `lane-<id>`.
+  - Every own lane has the CI's Node, its entry's `node` (`&node`): an
+    oracle runs npm and its original with it, and a driven test its driver,
+    natively too, and `b2 declared-lanes` does not say which an own lane
+    holds. Without it, a native one would run with the image's own Node,
+    another version.
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
   Intel macOS), `clang++-18`, Node, wit-bindgen and the WASI WIT (wasi's
-  reference parses its bindings), and emsdk, `b2 -a libs/<library>/doc`, or
-  for the superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the
-  site's.
+  reference parses its bindings), `b2 -a libs/<library>/doc`, or for the
+  superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's.
+  It gets emsdk with the change that has a reference parse the
+  `<emscripten/...>` headers of a library built for emscripten alone.
 - **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
   with wasi-sdk's clang-format and clang-tidy, Node, Clang 18 as b2's default
-  toolset and the wasip2, wasip3 and emscripten toolsets after it
-  (`matrix.py register clang-18 wasip2 wasip3 emscripten`), wit-bindgen and
-  the WASI WIT, which the WASI dry runs of the compilation database need,
-  emsdk, and the full history (`fetch-depth: 0`) of the superproject and of
-  the library, since the banned-word rule reads every commit.
+  toolset and the wasip2 and wasip3 toolsets after it (`matrix.py register
+  clang-18 wasip2 wasip3`), wit-bindgen and the WASI WIT, which the WASI dry
+  runs of the compilation database need, and the full history
+  (`fetch-depth: 0`) of the superproject and of the library, since the
+  banned-word rule reads every commit. It gets emsdk and the emscripten
+  toolset with the change that has it read what only emscripten compiles.
 - **tools,** for the superproject only: every `tools/**/*_test.py`, with
   Clang 18 and the wasip2, wasip3 and emscripten toolsets, wasi-sdk,
   wasmtime, wit-bindgen, the WASI WIT, emsdk, Node and MrDocs, each failure
-  named.
+  named; the tests of the emscripten target share the cache the emsdk action
+  restores (chapter 1).
 - **actionlint:** actionlint 1.7.12, downloaded and checked against its
   SHA-256, on every workflow of the superproject and of `libs/*`, with
   `.github/actionlint.yaml`. It also runs clean locally before a workflow
@@ -1511,13 +1524,19 @@ wrapper each quoted as one word of Jam.
   given (chapter 1), so a job's b2 commands name neither, and each replaces
   what an earlier install left.
 - `emsdk` installs Emscripten 6.0.11 into `.local/emsdk`, on Linux and
-  macOS, x86-64 and arm64: the emsdk repository's archive at the commit of
-  its tag `6.0.11`, and every archive `emsdk install 6.0.11` installs from
-  (the release's binaries, Node 24.19.0 and, on macOS, Python 3.13.3), each
-  downloaded first and checked against the SHA-256 it records, since emsdk
-  checks none: emsdk runs with `EMSDK_KEEP_DOWNLOADS=1`, under which it
-  installs from the files it finds in its `downloads/`, and one it downloads
-  besides them fails the action, naming it. It checks that `emcc --version`
+  macOS, x86-64 and arm64: the emsdk repository at the commit of its tag
+  `6.0.11`, fetched by its hash with git, the commit being the pin (the
+  install fails unless `HEAD` is it, and keeps no `.git`), and every archive
+  `emsdk install 6.0.11` installs from (the release's binaries, Node 24.19.0
+  and, on macOS, Python 3.13.3), each downloaded first and checked against
+  the SHA-256 it records, since emsdk checks none: emsdk runs with
+  `EMSDK_KEEP_DOWNLOADS=1`, under which it installs from the files it finds
+  in its `downloads/`, and one it downloads besides them fails the action,
+  naming it, before `emsdk activate`, which on macOS runs the Python the
+  install unpacked. A release whose binaries hold no
+  `install/emscripten/node_modules` fails before emsdk runs, since emsdk
+  would install them with `npm ci` from the registry. It checks that
+  `emcc --version`
   names `6.0.11 (a0014542110d6078c3a1a7941fa1ddb3a2281f16)`, else fails
   naming both; installs `tools/ci/actions/emsdk/node.sh` as
   `.local/emscripten/node`, the node that the toolset runs a program with,
@@ -1529,8 +1548,15 @@ wrapper each quoted as one word of Jam.
   configuration the first time it meets a cache and says "Running sanity
   checks" on standard error, so the action runs `emcc --version` once, where
   the log is its own, and fails unless `em++ --version` then says nothing
-  more. The emsdk and the warmed cache are cached together, keyed on the
-  version, the runner and the action's files. A warmed cache, rather than
+  more. On a cache miss, it then builds with `embuilder` the system libraries
+  the lanes link, the list `install.sh` records, measured from what a fresh
+  cache builds for a C++ program linked at `-O2` and `-O0 -g`, with and
+  without `-fwasm-exceptions`: libc, libc++ and libc++abi in their debug,
+  exception and noexcept variants, compiler-rt, dlmalloc, the unwinder and
+  the default stubs. A variant not listed is still built when a link needs
+  it. The emsdk and that cache are cached together, keyed on the version, the
+  runner and the action's files, so a change to the list builds a new entry.
+  A warmed cache, rather than
   `EMCC_SKIP_SANITY_CHECK=1` as the tests of the build set: the check still
   runs, once, and again when the version or the emsdk's directory changes.
   The toolset's lines are the regions `emsdk` and `emscripten` of
@@ -1552,9 +1578,10 @@ wrapper each quoted as one word of Jam.
 checks and the layouts it installs the headers and b2 in, and where the
 wit-bindgen, WASI WIT and emsdk actions install what they download, what
 they leave out, and their refusals: a runner no build of wit-bindgen or
-emsdk is pinned for, a crate that holds no WIT, an archive emsdk would
-download unpinned, and an emcc that is not 6.0.11; and the emsdk action's
-node wrapper, `EM_CACHE` and warmed cache.
+emsdk is pinned for, a crate that holds no WIT, an emsdk at another commit,
+a release without its `node_modules`, an archive emsdk would download
+unpinned, and an emcc that is not 6.0.11; and the emsdk action's node
+wrapper, `EM_CACHE`, warmed cache and system libraries.
 
 **The site.** On every run of the superproject's CI, `tools/ci/assemble.py`
 lays out the site from the pages and the report, and on `main` it is

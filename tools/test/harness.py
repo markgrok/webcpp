@@ -10,7 +10,8 @@ A scratch superproject is the superproject's own files, without what is local, b
 library, plus the fixture libraries a test places under its libs/. It lives in the run's own
 directory under $TMPDIR, whose name contains a space, as its own does, so every test also proves
 that such a checkout builds. run_cases runs a test file's cases, each on a scratch superproject of
-its own. Every b2 gets Emscripten's cache of the run's own, beside its scratch superprojects.
+its own. Every b2 gets the Emscripten cache the shell names, else one of the run's own, beside its
+scratch superprojects.
 """
 
 from __future__ import annotations
@@ -72,29 +73,37 @@ def run_directory() -> Path:
 
 
 def emscripten_cache() -> Path:
-    """Emscripten's cache for every b2 of this run, beside its scratch superprojects: Emscripten
-    writes it where EM_CACHE names, else inside the emsdk, which may be read-only. One per run,
-    made once and shared by its cases, since Emscripten locks it; and never the checkout's
-    .local/emscripten-cache, which a test would otherwise write.
+    """Emscripten's cache for every b2 of this run: Emscripten writes it where EM_CACHE names,
+    else inside the emsdk, which may be read-only. The one the shell's EM_CACHE names, else one of
+    the run's own, beside its scratch superprojects, made once; either is made when it is not
+    there yet.
+
+    The shell's is shared with what else builds with it, as the CI's emsdk action's is, which
+    holds the system libraries every lane links, built once: a test that links reads them, and
+    writes only a library that is not there, as any build does. Emscripten makes that safe for
+    builds at once: it builds a missing library under a lock of the cache's own, and looks again
+    once it holds it. A copy of it for each run would build nothing faster than reading it.
 
     It is named by its resolved path: Emscripten 6.0.11 builds a system library from a relative
     path it computes from EM_CACHE as given, which misses its sources by one directory when the
     cache is reached through a link, as macOS's $TMPDIR is (/var is /private/var)."""
-    cache = run_directory() / 'emscripten-cache'
-    cache.mkdir(exist_ok=True)
-    return cache.resolve()
+    shells = os.environ.get('EM_CACHE')
+    cache = (Path(shells) if shells else run_directory() / 'emscripten-cache').resolve()
+    cache.mkdir(parents=True, exist_ok=True)
+    return cache
 
 
 def b2_environment(env_extra: Mapping[str, str | None] | None = None) -> dict[str, str]:
     """The environment every b2 of the harness runs in: this process's, without CPATH and its kin,
-    and with EM_CACHE the run's own cache over the shell's, with env_extra's variables added, a
-    value of None removing its variable instead.
+    and with EM_CACHE emscripten_cache(), resolved, with env_extra's variables added, a value of
+    None removing its variable instead.
 
     EMCC_SKIP_SANITY_CHECK=1 keeps Emscripten from checking its configuration when it first meets
-    the cache, which a fresh cache does in every run: the check prints "Running sanity checks" in
-    the output of the b2 that configures the toolset, which a test compares whole (b2 -d0
-    declared-targets), and its one other use, clearing a cache of another toolchain, has nothing
-    to clear in a cache of the run's own."""
+    the cache, which a cache of the run's own is in every run: the check prints "Running sanity
+    checks" in the output of the b2 that configures the toolset, which a test compares whole (b2
+    -d0 declared-targets). Its one other use, clearing a cache made by another toolchain, has
+    nothing to clear in a cache of the run's own, and the CI's shared cache was checked when the
+    emsdk action warmed it."""
     env = {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
     env['EM_CACHE'] = str(emscripten_cache())
     env['EMCC_SKIP_SANITY_CHECK'] = '1'

@@ -8,14 +8,14 @@
 """Checks emscripten as a target of the build, on the fixture library browser_demo: its tests and
 examples run under node, which b2's emscripten toolset runs itself, and a testing.launcher is
 refused there; a program that node runs reads the host's files and standard input (-sNODERAWFS=1),
-and no other program gets the flag; every program is wasm32, whatever address model is asked for;
-a failure reaches the report; a program of webcpp.link is linked and never run, and fails on a
-symbol nothing defines; a test of webcpp.drive runs its program through a script of node's on each
-of its targets, in an own lane, a driver or a program that hangs fails it within its bound and
-leaves no process behind, and one that no own lane names is refused; and a native build needs
-no Emscripten. Each case builds a scratch superproject with browser_demo, whose path holds a space,
-and the emsdk linked into its .local; Emscripten's cache is the run's own, which the harness gives
-every b2. Run with the names of some cases to run only those."""
+and no other program gets the flag; every program is wasm32, whatever address model is asked for; a
+failure reaches the report; a program of webcpp.link is linked and never run, and fails on a symbol
+nothing defines; a test of webcpp.drive runs its program through a script of node's on each of its
+targets, in an own lane, a driver or a program that hangs fails it within its bound and leaves no
+process behind, and one that no own lane names is refused; and a native build needs no Emscripten.
+Each case builds a scratch superproject with browser_demo, whose path holds a space, and the emsdk
+linked into its .local; Emscripten's cache is the one the harness gives every b2. Run with the names
+of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ def test_emscripten_lane_runs_under_node(root):
     # The example read its standard input under node.
     outputs = built(root, 'hello.output')
     assert len(outputs) == 1 and outputs[0].read_text() == 'hello, node\n', outputs
-    # Emscripten's cache is the run's own, never the emsdk's nor the checkout's.
+    # Emscripten's cache is the harness's, never the emsdk's.
     assert any(harness.emscripten_cache().iterdir()), harness.emscripten_cache()
 
 

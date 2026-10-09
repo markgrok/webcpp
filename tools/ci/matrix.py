@@ -27,14 +27,15 @@ and a failure when --library names no library of libs/, as plan's does. An own l
 declares with webcpp.lane, such as its oracle, or its served tests, and one job runs it, per target
 it runs on, in every directory D that declares it there: the entry {"library": L, "lane": N,
 "directories": [D, ...]}, with "name", what the CI shows for the job, Own lane (L, N) or Own lane
-(L, N, T), and the "os", "wasm" and "emsdk" of the lane whose setup it shares. One that names no
-target runs as `b2 -a toolset=clang-18 D//N ...`, whose exit status is its verdict: it writes no
-XML, so it is no column of the report. One that names targets is an entry per target T, which adds
-"platform": T and the "id" <T>.<L>.<N> (wasip2.wasi.http), and shares T's own lane, or the oracle's
-Clang 18 for native. It runs as that lane runs, with --dump-tests and --out-xml, and its XML,
-<id>.xml, is a column of the report under its id, which tools/report/report.py checks against the
-toolset it was built with and the library whose tests it lists. A target the CI has no lane to set
-up an own lane on fails the listing by name: an own lane is never run natively in its place.
+(L, N, T), the "os", "wasm" and "emsdk" of the lane whose setup it shares, and "node", true for
+every own lane. One that names no target runs as `b2 -a toolset=clang-18 D//N ...`, whose exit
+status is its verdict: it writes no XML, so it is no column of the report. One that names targets is
+an entry per target T, which adds "platform": T and the "id" <T>.<L>.<N> (wasip2.wasi.http), and
+shares T's own lane, or the oracle's Clang 18 for native. It runs as that lane runs, with
+--dump-tests and --out-xml, and its XML, <id>.xml, is a column of the report under its id, which
+tools/report/report.py checks against the toolset it was built with and the library whose tests it
+lists. A target the CI has no lane to set up an own lane on fails the listing by name: an own lane
+is never run natively in its place.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -153,8 +154,10 @@ class Lane:
     options: tuple[str, ...] = ()
     # Whether the lane needs wasi-sdk and wasmtime.
     wasm: bool = False
-    # Whether the lane needs emsdk and Node.
+    # Whether the lane needs emsdk.
     emsdk: bool = False
+    # Whether the lane needs Node, the CI's pinned one: emscripten's runs its programs with it.
+    node: bool = False
     # The b2 projects it builds: libs/<library>/test and libs/<library>/example of each library.
     projects: tuple[str, ...] = field(default_factory=tuple)
 
@@ -257,7 +260,7 @@ LANES = (
          options=MSVC_OPTIONS),
     Lane(id='emscripten', name='Emscripten 6.0.11 (node)', os='ubuntu-24.04',
          target='emscripten', lane='emscripten', toolset='emscripten',
-         using=EMSCRIPTEN_TOOLSET, emsdk=True),
+         using=EMSCRIPTEN_TOOLSET, emsdk=True, node=True),
     wasm_lane('wasip2'),
     wasm_lane('wasip3'),
 )
@@ -410,7 +413,10 @@ def own_lane_entry(own: OwnLane) -> dict[str, object]:
                                 'directories': list(own.directories)}
     if own.target is not None:
         entry.update(platform=own.target, id=own.id)
-    entry.update(name=own.name, os=base.os, wasm=base.wasm, emsdk=base.emsdk)
+    # Node for every own lane, whatever its target: an oracle runs npm and its original with it,
+    # and a driven test its driver, natively too, and declared-lanes says nothing of which an own
+    # lane holds. Without the CI's Node, one would run with the image's own, another version.
+    entry.update(name=own.name, os=base.os, wasm=base.wasm, emsdk=base.emsdk, node=True)
     return entry
 
 
