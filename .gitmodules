@@ -16,3 +16,6 @@
 [submodule "site"]
 	path = site
 	url = git@github.com:webcpporg/webcpporg.github.io.git
+[submodule "third_party/libs/JSON-Schema-Test-Suite"]
+	path = third_party/libs/JSON-Schema-Test-Suite
+	url = https://github.com/json-schema-org/JSON-Schema-Test-Suite.git

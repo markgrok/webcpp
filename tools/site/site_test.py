@@ -106,6 +106,9 @@ def superproject(scratch: Path) -> Path:
         shutil.copy2(ROOT / name, root / name)
     for name in ('tools', 'libs', 'doc', 'site'):
         shutil.copytree(ROOT / name, root / name, ignore=IGNORED, symlinks=True)
+    # The Jamroot loads third_party/Jamfile; the site reads none of the code it declares.
+    (root / 'third_party').mkdir()
+    shutil.copy2(ROOT / 'third_party/Jamfile', root / 'third_party/Jamfile')
     install = subprocess.run([sys.executable, str(ROOT / 'tools/node/install.py'),
                               str(ROOT / 'site')], capture_output=True, text=True, check=False)
     assert install.returncode == 0, install.stderr

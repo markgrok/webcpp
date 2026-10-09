@@ -10,6 +10,8 @@
 # The files it reads are those of the superproject's repository and of each library's own
 # (a submodule, or a clone not yet registered as one): what git tracks, and what it would track
 # (untracked and not ignored), so that a new file is linted before it is added.
+# Third-party code under third_party/libs/ is never read: it keeps its own style, licence and
+# notices.
 #
 # clang-format and clang-tidy come from a pinned wasi-sdk, so that every machine and the CI
 # runners lint with one version. Several rules have no clang-tidy check that expresses them and
@@ -140,6 +142,9 @@ for repository in "${repositories[@]}"; do
               if [ "${repository}" != . ]; then
                   path="${repository}/${file}"
               fi
+              case "${path}" in
+                  third_party/libs/*) continue ;;
+              esac
               if [ -f "${path}" ] && [ ! -L "${path}" ]; then
                   printf '%s\0' "${path}"
               fi

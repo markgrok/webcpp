@@ -249,11 +249,14 @@ def copy_tree(src: Path) -> Path:
     it.
 
     Only src's user-config.jam comes from its .local/, so that the copy builds with the same
-    toolsets without copying the toolchains themselves.
+    toolsets without copying the toolchains themselves; and third_party/libs is a link to src's,
+    which a case makes its own with third_party_of_its_own before it changes anything there.
     """
     top = src.resolve()
 
     def left_out(directory: str, names: list[str]) -> set[str]:
+        if Path(directory) == top / 'third_party':
+            return built(directory, names) | ({'libs'} & set(names))
         if Path(directory) != top:
             return built(directory, names)
         return (built(directory, names) | {name for name in names if name in TOP_IGNORED}
@@ -265,6 +268,9 @@ def copy_tree(src: Path) -> Path:
     if config.is_file():
         (scratch / '.local').mkdir()
         shutil.copy2(config, scratch / '.local/user-config.jam')
+    libs = top / 'third_party/libs'
+    if libs.is_dir():
+        (scratch / 'third_party/libs').symlink_to(libs.resolve())
     return scratch
 
 
@@ -306,6 +312,28 @@ def link_emsdk(root: Path) -> None:
                            'EMSDK_ROOT')
     (root / '.local').mkdir(exist_ok=True)
     (root / '.local/emsdk').symlink_to(source.resolve())
+
+
+def third_party_of_its_own(root: Path, name: str, checked_out: bool = True) -> Path:
+    """Gives the scratch superproject root a third_party/libs/<name> of its own, which a case may
+    change: the link to the checkout's third_party/libs becomes a directory of links, one per
+    entry, and <name> a copy of the checkout's, or, unless checked_out, an empty directory, as a
+    clone without that submodule has it. Returns it."""
+    libs = root / 'third_party/libs'
+    if libs.is_symlink():
+        source = libs.resolve()
+        libs.unlink()
+        libs.mkdir()
+        for entry in source.iterdir():
+            (libs / entry.name).symlink_to(entry)
+    own = libs / name
+    source = own.resolve()
+    own.unlink()
+    if checked_out:
+        shutil.copytree(source, own, ignore=built)
+    else:
+        own.mkdir()
+    return own
 
 
 # A line of a user-config.jam that configures Boost.

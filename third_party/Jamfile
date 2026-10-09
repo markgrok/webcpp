@@ -1,0 +1,45 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The third-party code that webcpp's libraries and their tests use, each a
+# submodule of its own under libs/, pinned at a commit and keeping its own
+# licence, declared here as /webcpp/third_party//<target>, whose usage
+# requirements give a program what it needs. A target whose submodule is not
+# checked out stops the build that needs it, naming the command that checks
+# it out; a build that needs none never looks.
+import errors ;
+import path ;
+import regex ;
+
+project /webcpp/third_party ;
+
+# The JSON Schema Test Suite (MIT), json-schema-org/JSON-Schema-Test-Suite:
+# test data, never compiled into a program. A test that names
+# json-schema-test-suite reads it at run time from the directory
+# WEBCPP_TEST_JSON_SCHEMA_TEST_SUITE names, with forward slashes, the whole
+# define quoted for a checkout whose path holds a space, and runs again when
+# one of its files changes.
+path-constant JSON_SCHEMA_TEST_SUITE : libs/JSON-Schema-Test-Suite ;
+.suite = [ regex.replace $(JSON_SCHEMA_TEST_SUITE) "\\\\" "/" ] ;
+.suite-files = [ glob-tree-ex libs/JSON-Schema-Test-Suite/tests
+    libs/JSON-Schema-Test-Suite/remotes libs/JSON-Schema-Test-Suite/output-tests
+    libs/JSON-Schema-Test-Suite/annotations : *.json ] ;
+
+rule suite-checked-out ( properties * )
+{
+    if ! [ path.exists $(JSON_SCHEMA_TEST_SUITE)/tests/draft2020-12 ]
+    {
+        errors.user-error "third_party/libs/JSON-Schema-Test-Suite is not checked out: it"
+            "holds no tests/draft2020-12. Check it out with `git submodule update --init"
+            "third_party/libs/JSON-Schema-Test-Suite`." ;
+    }
+}
+
+alias json-schema-test-suite : : <conditional>@suite-checked-out : :
+    <define>"\"WEBCPP_TEST_JSON_SCHEMA_TEST_SUITE=\\\"$(.suite)\\\"\""
+    <dependency>$(.suite-files) ;
+
+explicit json-schema-test-suite ;

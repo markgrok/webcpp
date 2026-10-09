@@ -88,6 +88,10 @@ webcpp/
   pyrightconfig.json  Pyright's settings for every Python file
   libs/<name>/        a library: a repository of its own, a submodule here (xactor,
                       xstate, pratt, wasi, trystero)
+  third_party/        third-party code the libraries and their tests use, not webcpp's: each
+                      a submodule under libs/, pinned at a commit and keeping its own licence,
+                      and the Jamfile that declares it as /webcpp/third_party//<target>
+                      (chapter 2)
   doc/                the index page (index.adoc, Jamfile)
   site/               the site, a repository of its own, webcpporg/webcpporg.github.io, a
                       submodule here: its pages, components, tools and tests (chapter 9)
@@ -115,10 +119,10 @@ webcpp/
     node/             install.py, which installs the Node packages of the documentation, an
                       oracle and the lint once per lockfile, and its test
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
-    test/             the tests of the Jamroot, webcpp.jam, the oracle's rules, the component
-                      rules, the emscripten target, the libraries webcpp does not build and
-                      the doc build, their harness, and the
-                      fixture libraries demo, oracle_demo, component_demo and browser_demo
+    test/             the tests of the Jamroot, webcpp.jam, third-party code, the oracle's
+                      rules, the component rules, the emscripten target, the libraries webcpp
+                      does not build and the doc build, their harness, and the fixture
+                      libraries demo, oracle_demo, component_demo and browser_demo
     ci/               matrix.py (the lanes), assemble.py (the site), download.sh and
                       helpers.sh (what the actions share), wasi-sdk.jam
                       and emsdk.jam (the lines that register the WASI and emscripten
@@ -469,6 +473,22 @@ owner's:
    without a page fails the index.
 9. **`LICENSE-<ORIGIN>.txt`**, where the port derives from the original's
    code (above).
+
+### Third-party code
+
+What a library or its tests use and webcpp does not own is never copied into
+a library: it is a submodule under `third_party/libs/<name>`, pinned at a
+commit, with the URL of its own repository, and `third_party/Jamfile`
+declares it as `/webcpp/third_party//<target>`, whose usage requirements
+give a program what it needs. It keeps its own licence and notices, and the
+lint never reads it (chapter 6). Adding one is the owner's decision; moving
+its pin is a change of its own, with its evidence. A target whose submodule
+is not checked out stops the build that needs it, naming `git submodule
+update --init third_party/libs/<name>`; a build that needs none never looks.
+
+| Target | What it is | Licence |
+| --- | --- | --- |
+| `json-schema-test-suite` | the JSON Schema Test Suite at `5b0ee16` (2026-09-21), test data: a test that names it reads the suite at run time from the directory its define `WEBCPP_TEST_JSON_SCHEMA_TEST_SUITE` gives, and runs again when a file of the suite changes | MIT |
 
 ## 3. Names
 
@@ -838,9 +858,10 @@ exactly its authors' and the program carries only what it calls.
 
 `tools/lint/lint.sh` lints the superproject and every library of `libs/` that
 is a repository: what git tracks and what it would track (untracked, not
-ignored), so a new file is linted before it is added. It prints each rule's
-section and ends with `lint: clean`, or with `lint: failed: <rule>` for each
-rule that failed.
+ignored), so a new file is linted before it is added, but nothing under
+`third_party/libs/`, third-party code that keeps its own style and licence
+(chapter 2). It prints each rule's section and ends with `lint: clean`, or
+with `lint: failed: <rule>` for each rule that failed.
 
 | Rule | What fails |
 | --- | --- |
@@ -2214,15 +2235,16 @@ superproject's new `main`. `main` is the only branch.
     `tools/test/oracle_jam_test.py`, `tools/test/component_jam_test.py`,
     `tools/test/emscripten_test.py`, `tools/test/external_test.py`,
     `tools/test/doc_test.py`,
-    `tools/test/harness_test.py`, `tools/lint/lint_test.py`,
-    `tools/report/report_test.py`, `tools/doc/doc_check_test.py`,
-    `tools/doc/doc_comments_test.py`, `tools/doc/extensions_test.py`,
-    `tools/doc/counts_test.py`, `tools/oracle/twins_test.py`,
-    `tools/oracle/compare_test.py`, `tools/example/run_example_test.py`,
-    `tools/component/serve_test.py`, `tools/drive/drive_test.py`,
-    `tools/node/install_test.py`, `tools/ci/matrix_test.py`,
-    `tools/ci/assemble_test.py` and `tools/ci/actions_test.py`: every
-    `tools/**/*_test.py`, as the CI runs them, each as `python3 <path>`. They
+    `tools/test/harness_test.py`, `tools/test/third_party_test.py`,
+    `tools/lint/lint_test.py`, `tools/report/report_test.py`,
+    `tools/doc/doc_check_test.py`, `tools/doc/doc_comments_test.py`,
+    `tools/doc/extensions_test.py`, `tools/doc/counts_test.py`,
+    `tools/oracle/twins_test.py`, `tools/oracle/compare_test.py`,
+    `tools/example/run_example_test.py`, `tools/component/serve_test.py`,
+    `tools/drive/drive_test.py`, `tools/node/install_test.py`,
+    `tools/ci/matrix_test.py`, `tools/ci/assemble_test.py` and
+    `tools/ci/actions_test.py`: every `tools/**/*_test.py`, as the CI runs
+    them, each as `python3 <path>`. They
     build in scratch copies under `$TMPDIR`, whose path holds a space, so they
     run beside a build of the tree;
   - CI green, the library's and the superproject's.

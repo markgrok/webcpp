@@ -242,9 +242,9 @@ clang-tidy, which takes most of the time, and runs every other rule.
 
 The build and its tools have tests of their own, each a Python script run
 from the root, such as `python3 tools/test/jamroot_test.py`:
-`tools/test/*_test.py` for the Jamroot, `tools/webcpp.jam`, the oracle's
-rules, the rules of a WebAssembly component and the documentation build, and
-`tools/<tool>/*_test.py` for the oracle, the lint, the report, the
+`tools/test/*_test.py` for the Jamroot, `tools/webcpp.jam`, third-party code,
+the oracle's rules, the rules of a WebAssembly component and the documentation
+build, and `tools/<tool>/*_test.py` for the oracle, the lint, the report, the
 documentation, the example runner, the server of a component, the installer
 of the Node packages and the CI's scripts.
 
@@ -261,3 +261,5 @@ port gives and how a change is made.
 ## License
 
 Distributed under the [Boost Software License, Version 1.0](LICENSE_1_0.txt).
+Third-party code under `third_party/libs/` keeps its own licence: the JSON
+Schema Test Suite is MIT.

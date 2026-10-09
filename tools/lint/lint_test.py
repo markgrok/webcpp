@@ -1874,6 +1874,21 @@ def test_a_library_webcpp_does_not_build_missing_is_named(root):
             '(webcpp-require-external=on)') in completed.stdout, completed.stdout[-6000:]
 
 
+def test_third_party_code_is_never_read(root):
+    # Third-party code keeps its own style, licence and notices: a file under third_party/libs/
+    # that breaks the lint's rules, and the suite's own files, plain files here rather than a
+    # submodule, leave the lint clean.
+    prepare(root)
+    harness.third_party_of_its_own(root, 'JSON-Schema-Test-Suite')
+    planted = root / 'third_party/libs/planted'
+    planted.mkdir(parents=True)
+    (planted / 'planted.cpp').write_text('int  main( ) {throw 1;}\n')
+    (planted / 'planted.py').write_text('x=1\n' + '#' * 120 + '\n')
+    (planted / 'notes.txt').write_text(f'{EM_DASH} {WORD}\n')
+    commit(root, 'Third-party code')
+    expect_clean(lint(root))
+
+
 CASES = [
     test_clean_tree_passes,
     test_no_library_passes,
@@ -1904,6 +1919,7 @@ CASES = [
     test_json_literals,
     test_licence_notice,
     test_banned_word,
+    test_third_party_code_is_never_read,
     test_world_rule,
     test_bare_throw,
     test_raw_rules,

@@ -386,6 +386,10 @@ alias emscripten-reference : : <conditional>@emsdk-found
 # The documentation toolchain's own targets, tools/doc/Jamfile.
 use-project /webcpp/doc-tools : tools/doc ;
 
+# The third-party code the libraries and their tests use, each a submodule
+# under third_party/libs/ (third_party/Jamfile).
+use-project /webcpp/third_party : third_party ;
+
 # The files under directory, at any depth, without its directories, which
 # glob-tree-ex returns too, and without hidden files such as .DS_Store.
 rule files-under ( directory )

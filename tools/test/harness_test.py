@@ -11,7 +11,8 @@ b2's group alone would leave them running. Lanes run at once start on a bin that
 lane that fails stops the others, with what they started. Run with the names of some cases to run
 only those. b2 gets one environment, without CPATH and its kin, however it is started, with
 Emscripten's cache the shell's, else the run's own; and a scratch superproject gets the emsdk it
-is given."""
+is given; a scratch superproject links the checkout's third-party code, and a case that changes
+it gets its own."""
 
 from __future__ import annotations
 
@@ -264,10 +265,22 @@ def test_link_emsdk_links_the_emsdk_it_is_given(root):
             os.environ['EMSDK_ROOT'] = saved
 
 
+def test_third_party_is_linked_and_made_a_case_s_own(root):
+    libs = root / 'third_party/libs'
+    checkout = (harness.ROOT / 'third_party/libs').resolve()
+    assert libs.is_symlink() and libs.resolve() == checkout, libs
+    own = harness.third_party_of_its_own(root, 'JSON-Schema-Test-Suite', checked_out=False)
+    assert not libs.is_symlink() and own.is_dir() and not own.is_symlink(), libs
+    assert not any(own.iterdir()), own
+    # The checkout's own suite is untouched.
+    assert (checkout / 'JSON-Schema-Test-Suite/tests/draft2020-12/type.json').is_file()
+
+
 CASES = [
     test_every_b2_gets_one_environment,
     test_emscripten_cache_is_the_shells_else_one_per_run,
     test_link_emsdk_links_the_emsdk_it_is_given,
+    test_third_party_is_linked_and_made_a_case_s_own,
     test_a_timeout_stops_every_action,
     test_lanes_start_on_bin_and_a_failure_stops_the_others,
 ]
