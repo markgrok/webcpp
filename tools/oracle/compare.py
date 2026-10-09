@@ -7,7 +7,10 @@
 
 """Exits 1, listing every path that differs, when two directory trees differ.
 
-Usage: compare.py LEFT RIGHT
+Usage: compare.py [--files] LEFT RIGHT
+
+With --files, LEFT and RIGHT are two files, compared by their bytes; a path that does not exist,
+or is not a file, is a difference.
 
 A file in both trees is compared by its bytes, never by its size and
 modification time, which two different outputs can share. A path in one tree
@@ -74,11 +77,32 @@ def differences(left: str, right: str) -> list[tuple[str, str]]:
     return found
 
 
+def file_differences(left: str, right: str) -> list[tuple[str, str]]:
+    """Every (path, reason) by which the file right differs from the file left: none when both
+    are files of the same bytes."""
+    found = [(path, 'does not exist') for path in (left, right) if not os.path.lexists(path)]
+    if found:
+        return found
+    left_kind = kind(left)
+    right_kind = kind(right)
+    if left_kind != 'file' or right_kind != 'file':
+        return [(left, f'a {left_kind} here, a {right_kind} in {right}')]
+    left_bytes = read(left)
+    right_bytes = read(right)
+    if left_bytes is None or right_bytes is None:
+        return [(left, 'cannot be read here or in ' + right)]
+    return [] if left_bytes == right_bytes else [(left, 'contents differ')]
+
+
 def main(argv: list[str]) -> int:
+    files = argv[:1] == ['--files']
+    if files:
+        argv = argv[1:]
     if len(argv) != 2:
-        print('usage: compare.py LEFT RIGHT', file=sys.stderr)
+        print('usage: compare.py [--files] LEFT RIGHT', file=sys.stderr)
         return 2
-    different = differences(argv[0], argv[1])
+    compared = file_differences if files else differences
+    different = compared(argv[0], argv[1])
     for path, reason in different:
         print(f'compare: {path}: {reason}', file=sys.stderr)
     return 1 if different else 0

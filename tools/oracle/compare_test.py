@@ -7,8 +7,9 @@
 
 """Checks tools/oracle/compare.py: two identical trees pass; a differing byte, a file in one tree
 only, a file against a directory, an unreadable file and a tree that cannot be listed each fail,
-naming the path; a wrong number of arguments is a usage error. Run with the names of some cases
-to run only those."""
+naming the path; with --files, two identical files pass, and a differing byte, a missing file and a
+directory each fail, naming the path; a wrong number of arguments is a usage error. Run with the
+names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -101,10 +102,41 @@ def test_a_tree_that_cannot_be_listed_fails(root: Path) -> None:
     expect(compare(left, missing), 1, f'compare: {missing}: cannot be listed')
 
 
+def test_identical_files_pass(root: Path) -> None:
+    write(root / 'left.txt', b'the same\n')
+    write(root / 'right.txt', b'the same\n')
+    result = compare('--files', root / 'left.txt', root / 'right.txt')
+    expect(result, 0)
+    assert result.stdout == '' and result.stderr == '', (result.stdout, result.stderr)
+
+
+def test_differing_files_fail(root: Path) -> None:
+    write(root / 'left.txt', b'the same\n')
+    write(root / 'right.txt', b'the sane\n')
+    expect(compare('--files', root / 'left.txt', root / 'right.txt'), 1,
+           f'compare: {root / "left.txt"}: contents differ')
+
+
+def test_a_missing_file_fails(root: Path) -> None:
+    write(root / 'left.txt', b'here\n')
+    expect(compare('--files', root / 'left.txt', root / 'missing.txt'), 1,
+           f'compare: {root / "missing.txt"}: does not exist')
+    expect(compare('--files', root / 'gone.txt', root / 'left.txt'), 1,
+           f'compare: {root / "gone.txt"}: does not exist')
+
+
+def test_a_directory_is_not_a_file(root: Path) -> None:
+    write(root / 'left.txt', b'here\n')
+    (root / 'directory').mkdir()
+    expect(compare('--files', root / 'left.txt', root / 'directory'), 1,
+           'a file here, a directory in')
+
+
 def test_a_usage_error_exits_2(root: Path) -> None:
     left, _ = trees(root)
-    expect(compare(left), 2, 'usage: compare.py LEFT RIGHT')
-    expect(compare(), 2, 'usage: compare.py LEFT RIGHT')
+    expect(compare(left), 2, 'usage: compare.py [--files] LEFT RIGHT')
+    expect(compare(), 2, 'usage: compare.py [--files] LEFT RIGHT')
+    expect(compare('--files', left), 2, 'usage: compare.py [--files] LEFT RIGHT')
 
 
 CASES: list[Callable[[Path], None]] = [
@@ -114,6 +146,10 @@ CASES: list[Callable[[Path], None]] = [
     test_a_file_against_a_directory_fails,
     test_an_unreadable_file_fails,
     test_a_tree_that_cannot_be_listed_fails,
+    test_identical_files_pass,
+    test_differing_files_fail,
+    test_a_missing_file_fails,
+    test_a_directory_is_not_a_file,
     test_a_usage_error_exits_2,
 ]
 

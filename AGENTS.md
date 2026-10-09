@@ -116,13 +116,16 @@ webcpp/
     drive/            drive.jam, the rule of a driven test (webcpp.drive), which a script of the
                       original's language runs over a linked program, drive.py, which runs it
                       bounded, and its test
+    generated/        generated.jam, the rule of a library's generated files (chapter 9), and
+                      generated.py, which runs a generator and checks or writes what it writes
     node/             install.py, which installs the Node packages of the documentation, an
                       oracle and the lint once per lockfile, and its test
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
     test/             the tests of the Jamroot, webcpp.jam, third-party code, the oracle's
-                      rules, the component rules, the emscripten target, the libraries webcpp
-                      does not build and the doc build, their harness, and the fixture
-                      libraries demo, oracle_demo, component_demo and browser_demo
+                      rules, the check of generated files, the component rules, the
+                      emscripten target, the libraries webcpp does not build and the doc
+                      build, their harness, and the fixture libraries demo, oracle_demo,
+                      component_demo and browser_demo
     ci/               matrix.py (the lanes), assemble.py (the site), download.sh and
                       helpers.sh (what the actions share), wasi-sdk.jam
                       and emsdk.jam (the lines that register the WASI and emscripten
@@ -343,6 +346,8 @@ when told: `b2 --user-config=.local/user-config.jam ...`.
 | `b2 -sWIT_BINDGEN=<path> -sWASI_WIT_P2=<dir> -sWASI_WIT_P3=<dir> -sWASMTIME=<path> ...` | any of these with the tools of a component where the defaults do not find them (above) |
 | `b2 libs/<name>/test/oracle//oracle` | a port's oracle lane: the original runs the cases and the twins, and the results are compared (chapter 5) |
 | `b2 libs/<name>/test/oracle//update-expected` | writes the original's results again, the only writer of an expected result (chapter 5) |
+| `b2 libs/<name>/test//generated-<name>` | a library's generated files checked against their generator: written into the build directory and compared, byte for byte (chapter 9) |
+| `b2 libs/<name>/test//update-generated` | writes every generated file of that Jamfile again, the only writer of a generated file |
 | `b2 -a ...` | any of these from scratch; the only build that counts as evidence |
 | `tools/lint/lint.sh --clang-format <wasi-sdk>/bin/clang-format --clang-tidy <wasi-sdk>/bin/clang-tidy` | the lint, of the superproject and every library (chapter 6) |
 | `python3 tools/<dir>/<name>_test.py` | a test of the build or of a tool (chapter 10) |
@@ -563,7 +568,8 @@ its first user, and the model:
   `<path>: <reason>` of the twin directory's `without-twin.txt`.
 - **Nothing expected is written by hand.** Only `update-expected` writes an
   expected result, and it refuses to write a twin's output for a twin that
-  agrees, since that output must be the C++ example's.
+  agrees, since that output must be the C++ example's. Nor is a generated
+  file: only `update-generated` writes it (chapter 9).
 - **How the original runs.** Each library declares it: for JavaScript and
   TypeScript, `node --conditions=development`.
 
@@ -1497,6 +1503,18 @@ index's row without a link, and the stop under
 `webcpp-require-external=on`; `tools/lint/lint_test.py` that the lint's dry
 runs require them and name the two libraries.
 
+**Generated files** (`tools/generated/generated.jam`). A file that a script
+writes from inputs it pins, such as a table of Unicode data, is committed and
+written only by its generator. A library's test Jamfile declares it:
+
+```
+webcpp.generated <name> : <script> : <argument> * : <output> + ;
+```
+
+| Rule | Passes when | Notes |
+| --- | --- | --- |
+| `webcpp.generated` | every output that `<script>` writes equals its committed `<output>`, byte for byte | the explicit target `generated-<name>`: `tools/generated/generated.py` runs the Python script `<script>` in the Jamfile's directory as `<script> <argument>... <path>...`, each path where it writes one output, in the order given, under the Jamfile's build directory, and compares each with its committed file (`tools/oracle/compare.py --files`), naming every one that differs, is missing or was not written. The first declaration of a Jamfile also declares the explicit target `update-generated`, which runs each of its generators the same way and, once all have succeeded, copies their outputs over the committed files: a generator that fails leaves every committed file as it was. Paths are relative to the Jamfile; a script that is not a `.py` file or does not exist, a name declared twice and an output named twice stop the build. An own lane names the check, `webcpp.lane <lane> : generated-<name> ;`, which runs natively, as an oracle's does, and is of the kind `programs`, since a generator runs Python, not the original's language; the ordinary lanes never build it, since a generator may need the network |
+
 The rules of the doc Jamfiles are in chapter 8: `webcpp.doc <library> :
 <page>.adoc ;`, `webcpp.reference <library> : <requirements> * :
 <also-checked> * ;` (chapter 7) and, for the superproject's index,
@@ -2232,7 +2250,8 @@ superproject's new `main`. `main` is the only branch.
   - the lint: `lint: clean`;
   - the tests of the build and of the tools, when they or what they test
     changed: `tools/test/jamroot_test.py`, `tools/test/webcpp_jam_test.py`,
-    `tools/test/oracle_jam_test.py`, `tools/test/component_jam_test.py`,
+    `tools/test/oracle_jam_test.py`, `tools/test/generated_jam_test.py`,
+    `tools/test/component_jam_test.py`,
     `tools/test/emscripten_test.py`, `tools/test/external_test.py`,
     `tools/test/doc_test.py`,
     `tools/test/harness_test.py`, `tools/test/third_party_test.py`,

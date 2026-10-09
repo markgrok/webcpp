@@ -32,6 +32,12 @@
 #     webcpp.drive name : sources + : requirements * : script : arguments *
 #       : targets * ;
 #
+# and the rule of a library's generated files, tools/generated/generated.jam's,
+# which runs a Python generator and compares what it writes with the
+# committed files:
+#
+#     webcpp.generated name : script : arguments * : outputs + ;
+#
 # the rules of the documentation, tools/doc/doc.jam's, with which a library's
 # doc Jamfile declares its page and its reference, and the superproject's
 # doc/Jamfile its index page:
@@ -159,6 +165,12 @@ import webcpp-component ;
 # documentation's are.
 modules.load webcpp-drive : drive.jam : [ path.native [ path.join $(.tools) drive ] ] ;
 import webcpp-drive ;
+
+# The rule of generated files, loaded as the module webcpp-generated, as the
+# documentation's are.
+modules.load webcpp-generated : generated.jam
+  : [ path.native [ path.join $(.tools) generated ] ] ;
+import webcpp-generated ;
 
 .nl = "\n" ;
 
@@ -1045,4 +1057,13 @@ rule left-out ( owner )
             return "$(library) was not found" ;
         }
     }
+}
+
+# The explicit target generated-<name>, which runs the Python generator
+# script with arguments and compares what it writes with the committed
+# outputs, and update-generated, their only writer
+# (tools/generated/generated.jam).
+rule generated ( name : script : arguments * : outputs + )
+{
+    webcpp-generated.generated [ where ] : $(name) : $(script) : $(arguments) : $(outputs) ;
 }

@@ -1,0 +1,136 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The rule of a library's generated files, which tools/webcpp.jam offers a
+# library's test Jamfile as webcpp.generated:
+#
+#     webcpp.generated <name> : <script> : <argument> * : <output> + ;
+#
+# A generated file is committed, and written only by its generator, the
+# Python script <script>, which runs in the Jamfile's directory as
+# `<script> <argument>... <path>...` and writes each output at the path
+# given in its place. The explicit target generated-<name> has it write into
+# the Jamfile's build directory and compares each output, byte for byte, with
+# the committed file (tools/oracle/compare.py --files), naming every one that
+# differs, is missing or was not written. The explicit target
+# update-generated, declared once per Jamfile with its first
+# webcpp.generated, runs every generator of the Jamfile the same way and,
+# once all have succeeded, copies their outputs over the committed files:
+# tools/generated/generated.py does both. Paths are relative to the Jamfile.
+# A lane names generated-<name> (webcpp.lane), and the ordinary lanes never
+# build it: a generator may need the network. Neither target compiles
+# anything, so they leave the Jamroot's check of Boost out.
+#
+# This file is loaded as the module webcpp-generated. Its rule receives
+# first where its Jamfile is, as tools/webcpp.jam's `where` finds it.
+import errors ;
+import feature ;
+import modules ;
+import notfile ;
+import os ;
+import path ;
+import sequence ;
+
+# This directory, absolute: an action starts in the directory b2 was
+# started in.
+.here = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
+
+if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
+
+.driver = [ path.native $(.here)/generated.py ] ;
+
+# The Jamfile a target belongs to, by its directory relative to the
+# superproject, and the generator a target generated-<name> runs. Free, so
+# that they play no part in a target's build directory.
+feature.feature webcpp-generated : : free incidental ;
+feature.feature webcpp-generated-name : : free incidental ;
+
+# webcpp.generated <name> : <script> : <argument> * : <output> + ; the
+# explicit targets generated-<name> and, once per Jamfile, update-generated.
+rule generated ( found + : name : script : arguments * : outputs + )
+{
+    local key = $(found[3]) ;
+    if $(name) in $(.names.$(key))
+    {
+        errors.user-error "webcpp.generated $(name) is declared twice in $(found[4])" ;
+    }
+    if $(script:S) != .py
+    {
+        errors.user-error "webcpp.generated $(name) in $(found[4]): $(script) is not a Python"
+            "file; a generator is a Python script, run with the build's Python" ;
+    }
+    local file = [ path.root [ path.make $(script) ] $(found[2]) ] ;
+    if ! [ path.exists $(file) ]
+    {
+        errors.user-error "webcpp.generated $(name): $(key)/$(script) does not exist; it is"
+            "the generator that $(found[4]) names" ;
+    }
+    local committed ;
+    for local output in $(outputs)
+    {
+        local native = [ path.native [ path.root [ path.make $(output) ] $(found[2]) ] ] ;
+        if $(native) in $(committed)
+        {
+            errors.user-error "webcpp.generated $(name) in $(found[4]) names $(output) twice" ;
+        }
+        committed += $(native) ;
+    }
+    .names.$(key) += $(name) ;
+    # The words of the driver's step: the name, the directory the script
+    # runs in, the script, the arguments and the outputs, each list after
+    # its count.
+    .step.$(key).$(name) = $(name) [ path.native $(found[2]) ] [ path.native $(file) ]
+        [ sequence.length $(arguments) ] $(arguments)
+        [ sequence.length $(committed) ] $(committed) ;
+    local build-dir = [ path.root [ $(found[1]).build-dir ] [ path.pwd ] ] ;
+    .build.$(key) = [ path.native $(build-dir)/generated ] ;
+    notfile generated-$(name) : @webcpp-generated%check
+      : : <webcpp-generated>$(key) <webcpp-generated-name>$(name) <webcpp-boost-check>off ;
+    $(found[1]).mark-target-as-explicit generated-$(name) ;
+    if ! $(.update.$(key))
+    {
+        .update.$(key) = true ;
+        notfile update-generated : @webcpp-generated%update
+          : : <webcpp-generated>$(key) <webcpp-boost-check>off ;
+        $(found[1]).mark-target-as-explicit update-generated ;
+    }
+}
+
+rule check ( targets * : sources * : properties * )
+{
+    local key = [ feature.get-values <webcpp-generated> : $(properties) ] ;
+    local name = [ feature.get-values <webcpp-generated-name> : $(properties) ] ;
+    PYTHON on $(targets) = $(.python) ;
+    DRIVER on $(targets) = $(.driver) ;
+    BUILD on $(targets) = $(.build.$(key)) ;
+    STEPS on $(targets) = $(.step.$(key).$(name)) ;
+}
+
+actions check
+{
+    "$(PYTHON)" "$(DRIVER)" check "$(BUILD)" "$(STEPS)"
+}
+
+# update-generated runs every generator its Jamfile declares by the time it
+# runs.
+rule update ( targets * : sources * : properties * )
+{
+    local key = [ feature.get-values <webcpp-generated> : $(properties) ] ;
+    local steps ;
+    for local name in $(.names.$(key))
+    {
+        steps += $(.step.$(key).$(name)) ;
+    }
+    PYTHON on $(targets) = $(.python) ;
+    DRIVER on $(targets) = $(.driver) ;
+    BUILD on $(targets) = $(.build.$(key)) ;
+    STEPS on $(targets) = $(steps) ;
+}
+
+actions update
+{
+    "$(PYTHON)" "$(DRIVER)" update "$(BUILD)" "$(STEPS)"
+}

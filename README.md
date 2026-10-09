@@ -243,10 +243,11 @@ clang-tidy, which takes most of the time, and runs every other rule.
 The build and its tools have tests of their own, each a Python script run
 from the root, such as `python3 tools/test/jamroot_test.py`:
 `tools/test/*_test.py` for the Jamroot, `tools/webcpp.jam`, third-party code,
-the oracle's rules, the rules of a WebAssembly component and the documentation
-build, and `tools/<tool>/*_test.py` for the oracle, the lint, the report, the
-documentation, the example runner, the server of a component, the installer
-of the Node packages and the CI's scripts.
+the oracle's rules, the check of generated files, the rules of a WebAssembly
+component and the documentation build, and `tools/<tool>/*_test.py` for the
+oracle, the lint, the report, the documentation, the example runner, the
+server of a component, the installer of the Node packages and the CI's
+scripts.
 
 ## Contributing
 
