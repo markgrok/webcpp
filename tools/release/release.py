@@ -35,7 +35,8 @@ check names every fault that keeps the tree from being tagged webcpp-<a.b.c>:
 - a library whose changelog has lines for this version is not under Updated Libraries;
 - a library changed since that tag, under USER_VISIBLE, and its region has no line; or the
   commit a tag or HEAD records is not in its repository;
-- once doc/releases/<a.b.c>.whats-new.md exists, its section Highlights holds more than its
+- once doc/releases/<a.b.c>.whats-new.md exists, it holds HTML other than the placeholder
+  comment whats-new writes, where it writes it; or its section Highlights holds more than its
   five highlights, a highlight is not "- **<category>**: <sentence of at most 20 words>.", its
   category is not one of CATEGORIES, the highlights are not in CATEGORIES' order, each once, or
   a fenced code block opens in the section or above it.
@@ -446,6 +447,17 @@ HIGHLIGHTS = ('<!-- At most five highlights, each "- **<category>**: <one senten
 HIGHLIGHT = re.compile(r'- \*\*(?P<category>[^*]*)\*\*: (?P<text>\S.*)')
 CONTINUATION = re.compile(r'  (?P<text>\S.*)')
 FENCE = re.compile(r' {0,3}(?:```|~~~)')
+# HTML, which a What's new holds none of but the placeholder HIGHLIGHTS right below its heading:
+# what starts a tag, a closing tag, a comment, a declaration or a processing instruction, and
+# what closes a comment. A code span's "<" is refused too: which backticks pair into a code
+# span depends on the blocks, links and tables around them, which no line-by-line reading knows.
+HTML = re.compile(r'<[A-Za-z/!?]|-->')
+
+
+def whats_new_closing(version: Version) -> str:
+    """The paragraph that ends the version's What's new."""
+    return (f'Release notes: https://webcpporg.github.io/webcpp/#webcpp-{version.anchor}. '
+            f'Checksum:\n`webcpp-{version.name}.tar.gz.txt`.')
 
 
 def markdown(text: str) -> str:
@@ -483,8 +495,7 @@ def whats_new_text(root: Path, version: Version) -> str:
     if notes.tools:
         parts.append('## Tools and build\n\n' + '\n'.join(
             f'- {markdown(line.text)}' for line in notes.tools[:3]))
-    parts.append(f'Release notes: https://webcpporg.github.io/webcpp/#webcpp-{version.anchor}. '
-                 f'Checksum:\n`webcpp-{version.name}.tar.gz.txt`.')
+    parts.append(whats_new_closing(version))
     return '\n\n'.join(parts) + '\n'
 
 
@@ -500,8 +511,10 @@ def whats_new(root: Path, version: Version) -> list[str]:
 
 
 def whats_new_findings(root: Path, version: Version) -> list[str]:
-    """What breaks the form of the version's What's new once its highlights are written: one
-    section ## Highlights, a second named by its line; after its placeholder comment, every
+    """What breaks the form of the version's What's new once its highlights are written: HTML
+    other than the placeholder HIGHLIGHTS right below ## Highlights, named by its line; one
+    section ## Highlights, a second named by its line, the section ending at the next ##
+    heading or at the closing paragraph as whats-new writes it, at the file's end; every
     non-blank line of the section is a highlight or a continuation of one (HIGHLIGHT,
     CONTINUATION), each other line refused, named by its line, as specifically as its own shape
     allows; a line opening a fence (FENCE), in the section or above it, refuses each line of the
@@ -512,27 +525,31 @@ def whats_new_findings(root: Path, version: Version) -> list[str]:
     if not (root / relative).is_file():
         return []
     text = read(root, relative)
+    # The placeholder, byte for byte where whats-new writes it, is the one HTML a What's new
+    # holds, and is blanked out character for character: its newlines stay, so every line
+    # keeps its number. Every other rule reads the text without it.
+    placeholder = re.search('^' + re.escape(f'## Highlights\n\n{HIGHLIGHTS}'), text, re.MULTILINE)
+    if placeholder is not None:
+        start = placeholder.end() - len(HIGHLIGHTS)
+        text = text[:start] + re.sub(r'[^\n]', ' ', HIGHLIGHTS) + text[placeholder.end():]
+    findings = [f"{relative}:{number}: line {number} holds HTML, which a What's new may not"
+                for number, line in enumerate(text.split('\n'), 1) if HTML.search(line)]
     headings = [match.start() for match in re.finditer(r'^## Highlights$', text, re.MULTILINE)]
     if not headings:
-        return [f'{relative} has no section ## Highlights']
+        return [*findings, f'{relative} has no section ## Highlights']
 
     def line_of(position: int) -> int:
         return text.count('\n', 0, position) + 1
 
-    findings = [f'{relative}:{line_of(start)}: a second ## Highlights heading'
-               for start in headings[1:]]
+    findings += [f'{relative}:{line_of(start)}: a second ## Highlights heading'
+                 for start in headings[1:]]
     body_start = text.index('\n', headings[0]) + 1
-    following = re.search(r'^## |^Release notes: ', text[body_start:], re.MULTILINE)
-    body_end = body_start + following.start() if following else len(text)
-    # A comment's own example text holds a literal "- **<category>**: ", so it is blanked out
-    # character for character before a line is read: its newlines stay, so a line found after
-    # it still carries its true number in the file. A fence is looked for on the lines as
-    # written, since a fence's lines make a comment's opening or closing literal text.
-    written = text[body_start:body_end].split('\n')
-    body = re.sub(r'<!--.*?-->',
-                  lambda comment: ''.join('\n' if char == '\n' else ' ' for char in
-                                          comment.group(0)),
-                  text[body_start:body_end], flags=re.DOTALL).split('\n')
+    # A reader sees the section end at a heading, never at a line that merely starts like the
+    # closing paragraph: that paragraph ends it only as whats-new writes it, ending the file.
+    closing = re.compile('^' + re.escape(whats_new_closing(version)) + r'\n?\Z', re.MULTILINE)
+    following = (re.compile(r'^## ', re.MULTILINE).search(text, body_start)
+                 or closing.search(text, body_start))
+    body_end = following.start() if following else len(text)
     # A fence opened above the section may hold all of it, closed or not.
     fence = next((number for number, line in enumerate(text[:headings[0]].split('\n'), 1)
                   if FENCE.match(line)), None)
@@ -542,14 +559,14 @@ def whats_new_findings(root: Path, version: Version) -> list[str]:
 
     items: list[list[object]] = []
     has_open_item = False
-    for number, (written_line, line) in enumerate(zip(written, body), line_of(body_start)):
-        if fence is None and FENCE.match(written_line):
+    for number, line in enumerate(text[body_start:body_end].split('\n'), line_of(body_start)):
+        if fence is None and FENCE.match(line):
             fence = number
             findings.append(f'{relative}:{number}: line {number} opens a fenced code block in '
                             "Highlights, which refuses every line to the section's end")
             continue
         if fence is not None:
-            if written_line.strip():
+            if line.strip():
                 findings.append(f'{relative}:{number}: line {number} is inside the fenced code '
                                 f'block of line {fence}')
             continue

@@ -822,6 +822,10 @@ class Highlights:
         return f'{WHATS_NEW}:{number}: line {number} is not a highlight' + (
             f': {fault}' if fault else '')
 
+    def html(self, index: int) -> str:
+        """The finding that line index of a body holds HTML."""
+        return html(self.first + index)
+
     def opens(self, index: int) -> str:
         number = self.first + index
         return (f'{WHATS_NEW}:{number}: line {number} opens a fenced code block in Highlights, '
@@ -833,6 +837,11 @@ class Highlights:
         number = self.first + index
         return (f'{WHATS_NEW}:{number}: line {number} is inside the fenced code block of line '
                 f'{opener}')
+
+
+def html(number: int) -> str:
+    """The finding that line number of the What's new holds HTML."""
+    return f"{WHATS_NEW}:{number}: line {number} holds HTML, which a What's new may not"
 
 
 ORDER = f'{WHATS_NEW}: the highlights come in the order {", ".join(release.CATEGORIES)}, each once'
@@ -863,12 +872,12 @@ def test_whats_new_a_fence_refuses_the_rest_of_highlights(directory: Path) -> No
     found = case.check(case.text(real, '```', fake, '', '', after))
     assert found == [case.opens(1), case.inside(2, case.first + 1),
                      case.inside(5, case.first + 1)], found
-    # A fence is read on the line as written: an HTML comment that a fence's own lines would
-    # make literal text hides neither the fence nor a line inside it, and a comment inside a
-    # fence is named like any other line there.
+    # A comment around a fence hides neither the fence nor a line inside it, and each line of
+    # the comment holds HTML, which no What's new may (fix round 5).
     found = case.check(case.text(real + ' <!--', '```', fake, '-->', '<!-- a comment -->'))
-    assert found == [case.opens(1), case.inside(2, case.first + 1),
-                     case.inside(3, case.first + 1), case.inside(4, case.first + 1)], found
+    assert found == [case.html(0), case.html(3), case.html(4), case.opens(1),
+                     case.inside(2, case.first + 1), case.inside(3, case.first + 1),
+                     case.inside(4, case.first + 1)], found
     # A fence opened above the section, in the New libraries, refuses every line of it: the
     # section could sit inside that fence, closed or not.
     library = '- **config**: config, a library, from R.\n'
@@ -931,7 +940,7 @@ def test_whats_new_every_adversarial_input(directory: Path) -> None:
         ('an empty sentence at the end', case.text(real, '- **Dependencies**: '),
          [case.at(1)]),
         ('the placeholder without its comment', case.text(*unwrapped),
-         [case.at(0), case.at(1), case.at(2)]),
+         [case.html(0), case.at(0), case.at(1), case.at(2)]),
         ('CRLF line endings', case.text(*clean).replace('\n', '\r\n'), []),
         ('six highlights on six lines', case.text(*(['- **Dependencies**: one.'] * 6)),
          [f'{WHATS_NEW}: 6 highlights, and there are at most 5', ORDER]),
@@ -947,9 +956,9 @@ def test_whats_new_every_adversarial_input(directory: Path) -> None:
          + case.skeleton[end:],
          [f'{WHATS_NEW}:{second_line}: a second ## Highlights heading']),
         ('another comment wrapping a marker', case.text(
-            real, '<!-- - **Dependencies**: fake. -->'), []),
+            real, '<!-- - **Dependencies**: fake. -->'), [case.html(1), case.at(1)]),
         ('a comment never closed', case.text(real, '<!--', '- **Dependencies**: fake.'),
-         [case.at(1)]),
+         [case.html(1), case.at(1)]),
         ('a tab after the colon, first', case.text('- **New libraries**:\tfake.'),
          [case.at(0, 'a tab')]),
         ('a star in the category, first', case.text('- **New*libraries**: fake.'),
@@ -971,7 +980,8 @@ def test_whats_new_every_adversarial_input(directory: Path) -> None:
             real, '', '```python', '- **Dependencies**: fake.', '```', '', clean[1]),
          list(fenced)),
         ('a comment over several lines', case.text(
-            real, '<!--', '- **Dependencies**: fake.', '-->'), []),
+            real, '<!--', '- **Dependencies**: fake.', '-->'),
+         [case.html(1), case.html(3), case.at(1), case.at(3)]),
         ('a fence never closed', case.text(real, '', '```', '- **Dependencies**: fake.'),
          [case.opens(2), case.inside(3, opener)]),
         ('trailing spaces', case.text(real + '   '), []),
@@ -1006,21 +1016,91 @@ def test_whats_new_every_adversarial_input(directory: Path) -> None:
     assert not wrong, '\n'.join(wrong)
 
 
+def test_whats_new_holds_no_html_but_its_placeholder(directory: Path) -> None:
+    # Fix round 5: the What's new holds no HTML but the placeholder comment whats-new writes,
+    # byte for byte, right below ## Highlights. Any other "<" followed by a letter, "/", "!" or
+    # "?" (a tag, a comment, a declaration, a processing instruction), and any "-->", is named
+    # on its line, anywhere in the file, inside a code span too: which backticks pair into a
+    # code span depends on the blocks, links and tables around them, so no reading short of a
+    # Markdown parser could tell a code span's "<" from a tag's.
+    case = Highlights(directory)
+    real = '- **New libraries**: real one.'
+    found = case.check(case.text(real, '<div>', '- **Dependencies**: inside a div.', '</div>'))
+    assert found == [case.html(1), case.html(3), case.at(1), case.at(3)], found
+    # A comment opened above the section and closed on a heading below it hides the section
+    # from a reader: both of its lines are named.
+    hidden = case.text(real).replace('## Highlights\n', '<!--\n## Highlights\n').replace(
+        'Release notes:', '## Updated libraries -->\n\nRelease notes:')
+    lines = hidden.split('\n')
+    found = case.check(hidden)
+    assert found == [html(lines.index('<!--') + 1),
+                     html(lines.index('## Updated libraries -->') + 1)], found
+    # The placeholder edited by one character is a comment like any other, and its lines are
+    # no highlights.
+    edited = release.HIGHLIGHTS.replace('At most five', 'At most six')
+    found = case.check(case.text(edited, '', real))
+    assert found == [case.html(0), case.html(2), case.at(0), case.at(1), case.at(2)], found
+    # The placeholder twice: the second is HTML. The placeholder moved below a highlight, out
+    # of its place right below the heading, is HTML too.
+    found = case.check(case.text(release.HIGHLIGHTS, '', real, '', release.HIGHLIGHTS))
+    assert found == [case.html(6), case.html(8), case.at(6), case.at(7), case.at(8)], found
+    found = case.check(case.text(real, '', release.HIGHLIGHTS))
+    assert found == [case.html(2), case.html(4), case.at(2), case.at(3), case.at(4)], found
+    # A tag inside a code span is refused all the same.
+    found = case.check(case.text('- **Developer experience**: `std::vector<int>` works.'))
+    assert found == [case.html(0)], found
+    # Anywhere in the file: in the New libraries, a closing tag, a processing instruction, a
+    # declaration, an autolink, and "-->" in prose.
+    library = '- **config**: config, a library, from R.'
+    for tag in ('<b>bold</b>', '</p>', '<?php ?>', '<![CDATA[x]]>', '<!DOCTYPE html>',
+                '<https://example.com>', 'then --> now'):
+        text = case.text(real).replace(library, f'{library} {tag}')
+        found = case.check(text)
+        assert found == [html(text.split('\n').index(f'{library} {tag}') + 1)], (tag, found)
+    # Not HTML: an entity, and "<" before a space, a digit or "=".
+    assert case.check(case.text(
+        '- **Performance improvements**: &lt;div&gt; is text; a < b, <3 s and a <= b.')) == []
+
+
+def test_whats_new_section_ends_at_a_heading(directory: Path) -> None:
+    # Fix round 5: the section Highlights ends at the next ## heading, or at the closing
+    # paragraph whats-new writes, as it writes it, at the end of the file: a reader sees no end
+    # at a line that merely starts "Release notes: ", so the highlights after one are still
+    # read, counted, and the line itself is no highlight.
+    case = Highlights(directory)
+    real = '- **New libraries**: real one.'
+    found = case.check(case.text(real, 'Release notes: none.',
+                                 *(['- **Dependencies**: more.'] * 8)))
+    assert found == [case.at(1), f'{WHATS_NEW}: 9 highlights, and there are at most 5', ORDER], (
+        found)
+    # A line after the closing paragraph, which then no longer ends the file: the closing's
+    # own two lines are read as lines of the section, and refused.
+    text = case.text(real) + '- **Dependencies**: after the end.\n'
+    lines = text.split('\n')
+    closing = next(index for index, line in enumerate(lines) if line.startswith('Release notes:'))
+    found = case.check(text)
+    assert found == [case.at(closing + 1 - case.first), case.at(closing + 2 - case.first)], found
+    # The closing paragraph without the file's last newline still ends the section.
+    assert case.check(case.text(real).removesuffix('\n')) == []
+
+
 def test_whats_new_five_highlights_with_continuations_check_clean(directory: Path) -> None:
     # The legitimate path: five highlights, one per category in CATEGORIES' order, three of
     # them continued on lines of their own, a blank line between two, and backticks inside a
-    # sentence, check clean.
+    # sentence, check clean; with the placeholder comment kept above them too, in LF and CRLF.
     case = Highlights(directory)
-    assert case.check(case.text(
-        '- **New libraries**: config, the version every library reads, arrives.',
-        '  It is header-only.',
-        '- **Performance improvements**: nothing builds slower than in the previous version.',
-        '- **Dependencies**: Boost 1.90 and nothing else,',
-        '  each pinned by its SHA-256.',
-        '',
-        '- **Security & reliability**: every release is signed by its builder.',
-        '- **Developer experience**: `b2 whats-new` writes this page,',
-        '  and the owner approves it.')) == []
+    five = ('- **New libraries**: config, the version every library reads, arrives.',
+            '  It is header-only.',
+            '- **Performance improvements**: nothing builds slower than in the previous version.',
+            '- **Dependencies**: Boost 1.90 and nothing else,',
+            '  each pinned by its SHA-256.',
+            '',
+            '- **Security & reliability**: every release is signed by its builder.',
+            '- **Developer experience**: `b2 whats-new` writes this page,',
+            '  and the owner approves it.')
+    assert case.check(case.text(*five)) == []
+    assert case.check(case.text(release.HIGHLIGHTS, '', *five)) == []
+    assert case.check(case.text(release.HIGHLIGHTS, '', *five).replace('\n', '\r\n')) == []
 
 
 def git_checkout(root: Path) -> None:
@@ -1159,6 +1239,8 @@ CASES: list[Callable[[Path], None]] = [
     test_whats_new_highlights_grammar_is_a_whitelist,
     test_whats_new_a_fence_refuses_the_rest_of_highlights,
     test_whats_new_every_adversarial_input,
+    test_whats_new_holds_no_html_but_its_placeholder,
+    test_whats_new_section_ends_at_a_heading,
     test_whats_new_five_highlights_with_continuations_check_clean,
 ]
 
