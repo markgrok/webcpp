@@ -11,7 +11,8 @@ refused there; a program that node runs reads the host's files and standard inpu
 and no other program gets the flag; every program is wasm32, whatever address model is asked for;
 a failure reaches the report; a program of webcpp.link is linked and never run, and fails on a
 symbol nothing defines; a test of webcpp.drive runs its program through a script of node's on each
-of its targets, in an own lane, and one that no own lane names is refused; and a native build needs
+of its targets, in an own lane, a driver or a program that hangs fails it within its bound and
+leaves no process behind, and one that no own lane names is refused; and a native build needs
 no Emscripten. Each case builds a scratch superproject with browser_demo, whose path holds a space,
 and the emsdk linked into its .local; Emscripten's cache is the run's own, which the harness gives
 every b2. Run with the names of some cases to run only those."""
@@ -21,6 +22,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import harness
@@ -202,6 +204,57 @@ def test_drive_runs_its_program_on_each_target(root):
         report.stderr)
 
 
+def leftovers(root: Path) -> list[str]:
+    """The processes ps lists whose command names the scratch superproject root."""
+    listed = subprocess.run(['ps', '-A', '-o', 'pid=,stat=,command='], capture_output=True,
+                            text=True, check=True).stdout.splitlines()
+    return [line for line in listed if str(root) in line and ' Z' not in line[:12]]
+
+
+def test_a_hanging_drive_is_stopped_within_its_bound(root):
+    # A driver that hangs, and a driver whose program hangs, fail the test once its bound has
+    # passed, here 5 s by the requirement <webcpp-drive-timeout>, as a run failure the report
+    # names, and leave no process behind: drive.py stops the driver's whole group.
+    jamfile = root / 'libs/browser_demo/test/driver/Jamfile'
+    harness.replace(jamfile, 'webcpp.drive driven : driven.cpp : :',
+                    'webcpp.drive driven : driven.cpp : <webcpp-drive-timeout>5 :')
+    driver = root / 'libs/browser_demo/test/driver/drive.mjs'
+    program = root / 'libs/browser_demo/test/driver/driven.cpp'
+    original = (driver.read_text(), program.read_text())
+    lane = 'native.browser_demo.driver'
+    for plant, toolset in (
+        (lambda: harness.replace(driver, "import { spawnSync } from 'node:child_process';\n",
+                                 "import { spawnSync } from 'node:child_process';\n\n"
+                                 'setInterval(() => {}, 1000);\nawait new Promise(() => {});\n'),
+         ()),
+        (lambda: harness.replace(program, '    std::puts("ready");\n',
+                                 '    for (;;) {\n        std::this_thread::sleep_for('
+                                 'std::chrono::seconds(1));\n    }\n'), ()),
+        (lambda: harness.replace(program, '    std::puts("ready");\n',
+                                 '    for (volatile int spin = 0;; spin = spin + 1) {\n    }\n'),
+         EMSCRIPTEN),
+    ):
+        driver.write_text(original[0])
+        program.write_text(original[1].replace('#include <cstdio>\n',
+                                               '#include <chrono>\n#include <cstdio>\n'
+                                               '#include <thread>\n'))
+        plant()
+        name = 'emscripten.browser_demo.driver' if toolset else lane
+        began = time.monotonic()
+        result = harness.run_b2(root, '-a', '--dump-tests', f'--out-xml={name}.xml', *toolset,
+                                'libs/browser_demo/test/driver//driver', timeout=300)
+        took = time.monotonic() - began
+        harness.expect(result, True)
+        assert re.search(r'drive: webcpp\.drive driven in libs/browser_demo/test/driver/Jamfile: '
+                         r'the driver of \S*/driven(\.js)? did not end within 5 s; it was stopped '
+                         'with every process of its group', result.stdout), result.stdout[-4000:]
+        report = reported(root, name)
+        assert report.stderr.splitlines() == [f'report: {name}: browser_demo/driven: run'], (
+            report.stderr)
+        assert took < 200, took
+        assert not leftovers(root), leftovers(root)
+
+
 def test_a_drive_outside_every_lane_is_refused(root):
     result = harness.run_b2(root, '-d0', 'declared-lanes')
     harness.expect(result, True)
@@ -258,6 +311,7 @@ CASES = [prepared(case) for case in (
     test_link_only_builds_and_never_runs,
     test_link_only_unresolved_symbol_fails,
     test_drive_runs_its_program_on_each_target,
+    test_a_hanging_drive_is_stopped_within_its_bound,
     test_a_drive_outside_every_lane_is_refused,
     test_native_build_needs_no_emsdk,
 )]

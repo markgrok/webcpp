@@ -19,7 +19,12 @@
 # Jamfile, and the path of the linked program: its JavaScript on emscripten,
 # which a script runs with node, its executable natively. The test passes
 # when that command exits with 0: a test that only a script can drive, such
-# as one of a peer that a browser or another process meets. It is a test of
+# as one of a peer that a browser or another process meets. tools/drive/drive.py
+# runs the command, bounded by 30 s, or the seconds the requirement
+# <webcpp-drive-timeout> gives the test: a driver that has not ended by then,
+# its program included, is stopped with every process of its group, and the
+# test fails naming it; nothing the driver started outlives the test. It is a
+# test of
 # b2's, which --dump-tests lists and --out-xml records, so that the report
 # sees it fail (as a run). It depends on the Jamfile's node-modules, the
 # packages its package-lock.json pins, which webcpp.original declares and
@@ -36,7 +41,9 @@ import errors ;
 import feature ;
 import generators ;
 import modules ;
+import os ;
 import path ;
+import regex ;
 import testing ;
 import toolset ;
 import type ;
@@ -58,6 +65,18 @@ generators.register-standard testing.expect-success : DRIVEN : DRIVE ;
 feature.feature webcpp-drive-script : : free dependency ;
 feature.feature webcpp-drive : : free incidental ;
 toolset.flags webcpp-drive.drive-and-check SCRIPT <webcpp-drive-script> ;
+
+# The seconds a driven test's driver may take, its program included, which
+# a test's requirements give as <webcpp-drive-timeout>60; 30 without one.
+feature.feature webcpp-drive-timeout : : free incidental ;
+.default-timeout = 30 ;
+
+if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
+
+# The runner, beside this file, as an absolute native path: the action runs
+# in the directory b2 was started in.
+.here = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
+.runner = [ path.native $(.here)/drive.py ] ;
 
 # webcpp.drive <name> : <sources> + : <requirements> * : <script>
 #   : <argument> * ; the test <name>. original is the words of the
@@ -82,25 +101,48 @@ rule drive ( found + : name : sources + : requirements * : script : arguments * 
     $(found[1]).mark-target-as-always $(name) ;
 }
 
+# Each of words as one word of the shell, single-quoted: a ' is written '\'',
+# and nothing else is special there, $ and ` included.
+local rule quoted ( words * )
+{
+    local result ;
+    for local word in $(words)
+    {
+        local pieces = [ regex.split $(word) "'" ] ;
+        result += "'$(pieces:J='\\'')'" ;
+    }
+    return $(result) ;
+}
+
 # The original's words and the arguments of the test, which the action
-# places around the script and the program.
+# places around the script and the program, the test as a message names it,
+# and its bound.
 rule drive-and-check ( target : source : properties * )
 {
     # As testing.capture-output does: the file a dependency feature names is
     # bound before the target is built.
     DEPENDS $(target) : [ on $(target) return $(SCRIPT) ] ;
     local key = [ feature.get-values <webcpp-drive> : $(properties) ] ;
+    local timeout = [ feature.get-values <webcpp-drive-timeout> : $(properties) ] ;
+    timeout ?= $(.default-timeout) ;
+    if $(timeout[2]) || ! [ MATCH "^([0-9]+)$" : $(timeout) ] || $(timeout) = 0
+    {
+        errors.user-error "$(.shown.$(key)): <webcpp-drive-timeout>$(timeout:J= ) is not a"
+            "number of seconds above 0" ;
+    }
     ORIGINAL on $(target) = $(.original.$(key)) ;
     ARGUMENTS on $(target) = $(.arguments.$(key)) ;
+    PYTHON on $(target) = $(.python) ;
+    RUNNER on $(target) = $(.runner) ;
+    SHOWN on $(target) = [ quoted $(.shown.$(key)) ] ;
+    TIMEOUT on $(target) = $(timeout) ;
 }
 
 # The program is the first file of the EXE, its JavaScript on emscripten,
-# beside which Emscripten writes its .wasm. What the script prints is the
-# action's output, which b2 shows and --out-xml records; the target is
-# written only once the script exits with 0.
+# beside which Emscripten writes its .wasm. What the driver prints is the
+# action's output, which b2 shows and --out-xml records; drive.py writes the
+# target only once the driver exits with 0.
 actions drive-and-check bind SCRIPT
 {
-    set -e
-    "$(ORIGINAL)" "$(SCRIPT)" "$(ARGUMENTS)" "$(>[1])"
-    echo driven > "$(<)"
+    "$(PYTHON)" "$(RUNNER)" --program $(SHOWN) --timeout $(TIMEOUT) --output "$(<)" -- "$(ORIGINAL)" "$(SCRIPT)" "$(ARGUMENTS)" "$(>[1])"
 }

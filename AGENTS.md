@@ -84,7 +84,8 @@ webcpp/
                       webcpp.serve, webcpp.serve-script), and serve.py, which serves one with
                       wasmtime and compares its answers, and its test
     drive/            drive.jam, the rule of a driven test (webcpp.drive), which a script of the
-                      original's language runs over a linked program
+                      original's language runs over a linked program, drive.py, which runs it
+                      bounded, and its test
     node/             install.py, which installs the Node packages of the documentation, an
                       oracle and the lint once per lockfile, and its test
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
@@ -224,18 +225,25 @@ script's component, `-sWASI_SDK` (above).
 `tools/lint/compile_commands.py` runs b2 with `.local/user-config.jam`, else
 with the file `$WEBCPP_USER_CONFIG` names, else with b2's own search. The
 tests of the build and of the tools read `.local/user-config.jam`, else the
-file `$WEBCPP_USER_CONFIG` names, and stop with an error when neither
-exists (`tools/test/harness.py`); a test that needs wit-bindgen and the WIT
-links `.local/wit-bindgen`, `.local/wasi-wit` and `.local/wasi-sdk`, or the
+file `$WEBCPP_USER_CONFIG` names, and stop with an error when neither exists
+(`tools/test/harness.py`); a test that needs wit-bindgen and the WIT links
+`.local/wit-bindgen`, `.local/wasi-wit` and `.local/wasi-sdk`, or the
 directories `$WIT_BINDGEN_ROOT`, `$WASI_WIT_ROOT` and `$WASI_SDK` name, into
 its scratch copy, one that needs Emscripten `.local/emsdk`, or `$EMSDK_ROOT`,
-and
-one that needs MrDocs `.local/mrdocs`, or `$MRDOCS_ROOT`. Emscripten writes its
-cache where `EM_CACHE` names, else inside the emsdk: every b2 of a test gets
-the cache of its run, beside its scratch copies, by its resolved path, over
-the shell's `EM_CACHE`, so that no test writes `.local/emscripten-cache`. The doc build
-finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when
-told: `b2 --user-config=.local/user-config.jam ...`.
+and one that needs MrDocs `.local/mrdocs`, or `$MRDOCS_ROOT`. Emscripten
+writes its cache where `EM_CACHE` names, else inside the emsdk: every b2 of a
+test gets the cache of its run, beside its scratch copies, by its resolved
+path, over the shell's `EM_CACHE`, so that no test writes
+`.local/emscripten-cache`; the resolved path, since Emscripten 6.0.11 builds a
+system library from a relative path that misses its sources through a link, as
+macOS's `$TMPDIR` is one. It also gets `EMCC_SKIP_SANITY_CHECK=1`: Emscripten
+checks its configuration when it first meets a cache, which a test's is in
+every run, and prints "Running sanity checks" into the output of the b2 that
+configures the toolset, which a test compares whole
+(`b2 -d0 declared-targets`); the check's one other use, clearing a cache made
+by another toolchain, has nothing to clear in a cache of the run's own. The
+doc build finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only
+when told: `b2 --user-config=.local/user-config.jam ...`.
 
 ### The build commands
 
@@ -1104,7 +1112,7 @@ webcpp.link         <name> : <sources> + : <requirements> * : <targets> * ;
 | `webcpp.compile-fail` | the sources do not compile | left out of clang-tidy; any error passes it, the wrong one included |
 | `webcpp.compile-diagnostic` | the sources stop with every error they state in clang's `-verify` comments, `// expected-error@<file>:* {{<message>}}` for a header they include or `// expected-error@+1 {{<message>}}` for the next line | compiled with `-Xclang -verify -Xclang -verify-ignore-unexpected=error,note`, so an error not stated and a note are ignored; built on b2's `clang` toolset only (native clang, `clang-wasip2`, `clang-wasip3`) and skipped elsewhere, since `-verify` is clang's: a refusal would turn every gcc and msvc lane red for a declaration that holds; left out of clang-tidy |
 | `webcpp.boost-test` | every case of the Boost.Test suite passes | native only, whatever the Jamfile declares; the header-only framework, `tools/boost_test_runner.cpp`, is one object of the suite's, always compiled with exceptions |
-| `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | its standard input is `<stem>.input` beside it, else empty, never the terminal, on every target (wasmtime passes it through, and node under `-sNODERAWFS=1`); run through `testing.launcher` for WASI, and with node on emscripten, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again, and `<stem>.input` is a source of the run |
+| `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | its standard input is `<stem>.input` beside it, else empty, never the terminal, on every target (wasmtime passes it through, and node under `-sNODERAWFS=1`); run through `testing.launcher` for WASI, and on emscripten with the node on `PATH`, not the one b2's toolset registered, which b2 gives only to its own testing rules, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again, and `<stem>.input` is a source of the run |
 | `webcpp.link` | the program links | never run: a program for a browser, which node refuses to run (`-sENVIRONMENT=web`), or one that needs the network; b2's `link` test, which `--dump-tests` lists and the report shows as a link test; never linked with `-sNODERAWFS=1`. The explicit target `<name>-program` is the same program, an `exe` of the same sources and requirements, `<name>-program.js` on emscripten, for a target that needs its files, such as a page that loads it. An example Jamfile's is shown on the page by its code, and has no `.expected` (chapter 8) |
 | `webcpp.headers-alone` | each public header compiles alone | one test per header, `alone-<path>` with `/` as `-` (`alone-xactor-scheduler`), against `/webcpp/<library>//<library>` and the requirements given, for the targets given or the Jamfile's; `only` restricts a call to the public headers its globs match, relative to `<include-root>/webcpp/` (`wasi/http/response.hpp`), a glob that matches none stopping the build; a library may call it several times, and a header two calls take stops the build, naming it |
 
@@ -1154,7 +1162,7 @@ webcpp.drive <name> : <sources> + : <requirements> * : <script> : <argument> * :
 
 | Rule | Passes when | Notes |
 | --- | --- | --- |
-| `webcpp.drive` | `<original words> <script> <arguments> <program>` exits with 0 | builds the program from the sources, for its own targets, else its Jamfile's, as `webcpp.serve` builds its component, and runs the script beside the Jamfile with the words of `webcpp.original`, the arguments and the path of the linked program: its JavaScript on emscripten, its executable natively. It depends on the Jamfile's `node-modules`, and a Jamfile without `webcpp.original` stops at it by name. b2's test `DRIVE`, which `--dump-tests` lists and `--out-xml` records, so the report sees it fail (as a run). Always run again. A lane-only program: it runs in an own lane, never in the ordinary ones (Lanes, below) |
+| `webcpp.drive` | `<original words> <script> <arguments> <program>` exits with 0 within its bound | builds the program from the sources, for its own targets, else its Jamfile's, as `webcpp.serve` builds its component, and runs the script beside the Jamfile with the words of `webcpp.original`, the arguments and the path of the linked program: its JavaScript on emscripten, its executable natively. `tools/drive/drive.py` runs it under `tools/component/serve.py`'s keeper, the leader of a process group of its own, bounded by 30 s, or the seconds the requirement `<webcpp-drive-timeout>` gives (`<webcpp-drive-timeout>60`): a driver that has not ended by then, because it or its program hangs, is stopped with every process of its group, and the test fails naming it, the program and the bound. Its group is killed once the driver ends too, and when `drive.py` itself is killed, so that nothing the driver started outlives the test. It depends on the Jamfile's `node-modules`, and a Jamfile without `webcpp.original` stops at it by name. b2's test `DRIVE`, which `--dump-tests` lists and `--out-xml` records, so the report sees it fail (as a run). Always run again. A lane-only program: it runs in an own lane, never in the ordinary ones (Lanes, below) |
 
 The fixture browser_demo's `test/driver/Jamfile`, whose `drive.mjs` runs the
 program, with node when it is JavaScript, and passes when it printed
@@ -1556,12 +1564,12 @@ only branch.
     `tools/doc/doc_comments_test.py`, `tools/doc/extensions_test.py`,
     `tools/doc/counts_test.py`, `tools/oracle/twins_test.py`,
     `tools/oracle/compare_test.py`, `tools/example/run_example_test.py`,
-    `tools/component/serve_test.py`, `tools/node/install_test.py`,
-    `tools/ci/matrix_test.py`, `tools/ci/assemble_test.py` and
-    `tools/ci/actions_test.py`: every `tools/**/*_test.py`, as the CI runs
-    them, each as `python3 <path>`. They build in scratch copies under
-    `$TMPDIR`, whose path holds a space, so they run beside a build of the
-    tree;
+    `tools/component/serve_test.py`, `tools/drive/drive_test.py`,
+    `tools/node/install_test.py`, `tools/ci/matrix_test.py`,
+    `tools/ci/assemble_test.py` and `tools/ci/actions_test.py`: every
+    `tools/**/*_test.py`, as the CI runs them, each as `python3 <path>`. They
+    build in scratch copies under `$TMPDIR`, whose path holds a space, so they
+    run beside a build of the tree;
   - CI green, the library's and the superproject's.
 - **Fix the lint, the failures and the flakiness you meet,** even when they
   are not yours; report what you cannot fix.

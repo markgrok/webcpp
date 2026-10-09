@@ -16,11 +16,12 @@ whose transcript differs, a run failure, and a library's own lane on a target, n
 target and the library, which its column and its failures show and which it must hold true; an
 emscripten lane, its link-only program a link test, and a driven test whose driver fails, a run
 failure. One case uses lanes.py and pages.py alone; one checks that no sample names the machine's
-temporary directory; a last one records every sample afresh, untrimmed, and checks that the report
-reads it as it reads the committed one. Every page written is checked to be self-contained, to link
-only to the report's own pages, to the site it is served in (its index and each library's page) and
-to github.com/webcpporg, and to name its lane on every lane cell, which a phone shows as a chip. Run
-with the names of some cases to run only those."""
+temporary directory, and one that none holds what Emscripten says of its cache; a last one records
+every sample afresh, untrimmed, and checks that the report reads it as it reads the committed one.
+Every page written is checked to be self-contained, to link only to the report's own pages, to the
+site it is served in (its index and each library's page) and to github.com/webcpporg, and to name
+its lane on every lane cell, which a phone shows as a chip. Run with the names of some cases to run
+only those."""
 
 from __future__ import annotations
 
@@ -797,6 +798,25 @@ def test_samples_name_no_temporary_directory(_root: Path) -> None:
         assert placeholder in text, name
 
 
+def test_samples_hold_nothing_of_emscriptens_cache(_root: Path) -> None:
+    # What Emscripten says of its cache, a system library it builds on a link and how long that
+    # took, depends on the cache's state and on which link comes first: the recording drops each
+    # such line, wherever it is in an action's output, and no committed sample holds one.
+    written = (b'    <output><![CDATA[cache:INFO: generating system library: sysroot/lib/x.a... '
+               b'(this will be cached in "/tmp/c/x.a" for subsequent builds)\n'
+               b'system_libs:INFO: compiled 27 inputs in 0.23s\n'
+               b'cache:INFO:  - ok\n'
+               b'warning: kept\n'
+               b'shared:INFO: (Emscripten: Running sanity checks)\n'
+               b']]></output>\n')
+    assert record_samples.trim(written) == b'    <output><![CDATA[warning: kept\n]]></output>\n', (
+        record_samples.trim(written))
+    for name in sorted(SAMPLES.glob('*.xml')):
+        text = name.read_text(encoding='utf-8', errors='replace')
+        for said in ('cache:INFO:', 'system_libs:INFO:', 'shared:INFO:'):
+            assert said not in text, (name, said)
+
+
 def test_samples_read_as_b2_writes_them_today(root: Path) -> None:
     # A sample is trimmed, and recorded once: a lane recorded now, untrimmed, gives the same
     # matrix, so the trimming changed nothing the report reads, and the b2 installed still
@@ -835,6 +855,7 @@ CASES = [
     test_emscripten_lane_and_its_link_and_driven_tests,
     test_lanes_and_pages_work_alone,
     test_samples_name_no_temporary_directory,
+    test_samples_hold_nothing_of_emscriptens_cache,
     test_samples_read_as_b2_writes_them_today,
 ]
 

@@ -12,13 +12,13 @@ Usage: record_samples.py [NAME ...]
 A sample is what `b2 -a --dump-tests --out-xml=FILE` writes, run with the arguments of a lane (the
 Jamroot's lane command) in a scratch superproject that holds the fixture library demo, or
 component_demo with this checkout's wit-bindgen and WIT, or browser_demo with its emsdk, and
-whatever SAMPLES plants beside it. It
-is then trimmed of what report.py never reads, and of what would only describe the machine that
-recorded it: the <os> element (uname, which names the host), every <properties> and <sources>
-element, and the actions b2 runs for itself, which have no <name>, when they succeeded (creating a
-directory, for one). The temporary directory, under which the scratch superproject is and whose path
-names the machine too, is written as $TMPDIR. report_test.py records every sample afresh, untrimmed,
-and checks that the report reads it as it reads the committed one.
+whatever SAMPLES plants beside it. It is then trimmed of what report.py never reads, and of what
+would only describe the machine that recorded it: the <os> element (uname, which names the host),
+every <properties> and <sources> element, the actions b2 runs for itself, which have no <name>, when
+they succeeded (creating a directory, for one), and the lines in which Emscripten says what it does
+with its cache, which depend on the cache's state. The temporary directory, under which the scratch
+superproject is and whose path names the machine too, is written as $TMPDIR. report_test.py records
+every sample afresh, untrimmed, and checks that the report reads it as it reads the committed one.
 
 b2 records the compilers' paths, which user-config.jam can place under the home directory: the
 scratch superproject reaches .local/ through a link outside it, and a sample that still names the
@@ -226,6 +226,10 @@ TRIMMED = (
     # An action without a <name> has its <jam-target> first, once the two above are gone.
     re.compile(rb'\n  <action status="0"[^>]*> ?\n    <jam-target>.*?\n  </action> ?(?=\n)',
                re.DOTALL),
+    # What Emscripten says of its cache, a line of an action's output: a system library it builds
+    # on a link, how long that took, its sanity check. It depends on the cache's state and on
+    # which link comes first.
+    re.compile(rb'(?<=[\n\[])(?:cache|system_libs|shared):INFO:[^\n]*\n'),
 )
 
 

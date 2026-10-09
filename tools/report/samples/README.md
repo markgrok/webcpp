@@ -4,25 +4,23 @@ Each file is what `b2 -a --dump-tests --out-xml=FILE` wrote for one lane, run
 in a scratch superproject that holds the fixture library demo
 (`tools/test/fixtures/demo`), or component_demo
 (`tools/test/fixtures/component_demo`) with the checkout's wit-bindgen and
-WIT, or browser_demo (`tools/test/fixtures/browser_demo`) with the
-checkout's emsdk, and the libraries `tools/report/record_samples.py` plants
-beside it. That
-script records them, `python3 tools/report/record_samples.py [NAME ...]`, and
-trims each of the `<os>` element (uname, which names the host), every
-`<properties>` and `<sources>` element, and the actions b2 runs for itself
-that succeeded: what `report.py` never reads. It writes the temporary
-directory, which names the machine too, as `$TMPDIR`. Never edit a sample by
-hand; record it again. `report_test.py` records every sample afresh,
+WIT, or browser_demo (`tools/test/fixtures/browser_demo`) with the checkout's
+emsdk, and the libraries `tools/report/record_samples.py` plants beside it.
+That script records them, `python3 tools/report/record_samples.py [NAME ...]`,
+and trims each of the `<os>` element (uname, which names the host), every
+`<properties>` and `<sources>` element, the actions b2 runs for itself that
+succeeded, and the lines in which Emscripten says what it does with its cache,
+which depend on the cache's state: what `report.py` never reads. It writes the
+temporary directory, which names the machine too, as `$TMPDIR`. Never edit a
+sample by hand; record it again. `report_test.py` records every sample afresh,
 untrimmed, and checks that the report reads it as it reads the committed one.
 
 They were recorded on 2026-10-08, on macOS arm64 with B2 5.5.3, Apple clang 21
 and wasi-sdk 34; the served ones with wit-bindgen 0.62.0 and wasmtime 47.0.3;
-the emscripten ones with Emscripten 6.0.11 and Node 26.7.0, in a cache of
-Emscripten's that the recording made, whose system libraries the first links
-build and say so in their output.
-The paths b2 recorded are those of the scratch superproject under `$TMPDIR`,
-and the wasi-sdk is reached through a link outside the home directory, which
-the script checks no sample names.
+the emscripten ones with Emscripten 6.0.11 and Node 26.7.0. The paths b2
+recorded are those of the scratch superproject under `$TMPDIR`, and the
+wasi-sdk is reached through a link outside the home directory, which the
+script checks no sample names.
 
 | Sample | Lane | Built | What it shows |
 | --- | --- | --- | --- |

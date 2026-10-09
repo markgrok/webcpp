@@ -1,7 +1,9 @@
 {
     "extraPaths": [
         "tools/ci",
+        "tools/component",
         "tools/doc",
+        "tools/drive",
         "tools/example",
         "tools/lint",
         "tools/report",
