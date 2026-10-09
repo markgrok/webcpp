@@ -13,7 +13,8 @@ The paths, relative to the current directory and separated by NUL bytes, come on
 input, and the rule reads those it applies to. Each finding is printed as `path:line: message`.
 Exit 0 when there is none, 1 when there is one, 2 on a usage error.
 
-  licence             every source file opens with the WebCpp.org licence notice;
+  licence             every source file opens with the WebCpp.org licence notice: C++,
+                      JavaScript, AsciiDoc, Python, shell, Jam, YAML and HTML;
   raw-rules           a library's test or example Jamfile declares its programs only with the
                       rules of tools/webcpp.jam;
   doc-comments        a Doc Comment uses only the commands webcpp allows, no bare @, and no
@@ -50,35 +51,51 @@ NOTICE = ('',
           'https://www.boost.org/LICENSE_1_0.txt)')
 
 
+# The marker of a comment that a line opens and that runs on until it is closed, the notice's
+# lines inside it as they are: HTML's.
+BLOCK_MARKERS = ('<!--',)
+
+
 def comment_marker(path: str) -> str | None:
-    """The comment marker the notice takes in the file at path, or None when it needs none."""
+    """The comment marker the notice takes in the file at path, or None when it needs none: //
+    before each line in C++, JavaScript and AsciiDoc, # in Python, shell, Jam and YAML, and in
+    HTML <!--, a line of its own that opens the comment the notice's lines are in."""
     name = PurePosixPath(path).name
-    if name.endswith(('.hpp', '.cpp', '.mjs')):
+    if name.endswith(('.hpp', '.cpp', '.mjs', '.js', '.adoc')):
         return '//'
     if name.endswith(('.py', '.sh', '.jam', '.yml', '.yaml')) or name in ('Jamroot', 'Jamfile'):
         return '#'
+    if name.endswith('.html'):
+        return '<!--'
     return None
 
 
 def licence(path: str, text: str) -> Iterator[Finding]:
-    """A source file opens with the notice, after its #! line when it has one."""
+    """A source file opens with the notice, after its #! line when it has one: each line of the
+    notice after its comment marker, or, in HTML, the marker alone on the first line and the
+    notice's lines as they are, inside the comment it opens."""
     marker = comment_marker(path)
     if marker is None:
         return
     lines = text.splitlines()
     first = 1 if lines and lines[0].startswith('#!') else 0
-    expected = [None, *(f'{marker} {line}' if line else marker for line in NOTICE)]
+    block = marker in BLOCK_MARKERS
+    prefix = '' if block else f'{marker} '
+    expected = [None, *(f'{prefix}{line}' if line else prefix.rstrip() for line in NOTICE)]
+    if block:
+        expected.insert(0, marker)
     for number, wanted in enumerate(expected, first):
         line = lines[number] if number < len(lines) else ''
         if wanted is None:
-            matches = line.startswith(f'{marker} ') and COPYRIGHT.fullmatch(
-                line[len(marker) + 1:]) is not None
+            matches = line.startswith(prefix) and COPYRIGHT.fullmatch(
+                line[len(prefix):]) is not None
         else:
             matches = line == wanted
         if not matches:
-            yield (path, number + 1, f'the file does not open with the licence notice, "{marker} '
-                   f'Copyright (c) 2026 WebCpp.org" and the Boost Software License; this line '
-                   f'reads {line!r}')
+            opening = (f'"{marker}" on a line of its own, then "Copyright (c) 2026 WebCpp.org"'
+                       if block else f'"{marker} Copyright (c) 2026 WebCpp.org"')
+            yield (path, number + 1, f'the file does not open with the licence notice, {opening} '
+                   f'and the Boost Software License; this line reads {line!r}')
             return
 
 

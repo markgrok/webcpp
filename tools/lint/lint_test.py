@@ -11,11 +11,15 @@ tools/lint/compile_commands.py lists what b2 builds, without what b2 expects to 
 aggregate translation units of each library: what builds only for WASI, the header of the fixture
 library component_demo's world and its programs that declare no native target, is analysed as
 wasi-sdk's clang++ builds it, with no host target, the header on wasip2 and on wasip3, each with
-exceptions and without them; a public header that no target compiles alone, a target whose toolset
-is not configured, and a WebAssembly command whose compiler is not wasi-sdk's clang++, fail the
-database by name. Each case lints a scratch superproject whose libs/demo is the fixture library
-demo, a repository of its own as a library's submodule is, and libs/component_demo too in the cases
-of WASI. Run with the names of some cases to run only those."""
+exceptions and without them; the fixture library browser_demo, whose headers no one target builds,
+has an aggregate per target, its emscripten one analysed by wasi-sdk's clang++ with the words of
+em++ --cflags, and its native one, against the fake dependency that throws, twinned without the
+header that needs exceptions; a public header that no target compiles alone, a target whose
+toolset is not configured, and a WebAssembly command whose compiler is neither wasi-sdk's clang++
+nor, on emscripten, Emscripten's em++, fail the database by name. Each case lints a scratch
+superproject whose libs/demo is the fixture library demo, a repository of its own as a library's
+submodule is, and libs/component_demo or libs/browser_demo too in the cases of WASI and of
+emscripten. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -141,6 +145,29 @@ def add_component_demo(root: Path) -> None:
     harness.link_wasi_tools(root)
 
 
+def add_browser_demo(root: Path) -> None:
+    """Places the fixture library browser_demo beside demo in the scratch superproject root, a
+    repository of its own too: its page.hpp builds only on emscripten, with Emscripten's own
+    <emscripten/val.h>, and its native.hpp only natively, against the fake dependency of its
+    deps/include, which throws."""
+    shutil.copytree(harness.FIXTURES / 'browser_demo', root / 'libs/browser_demo',
+                    ignore=harness.built)
+    git(root / 'libs/browser_demo', 'init', '-q', '-b', 'main')
+    commit(root / 'libs/browser_demo', 'The fixture')
+
+
+BROWSER_DEMO = 'libs/browser_demo/include/webcpp/browser_demo.hpp'
+PAGE = 'libs/browser_demo/include/webcpp/browser_demo/page.hpp'
+NATIVE = 'libs/browser_demo/include/webcpp/browser_demo/native.hpp'
+FAKE_DEPENDENCY = 'libs/browser_demo/deps/include/fake_dependency.hpp'
+
+
+def includes(source: Path) -> list[str]:
+    """The headers an aggregate translation unit includes, in order."""
+    return [line.removeprefix('#include <').removesuffix('>')
+            for line in source.read_text().splitlines() if line.startswith('#include <')]
+
+
 def user_config_text(root: Path) -> str:
     """The user-config.jam b2 reads for the scratch superproject root, found as every test of the
     build finds it: root's .local/, else $WEBCPP_USER_CONFIG."""
@@ -151,7 +178,8 @@ def compile_database(root: Path) -> subprocess.CompletedProcess:
     """Runs the scratch superproject's compile_commands.py, writing root/compile database/."""
     script = root / 'tools/lint/compile_commands.py'
     out = root / 'compile database/compile_commands.json'
-    return subprocess.run([sys.executable, str(script), str(root), str(out)],
+    return subprocess.run([sys.executable, str(script), str(root), str(out), '--wasi-clang',
+                           wasi_sdk_tool('clang++')],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                           check=False, timeout=harness.TIMEOUT)
 
@@ -466,10 +494,10 @@ def test_wasi_sdk_is_told_by_the_compiler_itself(root):
 def test_wasm_compiler_not_from_wasi_sdk_fails_by_name(root):
     prepare(root)
     add_component_demo(root)
-    # A toolset of wasip2 whose compiler is not wasi-sdk's clang++, as emscripten's em++ is not:
-    # a script that runs the host's clang++, as em++ runs a clang of its own. clang-tidy would
-    # read its commands as native ones and give them the host's --target, so the database refuses
-    # them, naming the file and the compiler.
+    # A toolset of wasip2 whose compiler is not wasi-sdk's clang++: a script that runs the host's
+    # clang++, as em++ runs a clang of its own. clang-tidy would read its commands as native ones
+    # and give them the host's --target, so the database refuses them, naming the file and the
+    # compiler.
     configured = user_config_text(root)
     using = re.search(r'^using clang : wasip2 : (\S+)', configured, re.MULTILINE)
     assert using is not None, configured
@@ -538,6 +566,150 @@ def test_clang_tidy_reads_what_an_own_lane_builds(root):
             completed.stdout), completed.stdout[-6000:]
 
 
+def test_compile_database_gives_each_target_its_aggregate(root):
+    add_browser_demo(root)
+    completed = compile_database(root)
+    assert completed.returncode == 0, completed.stdout[-6000:]
+    entries = json.loads((root / 'compile database/compile_commands.json').read_text())
+    by_file: dict[Path, list[list[str]]] = {}
+    for entry in entries:
+        by_file.setdefault(Path(entry['file']), []).append(entry['arguments'])
+    # No one target builds every public header of browser_demo: native.hpp builds only natively,
+    # page.hpp only on emscripten. Each target its headers-alone units run on has an aggregate of
+    # the headers it builds.
+    aggregate = root / 'bin/aggregate'
+    native = aggregate / 'browser_demo-native.cpp'
+    emscripten = aggregate / 'browser_demo-emscripten.cpp'
+    assert includes(native) == ['webcpp/browser_demo.hpp', 'webcpp/browser_demo/native.hpp'], (
+        native.read_text())
+    assert includes(emscripten) == ['webcpp/browser_demo.hpp', 'webcpp/browser_demo/page.hpp'], (
+        emscripten.read_text())
+    assert not (aggregate / 'browser_demo.cpp').exists()
+    # The native one is compiled with the options of native.hpp's unit, which name the fake
+    # dependency's directory. Its twin without exceptions leaves native.hpp out, since its unit
+    # declares <exception-handling>on, and the database names it; a twin of its own, it includes
+    # page.hpp no more than the aggregate does.
+    commands = by_file[native]
+    assert len(commands) == 1 and '-fno-exceptions' not in commands[0], commands
+    assert '-Ilibs/browser_demo/deps/include' in commands[0], commands
+    twin = aggregate / 'browser_demo-native-exception-handling-off.cpp'
+    assert includes(twin) == ['webcpp/browser_demo.hpp'], twin.read_text()
+    assert len(by_file[twin]) == 1 and '-fno-exceptions' in by_file[twin][0], by_file[twin]
+    assert boost_sees_no_exceptions(root, by_file[twin][0]), by_file[twin]
+    assert ('left out of the analysis without exceptions, their headers-alone units built with '
+            f'exceptions whatever the build asks: {NATIVE}') in completed.stdout, (
+        completed.stdout[-6000:])
+    # The emscripten one is analysed as em++ compiles it, by wasi-sdk's clang++ with the words
+    # em++ --cflags prints for the command's own options before b2's: with b2's
+    # -fwasm-exceptions, the legacy encoding em++ compiles with, and none of the words of a
+    # build without exceptions, which clang refuses beside -fwasm-exceptions. Its twin is the
+    # same unit with exception-handling=off, after Emscripten's -fignore-exceptions.
+    commands = by_file[emscripten]
+    assert ['-fno-exceptions' in command for command in commands] == [False, True], commands
+    for command in commands:
+        assert compile_commands.wasi_sdk(command[0]), command
+        assert 'wasm32-unknown-emscripten' in command, command
+        assert any(word.startswith('--sysroot=') for word in command), command
+    with_exceptions, without = commands
+    assert '-wasm-use-legacy-eh' in with_exceptions, with_exceptions
+    assert '-fignore-exceptions' not in with_exceptions, with_exceptions
+    assert '-enable-emscripten-sjlj' not in with_exceptions, with_exceptions
+    assert without.index('-fignore-exceptions') < without.index('-fno-exceptions'), without
+    assert boost_sees_no_exceptions(root, without), without
+    assert not boost_sees_no_exceptions(root, with_exceptions), with_exceptions
+    # The program that only emscripten builds is analysed there, with exceptions and without.
+    page = by_file[root / 'libs/browser_demo/example/page.cpp']
+    assert ['-fno-exceptions' in command for command in page] == [False, True], page
+    for command in page:
+        assert compile_commands.wasi_sdk(command[0]), command
+    # The programs both targets build are analysed natively, as before.
+    for command in by_file[root / 'libs/browser_demo/test/reads_test.cpp']:
+        assert 'wasm32-unknown-emscripten' not in command, command
+    # demo's headers build whole natively: its one aggregate keeps its name and its two commands.
+    demo = by_file[aggregate / 'demo.cpp']
+    assert ['-fno-exceptions' in command for command in demo] == [False, True], demo
+    # An emscripten toolset whose compiler is not Emscripten's em++, a script that runs the
+    # host's clang++, fails the database, naming the file and the compiler.
+    configured = user_config_text(root)
+    using = re.search(r'^using emscripten : : (\S+)', configured, re.MULTILINE)
+    assert using is not None, configured
+    impostor = root / 'other sdk/bin/em++'
+    impostor.parent.mkdir(parents=True)
+    impostor.write_text('#!/bin/sh\nexec clang++ "$@"\n')
+    impostor.chmod(0o755)
+    harness.configure(root, configured.replace(using.group(0),
+                                               f'using emscripten : : "{impostor}"', 1))
+    completed = compile_database(root)
+    assert completed.returncode == 1, completed.stdout[-6000:]
+    for text in ('libs/browser_demo/', f'is compiled for emscripten by {impostor}',
+                 "which is neither wasi-sdk's clang++ nor Emscripten's em++"):
+        assert text in completed.stdout, (text, completed.stdout[-6000:])
+
+
+def test_clang_tidy_reads_what_only_one_target_builds(root):
+    prepare(root)
+    add_browser_demo(root)
+    # browser_demo is clean, each of its aggregates analysed as its target builds it.
+    expect_clean(lint(root))
+    # A finding in page.hpp, which only emscripten builds, read by wasi-sdk's clang 23 through
+    # Emscripten's clang 24 headers, and one in native.hpp, which builds only against the fake
+    # dependency.
+    harness.replace(root / PAGE, '}  // namespace webcpp::browser_demo\n',
+                    '/** Planted.\n\n    @return 2.\n*/\n'
+                    'constexpr int PlantedPage() noexcept {\n    return 2;\n}\n\n'
+                    '}  // namespace webcpp::browser_demo\n')
+    harness.replace(root / NATIVE, '}  // namespace webcpp::browser_demo\n',
+                    '/** Planted.\n\n    @return 3.\n*/\n'
+                    'constexpr int PlantedNative() noexcept {\n    return 3;\n}\n\n'
+                    '}  // namespace webcpp::browser_demo\n')
+    result = lint(root)
+    expect_alone(result, 'clang-tidy', [at(root, PAGE, 'PlantedPage'),
+                                        at(root, NATIVE, 'PlantedNative')])
+    for name in ('PlantedPage', 'PlantedNative'):
+        assert f"invalid case style for function '{name}'" in result.stdout, (
+            name, result.stdout[-6000:])
+
+
+def test_a_dependency_s_warnings_are_not_ours(root):
+    # A regression pin, which passes before and after the lint reads native.hpp: what clang-tidy
+    # finds in a dependency's header, here the fake one that native.hpp includes, is not
+    # reported, since .clang-tidy's HeaderFilterRegex keeps to webcpp's own headers.
+    prepare(root)
+    add_browser_demo(root)
+    harness.replace(root / FAKE_DEPENDENCY, '}  // namespace fake_dependency\n',
+                    'inline int PlantedDependency() {\n    int value;\n    value = 4;\n'
+                    '    return value;\n}\n\n}  // namespace fake_dependency\n')
+    result = lint(root)
+    expect_clean(result)
+    assert 'fake_dependency.hpp:' not in result.stdout, result.stdout[-6000:]
+
+
+def test_clang_tidy_refuses_a_throw_on_each_target_without_exceptions(root):
+    prepare(root)
+    add_browser_demo(root)
+    # A throw outside a template: in browser_demo.hpp, which the native twin reads; in page.hpp,
+    # which the emscripten twin reads; and in native.hpp, which no twin reads, since its unit
+    # declares <exception-handling>on. clang-tidy refuses the first two; the bare throw rule,
+    # which reads the text, refuses all three.
+    planted = ('#include <stdexcept>\n\nnamespace webcpp::browser_demo {\n\n'
+               '/** Returns the level it is given, refusing a negative one.\n\n'
+               '    @param level The level.\n    @return level.\n*/\n'
+               'inline int planted_strict(int level) {\n    if (level < 0) {\n'
+               '        throw std::domain_error("a negative level");\n    }\n'
+               '    return level;\n}\n')
+    for header, rules in ((BROWSER_DEMO, ['clang-tidy', 'bare throw']),
+                          (PAGE, ['clang-tidy', 'bare throw']), (NATIVE, ['bare throw'])):
+        text = (root / header).read_text()
+        harness.replace(root / header, '\nnamespace webcpp::browser_demo {\n', '\n' + planted)
+        result = lint(root)
+        throw = at(root, header, 'throw std::domain_error')
+        expect_failed(result, rules, [f'{throw} a bare throw'])
+        disabled = "cannot use 'throw' with exceptions disabled"
+        assert (disabled in result.stdout) == ('clang-tidy' in rules), (header,
+                                                                        result.stdout[-6000:])
+        (root / header).write_text(text)
+
+
 def boost_sees_no_exceptions(root: Path, command: list[str]) -> bool:
     """Whether Boost.Config defines BOOST_NO_EXCEPTIONS under the options of the compile command,
     run in root, as the database's commands are."""
@@ -559,9 +731,10 @@ def test_a_failed_check_of_the_database_runs_the_other_rules(root):
     # wasi-sdk's clang++ through a link, which the lint does not read.
     (root / 'wasi-clang++').symlink_to(Path(CLANG_TIDY).parent / 'clang++')
     script = root / 'tools/lint/compile_commands.py'
-    harness.replace(script, 'entries = database(root)\n', 'entries = planted(root)\n')
+    harness.replace(script, 'entries = database(root, wasi_clang)\n',
+                    'entries = planted(root, wasi_clang)\n')
     harness.replace(script, 'def main(arguments: list[str]) -> int:\n',
-                    'def planted(root: str) -> list[dict[str, object]]:\n'
+                    'def planted(root: str, _: str | None) -> list[dict[str, object]]:\n'
                     '    """A database whose one file has a command of each kind."""\n'
                     "    source = os.path.join(root, 'tools/throw_exception.cpp')\n"
                     "    compilers = [os.path.join(root, 'wasi-clang++'), 'c++']\n"
@@ -806,7 +979,22 @@ def test_blocking_io_context_call(root):
           '    boost::asio::io_context context;\n'
           '    context.run();\n'
           '}\n')
-    expect_alone(lint(root), 'io_context::run', [at(root, path, 'context.run()')])
+    # An io_context declared through a namespace alias is found too, and a line that says why
+    # after lint-run: is accepted; one that says nothing after it is not.
+    aliased = 'libs/demo/test/relays.cpp'
+    write(root, aliased, CPP + '\n'
+          'namespace asio = boost::asio;\n'
+          '\n'
+          'void relay(int timeout) {\n'
+          '    asio::io_context io;\n'
+          '    io.run_for(timeout);\n'
+          '    asio::io_context relays;\n'
+          '    relays.run_for(timeout);  // lint-run: the memory relays post to it\n'
+          '    relays.run_one();         // lint-run:\n'
+          '}\n')
+    expect_alone(lint(root), 'io_context::run', [
+        at(root, path, 'context.run()'), at(root, aliased, 'io.run_for('),
+        at(root, aliased, 'relays.run_one()')], spared=(at(root, aliased, 'relays.run_for('),))
 
 
 def test_fluent_chain(root):
@@ -872,8 +1060,14 @@ def test_licence_notice(root):
     write(root, mit, commented(MIT_NOTICE, '#') + '\n"""Planted."""\n')
     bare = 'libs/demo/test/Jamfile'
     harness.replace(root / bare, HASH + '\n', '')
-    # The forms the notice takes: // in C++ and JavaScript; # in Python, shell, Jam and YAML,
-    # after a #! line where there is one.
+    # A JavaScript file, a page and an AsciiDoc file take the notice too.
+    unnoticed = {'tools/unnoticed.js': 'export const unnoticed = true;\n',
+                  'tools/unnoticed.html': '<!doctype html>\n<title>Unnoticed</title>\n',
+                  'tools/unnoticed.adoc': '= Unnoticed\n'}
+    for path, text in unnoticed.items():
+        write(root, path, text)
+    # The forms the notice takes: // in C++, JavaScript and AsciiDoc; # in Python, shell, Jam
+    # and YAML, after a #! line where there is one; and in HTML, a comment that opens with it.
     accepted = {
         'tools/accepted.py': '#!/usr/bin/env python3\n' + HASH + '\n"""Accepted."""\n',
         'tools/accepted.sh': '#!/usr/bin/env bash\n' + HASH,
@@ -881,12 +1075,17 @@ def test_licence_notice(root):
         'tools/accepted.yml': HASH + 'name: accepted\n',
         'tools/accepted.yaml': HASH + 'name: accepted\n',
         'tools/accepted.mjs': CPP + '\nexport const accepted = true;\n',
+        'tools/accepted.js': CPP + '\nexport const accepted = true;\n',
+        'tools/accepted.adoc': CPP + '\n= Accepted\n',
+        'tools/accepted.html': ('<!--\n' + NOTICE + '\nWhat the page is.\n-->\n'
+                                '<title>Accepted</title>\n'),
         'tools/accepted/Jamfile': HASH,
         'tools/accepted/build.jam': HASH,
     }
     for path, text in accepted.items():
         write(root, path, text)
-    expect_alone(lint(root), 'licence notice', [f'{old}:1:', f'{mit}:3:', f'{bare}:1:'],
+    expect_alone(lint(root), 'licence notice', [f'{old}:1:', f'{mit}:3:', f'{bare}:1:',
+                                                *(f'{path}:1:' for path in unnoticed)],
                  spared=tuple(accepted))
 
 
@@ -913,6 +1112,12 @@ def test_world_rule(root):
                     '// namespace fs = std::filesystem;\n'
                     '// Reads a filesystem::path.\n'
                     '// Includes boost/asio/post.hpp. lint-world: it only posts handlers.\n'
+                    '// Calls getentropy(buffer, size).\n'
+                    '// Calls getrandom(buffer, size, 0).\n'
+                    '// Calls arc4random_buf(buffer, size).\n'
+                    '// Calls RAND_bytes(buffer, size).\n'
+                    '// Includes <sys/random.h>.\n'
+                    '// Names getentropy. lint-world: it is the library\'s purpose.\n'
                     'namespace webcpp::demo {\n')
     # A test may name the world: the rule is about the libraries' headers.
     harness.replace(root / 'libs/demo/test/pass.cpp', '#include <cstdio>\n',
@@ -921,7 +1126,13 @@ def test_world_rule(root):
         at(root, header, 'steady_clock'),
         at(root, header, 'std::filesystem'),
         at(root, header, 'filesystem::path'),
-    ], spared=(at(root, header, 'lint-world:'), 'libs/demo/test/pass.cpp'))
+        at(root, header, 'getentropy('),
+        at(root, header, 'getrandom('),
+        at(root, header, 'arc4random_buf('),
+        at(root, header, 'RAND_bytes('),
+        at(root, header, '<sys/random.h>'),
+    ], spared=(at(root, header, 'lint-world: it only'), at(root, header, 'Names getentropy'),
+               'libs/demo/test/pass.cpp'))
 
 
 def test_bare_throw(root):
@@ -1464,6 +1675,10 @@ CASES = [
     test_clang_tidy_reads_what_only_a_build_without_exceptions_compiles,
     test_clang_tidy_reads_what_only_wasi_builds,
     test_clang_tidy_reads_what_an_own_lane_builds,
+    test_compile_database_gives_each_target_its_aggregate,
+    test_clang_tidy_reads_what_only_one_target_builds,
+    test_a_dependency_s_warnings_are_not_ours,
+    test_clang_tidy_refuses_a_throw_on_each_target_without_exceptions,
     test_blocking_io_context_call,
     test_fluent_chain,
     test_returns_this,

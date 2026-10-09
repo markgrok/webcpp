@@ -152,11 +152,13 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
   `wasip3` 0.9.0, which a world resolves its packages against; wasmtime
   serves the components;
 - for the documentation: Node, MrDocs 2026.9.29 and clang++, and wit-bindgen
-  and the WIT for a reference that parses a component's bindings (wasi's);
+  and the WIT for a reference that parses a component's bindings (wasi's),
+  and emsdk's headers for a reference that parses a header that builds only
+  on emscripten (`-sEMSDK=<dir>`, else `.local/emsdk`, chapter 7);
 - for a library's oracle lane: Node and npm, with Boost and a C++ toolset;
-- for the lint: wasi-sdk 34's clang-format and clang-tidy, Node, the wasip2
-  and wasip3 toolsets, and wit-bindgen and the WIT, since it reads what those
-  toolsets compile;
+- for the lint: wasi-sdk 34's clang-format, clang-tidy and clang++, Node,
+  the wasip2, wasip3 and emscripten toolsets, and wit-bindgen and the WIT,
+  since it reads what those toolsets compile;
 - for emscripten: Emscripten 6.0.11, from emsdk, and Node, which runs its
   programs; the tests of the build need it too;
 - later: OpenSSL for trystero natively.
@@ -621,7 +623,18 @@ than leave it green on the rest.
   Clang refuses a `throw`, a `try` or a `catch` there, in a template only
   where a test or an example instantiates it: in a template that none of them
   instantiates, only the bare throw rule sees a `throw`, and a `try` or a
-  `catch` is not checked.
+  `catch` is not checked. The one exception is a header that wraps a
+  dependency which reports errors by throwing: its library declares it with
+  `<exception-handling>on`, with the reason in a comment, on each
+  headers-alone call, test and program of the backend that brings the
+  dependency, since b2 lets no usage requirement override a build's
+  `exception-handling=off` (measured: a usage requirement of the backend's
+  target leaves its dependents compiled with `-fno-exceptions`); the lint
+  leaves that header out of the analysis without exceptions, and names it;
+  and the header opens with `#ifdef WEBCPP_<NAME>_NO_EXCEPTIONS` and an
+  `#error` that names the dependency. The fixture browser_demo's `native.hpp`
+  is one, against the fake dependency of its `deps/include` (a fixture
+  without `config.hpp`, it tests `BOOST_NO_EXCEPTIONS`).
 - **A program that needs exceptions says so.** A test or an example that
   throws, tries or catches on purpose declares `<exception-handling>on` in
   its requirements, as the fixture demo's
@@ -643,15 +656,15 @@ rule that failed.
 | Rule | What fails |
 | --- | --- |
 | clang-format | a C++ file not formatted as `.clang-format` says (Google-based, 4 spaces, 100 columns); `clang-format -i` fixes it |
-| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, with every program an own lane builds on that target, or on none (a served component, which only its own lane builds, among them; a served program in no own lane fails it, as it fails `b2 declared-lanes`), and each source that no native program compiles with the command of the first WASI target that compiles it (wasip2, else wasip3): wasi-sdk's `clang++` with that target's `--target`, the one compiler of a WebAssembly command the database accepts, to which the lint adds no host target or SDK, once the dry run of that target has generated the bindings its commands include (so the lint needs wit-bindgen and the WIT, chapter 1); plus each library's aggregate translation unit, which includes every public header (`bin/aggregate/<name>.cpp`), compiled as a headers-alone translation unit of the first target on which every public header compiles alone: natively, or, for a library whose headers build only for WASI, on wasip2 and on wasip3, each reading its version's branch. Every command, a program's and an aggregate's, natively and on wasip2 and wasip3, has its twin: the same translation unit as b2 compiles it with `exception-handling=off` on the same target (natively with the handler `tools/throw_exception.cpp`), so that what only a user's build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too, and a `throw`, `try` or `catch` outside it fails, in a template where a test or an example instantiates it; a program that declares `<exception-handling>on` has none, and the database names it. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is not wasi-sdk's `clang++` (emscripten's `em++`, which the lint would analyse as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's |
-| io_context::run | a call of Boost.Asio's `run`, `run_one` or `run_for`, which block; a driver drains with `poll` and `poll_one` |
+| clang-tidy | a finding of `.clang-tidy` (every warning is an error) in the compilation database `tools/lint/compile_commands.py` writes from b2's dry runs, one per target the libraries declare: every test and example natively, with every program an own lane builds on that target, or on none (a served component, which only its own lane builds, among them; a served program in no own lane fails it, as it fails `b2 declared-lanes`), and each source that no native program compiles with the command of the first target that compiles it (wasip2, wasip3, else emscripten). A WebAssembly command names wasi-sdk's `clang++`, with that target's `--target`, to which the lint adds no host target or SDK, once the dry run of that target has generated the bindings its commands include (so the lint needs wit-bindgen and the WIT, chapter 1); an emscripten command names Emscripten's `em++`, which clang-tidy cannot run, and is analysed with wasi-sdk's `clang++` in its place (the one beside the lint's clang-tidy), after the words `em++ <its options> --cflags` prints (the target `wasm32-unknown-emscripten`, the sysroot in Emscripten's cache, the `-iwithsysroot` directories compat and fakesdl, and the words of its exceptions), so the lint needs the emscripten toolset when a library declares emscripten. Plus each library's aggregate translation units, through which every public header is analysed, each compiled as a headers-alone translation unit of its target: a library whose public headers one target builds whole has one, of every header (`bin/aggregate/<name>.cpp`), natively, or, for a library whose headers build only for WASI, on wasip2 and on wasip3, each reading its version's branch; a library whose headers no single target builds (a native backend against a dependency of the host's, a browser backend for emscripten) has one per target its headers-alone units run on, of the headers that target builds (`bin/aggregate/<name>-native.cpp`, `<name>-emscripten.cpp`). Every command, a program's and an aggregate's, on every target, has its twin: the same translation unit as b2 compiles it with `exception-handling=off` on the same target (natively with the handler `tools/throw_exception.cpp`), so that what only a user's build without exceptions compiles (`#ifdef BOOST_NO_EXCEPTIONS`) is analysed too, and a `throw`, `try` or `catch` outside it fails, in a template where a test or an example instantiates it; a program that declares `<exception-handling>on` has none, and an aggregate's twin leaves out each header whose headers-alone call declares it (then a translation unit of its own, `<aggregate>-exception-handling-off.cpp`); the database names both. A public header without a headers-alone translation unit on any target, a declared target whose toolset is not configured, and a WebAssembly command whose compiler is neither wasi-sdk's `clang++` nor, on emscripten, Emscripten's `em++` (the lint would analyse it as a native command), fail it by name. Findings are reported in a library's public headers and in the headers of its tests and examples (`libs/xactor/test/require.hpp`), never in Boost's, the standard library's or a dependency's (`.clang-tidy`'s `HeaderFilterRegex`) |
+| io_context::run | a call of Boost.Asio's `run`, `run_one` or `run_for`, which block, on an `io_context` however its type is qualified (`boost::asio::io_context`, `asio::io_context` through a namespace alias, `io_context` after a using); a driver drains with `poll` and `poll_one`. A program whose purpose is network I/O says why on the line, after `lint-run:` (`io.run_for(timeout);  // lint-run: the memory relays post to it`); a library has no blanket exemption |
 | fluent chains | three calls chained in one expression |
 | returns `*this` | a function other than an assignment operator returning `*this` |
 | em dash | U+2014 in any file |
 | JSON literals | a raw JSON literal laid out otherwise than chapter 6 says |
-| licence notice | a source file that does not open with the notice (chapter 11) |
+| licence notice | a source file (C++, JavaScript, AsciiDoc, Python, shell, Jam, YAML, HTML) that does not open with the notice (chapter 11) |
 | banned word | the word that the pattern `veru[s]` matches, in any case, in a file, a file name or a commit (its author, committer or message) of any repository |
-| no clock, disk or network | a library header that names a clock, a file, a socket, a process, a thread, the environment or entropy without `lint-world:` |
+| no clock, disk or network | a library header that names a clock, a file, a socket, a process, a thread, the environment or entropy (`random_device`, `getentropy`, `getrandom`, `arc4random`, OpenSSL's `RAND_bytes`, `<sys/random.h>`) without `lint-world:` |
 | raw b2 rules | `run`, `run-fail`, `compile`, `compile-fail`, `exe`, `unit-test`, `link` or `link-fail` in a library's test or example Jamfile (chapter 9) |
 | Doc Comments | a command webcpp does not allow, a bare `@`, or a colon after a reference (chapter 7) |
 | Pyright | an error or a warning in any Python file, with `pyrightconfig.json` (unused imports and variables are errors) |
@@ -723,8 +736,18 @@ single page, from the library's Doc Comments. `webcpp.reference <name> ;` in
   gives: a library whose headers build only for WASI gives those a native
   parse needs, the explicit target `<bindings>-headers` of
   `webcpp.wit-bindings`, which generates the bindings on any toolset, and the
-  macro of one version; a header the reference cannot parse fails it, naming
-  the header;
+  macro of one version; a library whose headers no single target builds
+  gives the target of its native backend, which brings that backend's
+  dependencies, and, for the headers that build only on emscripten,
+  `/webcpp//emscripten-headers`, whose usage requirements put Emscripten's own
+  headers, `<emsdk>/upstream/emscripten/system/include`, on the include path:
+  `webcpp.reference browser_demo : <library>/webcpp/browser_demo//native
+  <library>/webcpp//emscripten-headers ;`. The emsdk is looked up as MrDocs
+  is, `-sEMSDK=<dir>`, else `.local/emsdk`, and a build that uses the target
+  stops, naming both places, when the headers are not there. The reference
+  is one native parse of every public header: MrDocs does not parse an
+  emscripten command on macOS, and host clang reads `<emscripten/val.h>`. A
+  header the reference cannot parse fails it, naming the header;
 - headers that branch by that macro have each branch's Doc Comments checked:
   `webcpp.reference <name> : <requirements> * : <also-checked> * ;` gives
   the other version's requirements, with which `reference.py` runs again,
@@ -1460,17 +1483,18 @@ jobs:
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
   Intel macOS), `clang++-18`, Node, wit-bindgen and the WASI WIT (wasi's
   reference parses its bindings), `b2 -a libs/<library>/doc`, or for the
-  superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's.
-  It gets emsdk with the change that has a reference parse the
-  `<emscripten/...>` headers of a library built for emscripten alone.
+  superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's,
+  and emsdk, in `.local/emsdk`, whose headers `/webcpp//emscripten-headers`
+  gives a reference that parses a header built for emscripten alone.
 - **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
   with wasi-sdk's clang-format and clang-tidy, Node, Clang 18 as b2's default
-  toolset and the wasip2 and wasip3 toolsets after it (`matrix.py register
-  clang-18 wasip2 wasip3`), wit-bindgen and the WASI WIT, which the WASI dry
-  runs of the compilation database need, and the full history
+  toolset and the wasip2, wasip3 and emscripten toolsets after it
+  (`matrix.py register clang-18 wasip2 wasip3 emscripten`), wit-bindgen and
+  the WASI WIT, which the WASI dry runs of the compilation database need,
+  emsdk, whose `em++` the emscripten dry run names and whose cache holds the
+  sysroot an emscripten command is analysed with, and the full history
   (`fetch-depth: 0`) of the superproject and of the library, since the
-  banned-word rule reads every commit. It gets emsdk and the emscripten
-  toolset with the change that has it read what only emscripten compiles.
+  banned-word rule reads every commit.
 - **tools,** for the superproject only: every `tools/**/*_test.py`, with
   Clang 18 and the wasip2, wasip3 and emscripten toolsets, wasi-sdk,
   wasmtime, wit-bindgen, the WASI WIT, emsdk, Node and MrDocs, each failure
@@ -1684,8 +1708,9 @@ only branch.
   nothing in any repository, and the lint checks every commit's author,
   committer and message too.
 - **The licence notice.** Every source file (`.hpp`, `.cpp`, `.py`, `.mjs`,
-  `.sh`, `.jam`, `Jamroot`, `Jamfile`, `build.jam`, `.yml`) opens with it,
-  with `#` for Jam, Python, shell and YAML; a `#!` line stays first:
+  `.js`, `.sh`, `.jam`, `Jamroot`, `Jamfile`, `build.jam`, `.yml`, `.adoc`,
+  `.html`) opens with it: with `//` for C++, JavaScript and AsciiDoc, with
+  `#` for Jam, Python, shell and YAML; a `#!` line stays first:
 
   ```
   // Copyright (c) 2026 WebCpp.org
@@ -1695,7 +1720,23 @@ only branch.
   // https://www.boost.org/LICENSE_1_0.txt)
   ```
 
-  An AsciiDoc file opens with it too, as `//` comments.
+  An HTML file opens with a comment whose first line is `<!--` alone and
+  whose next lines are the notice as it is, the comment going on with what
+  the file is, as `tools/doc/docinfo.html` does:
+
+  ```
+  <!--
+  Copyright (c) 2026 WebCpp.org
+
+  Distributed under the Boost Software License, Version 1.0. (See
+  accompanying file LICENSE_1_0.txt or copy at
+  https://www.boost.org/LICENSE_1_0.txt)
+
+  The style every page adds to Asciidoctor's, in its head (docinfo=shared).
+  -->
+  ```
+
+  The lint checks each of these.
 - **History.** Every repository starts from one import commit; the history of
   the code it was moved from is not carried over.
 - **Outward actions** belong to the owner: no push, no merge, no remote

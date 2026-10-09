@@ -33,8 +33,11 @@ PASSED = re.compile(r'^\*\*passed\*\* (.*)$', re.MULTILINE)
 
 REPORT = harness.ROOT / 'tools/report/report.py'
 
-# The tests of browser_demo's test Jamfile, which every target builds.
+# The tests of browser_demo's test Jamfile, which every target builds; each target also compiles
+# alone the header that builds only there: page.hpp on emscripten, native.hpp natively.
 TESTS = {'alone-browser_demo', 'reads', 'catches', 'pointer', 'json', 'fails'}
+EMSCRIPTEN_ALONE = 'alone-browser_demo-page'
+NATIVE_ALONE = 'alone-browser_demo-native'
 
 # What b2 says when a testing.launcher is given on emscripten.
 NO_LAUNCHER = ("webcpp: b2's emscripten toolset runs a program with node itself; give no "
@@ -78,7 +81,8 @@ def test_emscripten_lane_runs_under_node(root):
     result = harness.run_b2(root, '-a', '-d+2', *EMSCRIPTEN, 'libs/browser_demo/test',
                             'libs/browser_demo/example')
     harness.expect(result, True)
-    assert passed(result) == TESTS | {'page'}, (passed(result), result.stdout[-4000:])
+    assert passed(result) == TESTS | {EMSCRIPTEN_ALONE, 'page'}, (passed(result),
+                                                                result.stdout[-4000:])
     # b2's toolset runs each test's JavaScript with the node it registered, once, and the example
     # runner runs the example's with node.
     for name in ('reads', 'catches', 'pointer', 'json', 'fails'):
@@ -288,7 +292,7 @@ def test_native_build_needs_no_emsdk(root):
     assert 'emscripten' not in harness.user_config(root).read_text()
     result = harness.run_b2(root, '-a', 'libs/browser_demo/test', 'libs/browser_demo/example')
     harness.expect(result, True)
-    assert passed(result) == TESTS, (passed(result), result.stdout[-4000:])
+    assert passed(result) == TESTS | {NATIVE_ALONE}, (passed(result), result.stdout[-4000:])
     outputs = built(root, 'hello.output')
     assert len(outputs) == 1 and outputs[0].read_text() == 'hello, node\n', outputs
 

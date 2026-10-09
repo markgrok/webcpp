@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <build format="1.0" version="5.5.3"> 
-  <directory><![CDATA[$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez]]></directory> 
-  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=emscripten-driven-failure.xml" "toolset=emscripten" "libs/browser_demo/test/driver//driver"]]></command> 
+  <directory><![CDATA[$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em]]></directory> 
+  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=emscripten-driven-failure.xml" "toolset=emscripten" "libs/browser_demo/test/driver//driver"]]></command> 
   <targets> 
     <target> 
       <name><![CDATA[.//boost_version.o]]></name> 
@@ -16,8 +16,8 @@
       <dependencies> 
         <dependency><![CDATA[libs/browser_demo/test/driver//package-lock.json]]></dependency> 
       </dependencies> 
-      <path><![CDATA[$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez/bin/libs/browser_demo/test/driver]]></path> 
-      <jam-target><![CDATA[<p$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez/bin/libs/browser_demo/test/driver>node-modules.stamp]]></jam-target> 
+      <path><![CDATA[$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em/bin/libs/browser_demo/test/driver]]></path> 
+      <jam-target><![CDATA[<p$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em/bin/libs/browser_demo/test/driver>node-modules.stamp]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/browser_demo/test/driver//driven.o]]></name> 
@@ -55,6 +55,12 @@
   <test type="COMPILE" name="browser_demo/alone-browser_demo"> 
     <target><![CDATA[libs/browser_demo/test//alone-browser_demo.test]]></target> 
   </test> 
+  <test type="COMPILE" name="browser_demo/alone-browser_demo-native"> 
+    <target><![CDATA[libs/browser_demo/test//alone-browser_demo-native.test]]></target> 
+  </test> 
+  <test type="COMPILE" name="browser_demo/alone-browser_demo-page"> 
+    <target><![CDATA[libs/browser_demo/test//alone-browser_demo-page.test]]></target> 
+  </test> 
   <test type="RUN" name="browser_demo/reads"> 
     <target><![CDATA[libs/browser_demo/test//reads.test]]></target> 
     <source><![CDATA[libs/browser_demo/test/reads_test.cpp]]></source> 
@@ -79,38 +85,38 @@
     <target><![CDATA[libs/browser_demo/test/driver//driven.test]]></target> 
     <source><![CDATA[libs/browser_demo/test/driver/driven.cpp]]></source> 
   </test> 
-  <action status="0" start="2026-10-09 03:47:02.077275000 +0000" end="2026-10-09 03:47:02.249255000 +0000" user="0.001341" system="0.002107"> 
+  <action status="0" start="2026-10-09 05:42:48.078587000 +0000" end="2026-10-09 05:42:48.359143000 +0000" user="0.001300" system="0.002343"> 
     <name><![CDATA[webcpp-oracle%npm-ci]]></name> 
-    <jam-target><![CDATA[<p$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez/bin/libs/browser_demo/test/driver>node-modules.stamp]]></jam-target> 
-    <path><![CDATA[$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez/bin/libs/browser_demo/test/driver/node-modules.stamp]]></path> 
+    <jam-target><![CDATA[<p$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em/bin/libs/browser_demo/test/driver>node-modules.stamp]]></jam-target> 
+    <path><![CDATA[$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em/bin/libs/browser_demo/test/driver/node-modules.stamp]]></path> 
     <command><![CDATA[
     set -e
-    "python3" "$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez/tools/node/install.py" "$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez/libs/browser_demo/test/driver"
-    touch "$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez/bin/libs/browser_demo/test/driver/node-modules.stamp"
+    "python3" "$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em/tools/node/install.py" "$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em/libs/browser_demo/test/driver"
+    touch "$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em/bin/libs/browser_demo/test/driver/node-modules.stamp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:02.249501000 +0000" end="2026-10-09 03:47:02.329295000 +0000" user="0.053158" system="0.019970"> 
+  <action status="0" start="2026-10-09 05:42:48.359393000 +0000" end="2026-10-09 05:42:48.437936000 +0000" user="0.052955" system="0.019238"> 
     <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.o]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-agkc2v0v/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.o" "libs/browser_demo/test/driver/driven.cpp"
+    "$TMPDIR/webcpp-local-58upvmme/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.o" "libs/browser_demo/test/driver/driven.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:02.329625000 +0000" end="2026-10-09 03:47:02.591384000 +0000" user="0.264527" system="0.059155"> 
+  <action status="0" start="2026-10-09 05:42:48.438246000 +0000" end="2026-10-09 05:42:48.562161000 +0000" user="0.081946" system="0.034210"> 
     <name><![CDATA[emscripten%emscripten.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.js]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.js]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-agkc2v0v/local/emscripten/em++"    -o "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.js" -Wl,--start-group "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions 
+    "$TMPDIR/webcpp-local-58upvmme/local/emscripten/em++"    -o "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.js" -Wl,--start-group "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions 
 ]]></command> 
   </action> 
-  <action status="1" start="2026-10-09 03:47:02.591717000 +0000" end="2026-10-09 03:47:02.730688000 +0000" user="0.069989" system="0.022336"> 
+  <action status="1" start="2026-10-09 05:42:48.562463000 +0000" end="2026-10-09 05:42:48.686455000 +0000" user="0.066866" system="0.021007"> 
     <name><![CDATA[webcpp-drive%webcpp-drive.drive-and-check]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.driven]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.driven]]></path> 
     <command><![CDATA[
-    "python3" "$TMPDIR/webcpp run 2296j02q/webcpp scratch 1kr2w9ez/tools/drive/drive.py" --program 'webcpp.drive driven in libs/browser_demo/test/driver/Jamfile' --timeout 30 --output "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.driven" -- "node" "libs/browser_demo/test/driver/drive.mjs" "--program" "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.js"
+    "python3" "$TMPDIR/webcpp run rgtolwm5/webcpp scratch _r84l8em/tools/drive/drive.py" --program 'webcpp.drive driven in libs/browser_demo/test/driver/Jamfile' --timeout 30 --output "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.driven" -- "node" "libs/browser_demo/test/driver/drive.mjs" "--program" "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.js"
 ]]></command> 
     <output><![CDATA[drive: webcpp.drive driven in libs/browser_demo/test/driver/Jamfile: the driver of bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.js exited with 1
 ]]></output> 

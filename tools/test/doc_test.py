@@ -22,9 +22,13 @@ Jamfile gives, the header of its world, which builds only for WASI, documents it
 undocumented function of it, and without those requirements fails naming the header; the Doc
 Comments of the header's wasip3 branch, which that reference does not parse, are checked with
 the other requirements the doc Jamfile gives, and an undocumented function, a detail symbol
-without a brief and an undocumented macro there each fail it, the first the page too; and
-MrDocs and clang++ given at paths that hold a space are found; and a page shows a tagged region
-of a file the superproject's git tracks, at {webcpp-root}, and fails on one it does not track.
+without a brief and an undocumented macro there each fail it, the first the page too; the
+reference of browser_demo parses natively its header that builds only on emscripten, with
+Emscripten's headers that /webcpp//emscripten-headers finds (-sEMSDK, else .local/emsdk, else
+the build stops naming both), and its header that builds only against a dependency, and fails on
+an undocumented function of either; and MrDocs and clang++ given at paths that hold a space are
+found; and a page shows a tagged region of a file the superproject's git tracks, at
+{webcpp-root}, and fails on one it does not track.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is; the cases of
@@ -488,24 +492,31 @@ def test_page_shows_the_counts_of_its_programs(root):
 
 def add_browser_demo(root: Path) -> None:
     """Places the fixture library browser_demo beside demo in the scratch superproject root, a git
-    repository of its own too."""
+    repository of its own too, with this checkout's emsdk in its .local, whose headers the
+    reference of page.hpp reads."""
     shutil.copytree(harness.FIXTURES / 'browser_demo', root / 'libs/browser_demo',
                     ignore=harness.built)
     subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=root / 'libs/browser_demo',
                    check=True)
+    harness.link_emsdk(root)
+
+
+BROWSER_PAGE = 'libs/browser_demo/include/webcpp/browser_demo/page.hpp'
+BROWSER_NATIVE = 'libs/browser_demo/include/webcpp/browser_demo/native.hpp'
 
 
 def test_page_shows_its_linked_and_driven_programs(root):
     # browser_demo links page and never runs it, and drives driven in its own lane: both are
     # counted among its tests and on their own, and the page must show page's code, which
-    # doc-check is given from the example Jamfile. No emscripten is needed to count them.
+    # doc-check is given from the example Jamfile. No emscripten toolset is needed to count them,
+    # only Emscripten's headers, which the reference reads.
     prepare(root)
     add_browser_demo(root)
     harness.expect(harness.run_b2(root, 'libs/browser_demo/doc'), True)
     text = page_text(root, 'libs/browser_demo/doc/html/index.html')
-    assert ('browser_demo has 1 example and 8 tests: 7 built natively and 8 for emscripten. Among '
-            'them, 1 is linked for emscripten and never run, and 1 is driven by a script that '
-            'node runs, on both targets.') in text, text
+    assert ('browser_demo has 1 example and 10 tests: 8 built natively and 9 for emscripten. '
+            'Among them, 1 is linked for emscripten and never run, and 1 is driven by a script '
+            'that node runs, on both targets. Its headers, 3, compile alone.') in text, text
     source = 'libs/browser_demo/doc/browser_demo.adoc'
     edit(root, source, '[source]\n----\ninclude::{examples}/page.cpp[tag=page]\n----\n', '')
     page = root / 'libs/browser_demo/example/page.cpp'
@@ -662,6 +673,47 @@ def test_reference_checks_each_branch_of_a_header(root):
                        '--define "WEBCPP_COMPONENT_DEMO_P3"')
         edit(root, WORLD, f'{branch}\n{planted}', branch)
     harness.expect(harness.run_b2(root, 'libs/component_demo/doc//reference'), True)
+
+
+def test_reference_reads_headers_of_one_target(root):
+    prepare(root)
+    add_browser_demo(root)
+    # page.hpp builds only on emscripten, native.hpp only against the fake dependency. The
+    # reference is one native parse of every public header, with the native backend's target,
+    # which brings the dependency, and Emscripten's own headers on the include path, which
+    # /webcpp//emscripten-headers finds in .local/emsdk.
+    harness.expect(harness.run_b2(root, 'libs/browser_demo/doc//reference'), True)
+    reference = next((root / 'bin/libs/browser_demo/doc').rglob('reference.adoc')).read_text()
+    for anchor, brief in (('page_title', 'Returns the title of the page the program runs in'),
+                          ('native_answer', 'Returns the answer the fake dependency gives')):
+        assert f'[#webcpp-browser_demo-{anchor}]' in reference, (anchor, reference)
+        assert brief in reference, (brief, reference)
+    # An undocumented function in either fails the reference, naming it.
+    for header in (BROWSER_PAGE, BROWSER_NATIVE):
+        text = (root / header).read_text()
+        edit(root, header, '}  // namespace webcpp::browser_demo',
+             'int undocumented(int value);\n\n}  // namespace webcpp::browser_demo')
+        harness.expect(harness.run_b2(root, 'libs/browser_demo/doc//reference'), False,
+                       f'{at(root, header, "int undocumented(")}:',
+                       'undocumented: function is undocumented')
+        (root / header).write_text(text)
+    # -sEMSDK names another emsdk, which must hold Emscripten's headers; without it, and without
+    # .local/emsdk, the build stops, naming both places. b2 reads the environment's EMSDK as it
+    # reads -sEMSDK, so the shell's is not passed on.
+    emsdk = (root / '.local/emsdk').resolve()
+    unset = {'EMSDK': None}
+    harness.expect(harness.run_b2(root, f'-sEMSDK={emsdk}', 'libs/browser_demo/doc//reference',
+                                  env_extra=unset), True)
+    (root / '.local/emsdk').unlink()
+    local = f'{root.resolve()}/.local/emsdk'
+    for options, named in (((), 'no -sEMSDK=<dir> was given'),
+                           (('-sEMSDK=/nonexistent',), '-sEMSDK=/nonexistent holds none')):
+        harness.expect(harness.run_b2(root, *options, 'libs/browser_demo/doc//reference',
+                                      env_extra=unset), False,
+                       "Emscripten's headers", named, local, '-sEMSDK=<dir>',
+                       'upstream/emscripten/system/include')
+    # A library whose reference does not ask for them needs no emsdk.
+    harness.expect(harness.run_b2(root, 'libs/demo/doc//reference'), True)
 
 
 def test_tools_given_at_paths_with_spaces(root):
@@ -828,6 +880,7 @@ CASES = [
     test_links_into_two_pages,
     test_reference_reads_a_header_built_only_for_wasi,
     test_reference_checks_each_branch_of_a_header,
+    test_reference_reads_headers_of_one_target,
     test_tools_given_at_paths_with_spaces,
     test_page_outside_git,
     test_counts_warn_and_fail_through_the_build,

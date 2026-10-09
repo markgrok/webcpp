@@ -308,6 +308,48 @@ rule projects ( pattern )
 
 path-constant WEBCPP_ROOT : . ;
 
+# Emscripten's own headers, <emscripten/val.h> among them, for a native parse
+# of a header that builds only on emscripten: a library's reference reads
+# every public header natively (tools/doc/doc.jam), and puts
+# <library>/webcpp//emscripten-headers in its requirements when one of them
+# builds only there. Its usage requirements put
+# <emsdk>/upstream/emscripten/system/include on the include path, the emsdk
+# looked up as MrDocs is: -sEMSDK=<dir>, else .local/emsdk. When the headers
+# are not there, the build stops, naming both places, only when a target uses
+# it.
+.emsdk-local = [ path.join [ path.root [ path.make $(WEBCPP_ROOT) ] [ path.pwd ] ]
+    .local/emsdk ] ;
+.emsdk-given = [ modules.peek : EMSDK ] ;
+# b2 splits the value of -s at its spaces, which a path may hold.
+.emsdk-given = $(.emsdk-given:J=" ") ;
+.emsdk = $(.emsdk-local) ;
+if $(.emsdk-given)
+{
+    .emsdk = [ path.root [ path.make $(.emsdk-given) ] [ path.pwd ] ] ;
+}
+.emscripten-include = $(.emsdk)/upstream/emscripten/system/include ;
+
+rule emscripten-headers-found ( properties * )
+{
+    if ! [ path.exists $(.emscripten-include)/emscripten/emscripten.h ]
+    {
+        local linked = [ path.native $(.emsdk-local) ] ;
+        local looked = "no -sEMSDK=<dir> was given, and $(linked) holds none" ;
+        if $(.emsdk-given)
+        {
+            looked = "-sEMSDK=$(.emsdk-given) holds none" ;
+        }
+        errors.user-error "Emscripten's headers, which /webcpp//emscripten-headers"
+            "puts on the include path for a native parse of a header that builds only"
+            "on emscripten, were not found in upstream/emscripten/system/include of the"
+            "emsdk: $(looked). Give the emsdk's directory with -sEMSDK=<dir>, or link"
+            "it at $(linked)." ;
+    }
+}
+
+alias emscripten-headers : : <conditional>@emscripten-headers-found
+  : : <include>$(.emscripten-include) ;
+
 # The documentation toolchain's own targets, tools/doc/Jamfile.
 use-project /webcpp/doc-tools : tools/doc ;
 
@@ -402,5 +444,5 @@ notfile declared-lanes : @declared-lanes : : <webcpp-boost-check>off ;
 # every test, those the lane skips included. With --out-xml, b2 exits 0 even
 # when a test fails: the report's exit status is the verdict.
 
-explicit boost_version throw_exception boost_json test example doc install $(.install)
-    declared-targets declared-lanes ;
+explicit boost_version throw_exception boost_json emscripten-headers test example doc
+    install $(.install) declared-targets declared-lanes ;

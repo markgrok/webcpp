@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <build format="1.0" version="5.5.3"> 
-  <directory><![CDATA[$TMPDIR/webcpp run 2296j02q/webcpp scratch tco936p2]]></directory> 
-  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp run 2296j02q/webcpp scratch tco936p2/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=emscripten-pass.xml" "toolset=emscripten" "libs/browser_demo/test" "libs/browser_demo/example"]]></command> 
+  <directory><![CDATA[$TMPDIR/webcpp run rgtolwm5/webcpp scratch 6oy6bwec]]></directory> 
+  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp run rgtolwm5/webcpp scratch 6oy6bwec/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=emscripten-pass.xml" "toolset=emscripten" "libs/browser_demo/test" "libs/browser_demo/example"]]></command> 
   <targets> 
     <target> 
       <name><![CDATA[.//boost_version.o]]></name> 
@@ -33,6 +33,29 @@
       </dependencies> 
       <path><![CDATA[bin/libs/browser_demo/test/alone-browser_demo.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none]]></path> 
       <jam-target><![CDATA[<pbin/libs/browser_demo/test/alone-browser_demo.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>alone-browser_demo.test]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/browser_demo/test//alone-browser_demo-page.cpp]]></name> 
+      <dependencies> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/browser_demo/test]]></path> 
+      <jam-target><![CDATA[<pbin/libs/browser_demo/test>alone-browser_demo-page.cpp]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/browser_demo/test//alone-browser_demo-page.o]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/browser_demo/test//alone-browser_demo-page.cpp]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none]]></path> 
+      <jam-target><![CDATA[<pbin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>alone-browser_demo-page.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/browser_demo/test//alone-browser_demo-page.test]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/browser_demo/test//alone-browser_demo-page.o]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none]]></path> 
+      <jam-target><![CDATA[<pbin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>alone-browser_demo-page.test]]></jam-target> 
     </target> 
     <target> 
       <name><![CDATA[libs/browser_demo/test//reads_test.o]]></name> 
@@ -265,6 +288,12 @@
   <test type="COMPILE" name="browser_demo/alone-browser_demo"> 
     <target><![CDATA[libs/browser_demo/test//alone-browser_demo.test]]></target> 
   </test> 
+  <test type="COMPILE" name="browser_demo/alone-browser_demo-native"> 
+    <target><![CDATA[libs/browser_demo/test//alone-browser_demo-native.test]]></target> 
+  </test> 
+  <test type="COMPILE" name="browser_demo/alone-browser_demo-page"> 
+    <target><![CDATA[libs/browser_demo/test//alone-browser_demo-page.test]]></target> 
+  </test> 
   <test type="RUN" name="browser_demo/reads"> 
     <target><![CDATA[libs/browser_demo/test//reads.test]]></target> 
     <source><![CDATA[libs/browser_demo/test/reads_test.cpp]]></source> 
@@ -289,39 +318,47 @@
     <target><![CDATA[libs/browser_demo/example//page.test]]></target> 
     <source><![CDATA[libs/browser_demo/example/page.cpp]]></source> 
   </test> 
-  <action status="0" start="2026-10-09 03:46:53.776842000 +0000" end="2026-10-09 03:46:53.783914000 +0000" user="0.001534" system="0.003377"> 
+  <action status="0" start="2026-10-09 05:42:46.266994000 +0000" end="2026-10-09 05:42:46.275149000 +0000" user="0.001408" system="0.003140"> 
     <name><![CDATA[webcpp%write-include]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test>alone-browser_demo.cpp]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/alone-browser_demo.cpp]]></path> 
     <command><![CDATA[
-    cat "$TMPDIR//jam165fc63af.000" > "bin/libs/browser_demo/test/alone-browser_demo.cpp"
+    cat "$TMPDIR//jam141aa7ed8.000" > "bin/libs/browser_demo/test/alone-browser_demo.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:53.833923000 +0000" end="2026-10-09 03:46:53.925087000 +0000" user="0.059046" system="0.025773"> 
+  <action status="0" start="2026-10-09 05:42:46.268913000 +0000" end="2026-10-09 05:42:46.276891000 +0000" user="0.001430" system="0.003173"> 
+    <name><![CDATA[webcpp%write-include]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test>alone-browser_demo-page.cpp]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/alone-browser_demo-page.cpp]]></path> 
+    <command><![CDATA[
+    cat "$TMPDIR//jam141aa7ed9.000" > "bin/libs/browser_demo/test/alone-browser_demo-page.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:46.330996000 +0000" end="2026-10-09 05:42:46.435952000 +0000" user="0.063638" system="0.030339"> 
     <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>page.o]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.o" "libs/browser_demo/example/page.cpp"
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.o" "libs/browser_demo/example/page.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:53.832488000 +0000" end="2026-10-09 03:46:53.929096000 +0000" user="0.059549" system="0.027169"> 
+  <action status="0" start="2026-10-09 05:42:46.328715000 +0000" end="2026-10-09 05:42:46.436293000 +0000" user="0.064981" system="0.030652"> 
     <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>fails_test.o]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails_test.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails_test.o" "libs/browser_demo/test/fails_test.cpp"
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails_test.o" "libs/browser_demo/test/fails_test.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:53.828462000 +0000" end="2026-10-09 03:46:54.095582000 +0000" user="0.208058" system="0.049947"> 
+  <action status="0" start="2026-10-09 05:42:46.322938000 +0000" end="2026-10-09 05:42:46.610134000 +0000" user="0.224028" system="0.052518"> 
     <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/alone-browser_demo.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>alone-browser_demo.o]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/alone-browser_demo.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/alone-browser_demo.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/alone-browser_demo.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/alone-browser_demo.o" "bin/libs/browser_demo/test/alone-browser_demo.cpp"
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/alone-browser_demo.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/alone-browser_demo.o" "bin/libs/browser_demo/test/alone-browser_demo.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:54.096039000 +0000" end="2026-10-09 03:46:54.102013000 +0000" user="0.001262" system="0.002647"> 
+  <action status="0" start="2026-10-09 05:42:46.610487000 +0000" end="2026-10-09 05:42:46.616002000 +0000" user="0.001187" system="0.002786"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/alone-browser_demo.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>alone-browser_demo.test]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/alone-browser_demo.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/alone-browser_demo.test]]></path> 
@@ -329,72 +366,23 @@
     echo passed > "bin/libs/browser_demo/test/alone-browser_demo.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/alone-browser_demo.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:53.831532000 +0000" end="2026-10-09 03:46:54.258320000 +0000" user="0.357961" system="0.059921"> 
-    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>pointer_test.o]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer_test.o]]></path> 
+  <action status="0" start="2026-10-09 05:42:46.436431000 +0000" end="2026-10-09 05:42:46.704654000 +0000" user="0.104126" system="0.074881"> 
+    <name><![CDATA[emscripten%emscripten.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>fails.js]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.js]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer_test.o" "libs/browser_demo/test/pointer_test.cpp"
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"    -o "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.js" -Wl,--start-group "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails_test.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:53.833162000 +0000" end="2026-10-09 03:46:54.271145000 +0000" user="0.364338" system="0.064000"> 
-    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>catches_test.o]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches_test.o]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches_test.o" "libs/browser_demo/test/catches_test.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:46:53.826897000 +0000" end="2026-10-09 03:46:54.272262000 +0000" user="0.366899" system="0.067245"> 
-    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>hello.o]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.o]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.o" "libs/browser_demo/example/hello.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:46:53.830306000 +0000" end="2026-10-09 03:46:54.309257000 +0000" user="0.404305" system="0.064787"> 
-    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>reads_test.o]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads_test.o]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads_test.o" "libs/browser_demo/test/reads_test.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:46:53.829199000 +0000" end="2026-10-09 03:46:54.361595000 +0000" user="0.452883" system="0.069075"> 
-    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>json_test.o]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json_test.o]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json_test.o" "libs/browser_demo/test/json_test.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:46:53.765616000 +0000" end="2026-10-09 03:46:54.800137000 +0000" user="0.893094" system="0.130572"> 
-    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
-    <jam-target><![CDATA[<pbin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>tools/boost_json.o]]></jam-target> 
-    <path><![CDATA[bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/tools/boost_json.o]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/tools/boost_json.o" "tools/boost_json.cpp"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:46:54.806648000 +0000" end="2026-10-09 03:46:54.856861000 +0000" user="0.032589" system="0.013037"> 
-    <name><![CDATA[emscripten%emscripten.archive]]></name> 
-    <jam-target><![CDATA[<pbin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>libboost_json.a]]></jam-target> 
-    <path><![CDATA[bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/libboost_json.a]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emsdk/upstream/emscripten/emar"  rsc "bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/libboost_json.a" "bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/tools/boost_json.o"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:46:53.925511000 +0000" end="2026-10-09 03:47:01.446152000 +0000" user="44.343604" system="18.613904"> 
+  <action status="0" start="2026-10-09 05:42:46.437151000 +0000" end="2026-10-09 05:42:46.706032000 +0000" user="0.104296" system="0.075481"> 
     <name><![CDATA[emscripten%emscripten.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>page.js]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.js]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"    -o "bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.js" -Wl,--start-group "bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sENVIRONMENT=web
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"    -o "bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.js" -Wl,--start-group "bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sENVIRONMENT=web
 ]]></command> 
-    <output><![CDATA[]]></output> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:01.446566000 +0000" end="2026-10-09 03:47:01.451671000 +0000" user="0.001047" system="0.002175"> 
+  <action status="0" start="2026-10-09 05:42:46.706452000 +0000" end="2026-10-09 05:42:46.710779000 +0000" user="0.000982" system="0.001782"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>page.test]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.test]]></path> 
@@ -402,45 +390,21 @@
     echo passed > "bin/libs/browser_demo/example/page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/page.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:53.929399000 +0000" end="2026-10-09 03:47:01.477731000 +0000" user="0.305691" system="0.082633"> 
-    <name><![CDATA[emscripten%emscripten.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>fails.js]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.js]]></path> 
+  <action status="0" start="2026-10-09 05:42:46.330045000 +0000" end="2026-10-09 05:42:46.747592000 +0000" user="0.340577" system="0.062033"> 
+    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>alone-browser_demo-page.o]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/alone-browser_demo-page.o]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"    -o "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.js" -Wl,--start-group "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails_test.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/alone-browser_demo-page.o" "bin/libs/browser_demo/test/alone-browser_demo-page.cpp"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:54.309604000 +0000" end="2026-10-09 03:47:01.506511000 +0000" user="0.232016" system="0.072970"> 
-    <name><![CDATA[emscripten%emscripten.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>reads.js]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.js]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"    -o "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.js" -Wl,--start-group "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads_test.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:46:54.271476000 +0000" end="2026-10-09 03:47:01.508229000 +0000" user="0.222736" system="0.072006"> 
-    <name><![CDATA[emscripten%emscripten.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>catches.js]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.js]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"    -o "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.js" -Wl,--start-group "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches_test.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:46:54.857147000 +0000" end="2026-10-09 03:47:01.515629000 +0000" user="0.222957" system="0.069056"> 
-    <name><![CDATA[emscripten%emscripten.link]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>json.js]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.js]]></path> 
-    <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"    -o "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.js" -Wl,--start-group "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json_test.o" "bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/libboost_json.a"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
-]]></command> 
-  </action> 
-  <action status="1" start="2026-10-09 03:47:01.478051000 +0000" end="2026-10-09 03:47:01.523467000 +0000" user="0.027724" system="0.013785"> 
+  <action status="1" start="2026-10-09 05:42:46.705007000 +0000" end="2026-10-09 05:42:46.752314000 +0000" user="0.029127" system="0.015037"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>fails.run]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.run]]></path> 
     <command><![CDATA[
     
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/node" "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.js"   > "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.output" 2>&1 < /dev/null
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/node" "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.js"   > "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.output" 2>&1 < /dev/null
     status=$?
     echo >> "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.output"
     echo EXIT STATUS: $status >> "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.output"
@@ -464,7 +428,15 @@ EXIT STATUS: 1
 ====== END OUTPUT ======
 ]]></output> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:01.527837000 +0000" end="2026-10-09 03:47:01.532218000 +0000" user="0.000988" system="0.001838"> 
+  <action status="0" start="2026-10-09 05:42:46.747845000 +0000" end="2026-10-09 05:42:46.753319000 +0000" user="0.001081" system="0.002052"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>alone-browser_demo-page.test]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/alone-browser_demo-page.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/browser_demo/test/alone-browser_demo-page.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/alone-browser_demo-page.test"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:46.756825000 +0000" end="2026-10-09 05:42:46.760877000 +0000" user="0.001003" system="0.001756"> 
     <name><![CDATA[testing%testing.expect-failure]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>fails.test]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.test]]></path> 
@@ -472,54 +444,85 @@ EXIT STATUS: 1
     echo passed > "bin/libs/browser_demo/test/fails.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/fails.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:54.272888000 +0000" end="2026-10-09 03:47:01.547393000 +0000" user="0.218653" system="0.070557"> 
+  <action status="0" start="2026-10-09 05:42:46.327699000 +0000" end="2026-10-09 05:42:46.810076000 +0000" user="0.398118" system="0.069362"> 
+    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>pointer_test.o]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer_test.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer_test.o" "libs/browser_demo/test/pointer_test.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:46.325091000 +0000" end="2026-10-09 05:42:46.812329000 +0000" user="0.396500" system="0.072128"> 
+    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>catches_test.o]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches_test.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches_test.o" "libs/browser_demo/test/catches_test.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:46.321868000 +0000" end="2026-10-09 05:42:46.815164000 +0000" user="0.400983" system="0.072452"> 
+    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>hello.o]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.o" "libs/browser_demo/example/hello.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:46.325928000 +0000" end="2026-10-09 05:42:46.856759000 +0000" user="0.442864" system="0.070627"> 
+    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>reads_test.o]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads_test.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads_test.o" "libs/browser_demo/test/reads_test.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:46.326921000 +0000" end="2026-10-09 05:42:46.899003000 +0000" user="0.482192" system="0.072435"> 
+    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>json_test.o]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json_test.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json_test.o" "libs/browser_demo/test/json_test.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:46.815419000 +0000" end="2026-10-09 05:42:46.968971000 +0000" user="0.100493" system="0.049199"> 
     <name><![CDATA[emscripten%emscripten.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>hello.js]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.js]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"    -o "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.js" -Wl,--start-group "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"    -o "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.js" -Wl,--start-group "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:46:54.258593000 +0000" end="2026-10-09 03:47:01.548632000 +0000" user="0.220298" system="0.073843"> 
+  <action status="0" start="2026-10-09 05:42:46.857097000 +0000" end="2026-10-09 05:42:47.006638000 +0000" user="0.100891" system="0.046154"> 
+    <name><![CDATA[emscripten%emscripten.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>reads.js]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.js]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"    -o "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.js" -Wl,--start-group "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads_test.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:46.810352000 +0000" end="2026-10-09 05:42:47.023427000 +0000" user="0.102164" system="0.052983"> 
     <name><![CDATA[emscripten%emscripten.link]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>pointer.js]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.js]]></path> 
     <command><![CDATA[
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/em++"    -o "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.js" -Wl,--start-group "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer_test.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"    -o "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.js" -Wl,--start-group "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer_test.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:01.508669000 +0000" end="2026-10-09 03:47:01.557952000 +0000" user="0.034443" system="0.015056"> 
-    <name><![CDATA[testing%testing.capture-output]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>catches.run]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.run]]></path> 
+  <action status="0" start="2026-10-09 05:42:46.969228000 +0000" end="2026-10-09 05:42:47.046266000 +0000" user="0.057752" system="0.018793"> 
+    <name><![CDATA[webcpp%run-and-compare]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>hello.output]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.output]]></path> 
     <command><![CDATA[
-    
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/node" "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.js"   > "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output" 2>&1 < /dev/null
-    status=$?
-    echo >> "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output"
-    echo EXIT STATUS: $status >> "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output"
-    if test $status -eq 0 ; then
-        cp "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output" "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.run" >/dev/null
-    fi
-    verbose=0
-    if test $status -ne 0 ; then
-        verbose=1
-    fi
-    if test $verbose -eq 1 ; then
-        echo ====== BEGIN OUTPUT ======
-        cat "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output"
-        echo ====== END OUTPUT ======
-    fi
-    exit $status
+    "python3" "$TMPDIR/webcpp run rgtolwm5/webcpp scratch 6oy6bwec/tools/example/run_example.py" --launcher "node" --input="libs/browser_demo/example/hello.input" --expected "libs/browser_demo/example/hello.expected" --output "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.output" -- "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.js"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:01.506886000 +0000" end="2026-10-09 03:47:01.558256000 +0000" user="0.034827" system="0.014452"> 
+  <action status="0" start="2026-10-09 05:42:47.006991000 +0000" end="2026-10-09 05:42:47.057571000 +0000" user="0.036440" system="0.013039"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>reads.run]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.run]]></path> 
     <command><![CDATA[
     
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/node" "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.js"  "libs/browser_demo/test/input.txt" > "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.output" 2>&1 < /dev/null
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/node" "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.js"  "libs/browser_demo/test/input.txt" > "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.output" 2>&1 < /dev/null
     status=$?
     echo >> "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.output"
     echo EXIT STATUS: $status >> "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.output"
@@ -538,7 +541,7 @@ EXIT STATUS: 1
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:01.558402000 +0000" end="2026-10-09 03:47:01.562404000 +0000" user="0.000899" system="0.001596"> 
+  <action status="0" start="2026-10-09 05:42:47.057833000 +0000" end="2026-10-09 05:42:47.061818000 +0000" user="0.000970" system="0.001705"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>reads.test]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.test]]></path> 
@@ -546,54 +549,13 @@ EXIT STATUS: 1
     echo passed > "bin/libs/browser_demo/test/reads.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/reads.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:01.559354000 +0000" end="2026-10-09 03:47:01.563005000 +0000" user="0.000892" system="0.001529"> 
-    <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>catches.test]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.test]]></path> 
-    <command><![CDATA[
-    echo passed > "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.test"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:47:01.515954000 +0000" end="2026-10-09 03:47:01.566981000 +0000" user="0.035946" system="0.013756"> 
-    <name><![CDATA[testing%testing.capture-output]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>json.run]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.run]]></path> 
-    <command><![CDATA[
-    
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/node" "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.js"   > "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output" 2>&1 < /dev/null
-    status=$?
-    echo >> "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output"
-    echo EXIT STATUS: $status >> "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output"
-    if test $status -eq 0 ; then
-        cp "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output" "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.run" >/dev/null
-    fi
-    verbose=0
-    if test $status -ne 0 ; then
-        verbose=1
-    fi
-    if test $verbose -eq 1 ; then
-        echo ====== BEGIN OUTPUT ======
-        cat "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output"
-        echo ====== END OUTPUT ======
-    fi
-    exit $status
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:47:01.567188000 +0000" end="2026-10-09 03:47:01.571052000 +0000" user="0.000864" system="0.001534"> 
-    <name><![CDATA[testing%testing.expect-success]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>json.test]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.test]]></path> 
-    <command><![CDATA[
-    echo passed > "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.test"
-]]></command> 
-  </action> 
-  <action status="0" start="2026-10-09 03:47:01.548991000 +0000" end="2026-10-09 03:47:01.594066000 +0000" user="0.031351" system="0.012199"> 
+  <action status="0" start="2026-10-09 05:42:47.023750000 +0000" end="2026-10-09 05:42:47.070967000 +0000" user="0.032530" system="0.012607"> 
     <name><![CDATA[testing%testing.capture-output]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>pointer.run]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.run]]></path> 
     <command><![CDATA[
     
-    "$TMPDIR/webcpp-local-t4qhe3an/local/emscripten/node" "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.js"   > "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.output" 2>&1 < /dev/null
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/node" "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.js"   > "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.output" 2>&1 < /dev/null
     status=$?
     echo >> "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.output"
     echo EXIT STATUS: $status >> "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.output"
@@ -612,7 +574,7 @@ EXIT STATUS: 1
     exit $status
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:01.594325000 +0000" end="2026-10-09 03:47:01.598044000 +0000" user="0.000863" system="0.001457"> 
+  <action status="0" start="2026-10-09 05:42:47.071200000 +0000" end="2026-10-09 05:42:47.075133000 +0000" user="0.000924" system="0.001653"> 
     <name><![CDATA[testing%testing.expect-success]]></name> 
     <jam-target><![CDATA[<pbin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>pointer.test]]></jam-target> 
     <path><![CDATA[bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.test]]></path> 
@@ -620,12 +582,102 @@ EXIT STATUS: 1
     echo passed > "bin/libs/browser_demo/test/pointer.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/pointer.test"
 ]]></command> 
   </action> 
-  <action status="0" start="2026-10-09 03:47:01.547651000 +0000" end="2026-10-09 03:47:01.619832000 +0000" user="0.053662" system="0.016863"> 
-    <name><![CDATA[webcpp%run-and-compare]]></name> 
-    <jam-target><![CDATA[<pbin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>hello.output]]></jam-target> 
-    <path><![CDATA[bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.output]]></path> 
+  <action status="0" start="2026-10-09 05:42:46.812585000 +0000" end="2026-10-09 05:42:47.077260000 +0000" user="0.100916" system="0.051949"> 
+    <name><![CDATA[emscripten%emscripten.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>catches.js]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.js]]></path> 
     <command><![CDATA[
-    "python3" "$TMPDIR/webcpp run 2296j02q/webcpp scratch tco936p2/tools/example/run_example.py" --launcher "node" --input="libs/browser_demo/example/hello.input" --expected "libs/browser_demo/example/hello.expected" --output "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.output" -- "bin/libs/browser_demo/example/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/hello.js"
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"    -o "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.js" -Wl,--start-group "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches_test.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:47.077450000 +0000" end="2026-10-09 05:42:47.124920000 +0000" user="0.033067" system="0.012245"> 
+    <name><![CDATA[testing%testing.capture-output]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>catches.run]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.run]]></path> 
+    <command><![CDATA[
+    
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/node" "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.js"   > "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output" 2>&1 < /dev/null
+    status=$?
+    echo >> "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output"
+    echo EXIT STATUS: $status >> "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output"
+    if test $status -eq 0 ; then
+        cp "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output" "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.run" >/dev/null
+    fi
+    verbose=0
+    if test $status -ne 0 ; then
+        verbose=1
+    fi
+    if test $verbose -eq 1 ; then
+        echo ====== BEGIN OUTPUT ======
+        cat "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.output"
+        echo ====== END OUTPUT ======
+    fi
+    exit $status
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:47.125229000 +0000" end="2026-10-09 05:42:47.129150000 +0000" user="0.000953" system="0.001607"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>catches.test]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/browser_demo/test/catches.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/catches.test"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:46.256596000 +0000" end="2026-10-09 05:42:47.367593000 +0000" user="0.900139" system="0.150513"> 
+    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>tools/boost_json.o]]></jam-target> 
+    <path><![CDATA[bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/tools/boost_json.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include"  -c -o "bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/tools/boost_json.o" "tools/boost_json.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:47.374064000 +0000" end="2026-10-09 05:42:47.440508000 +0000" user="0.031375" system="0.015232"> 
+    <name><![CDATA[emscripten%emscripten.archive]]></name> 
+    <jam-target><![CDATA[<pbin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>libboost_json.a]]></jam-target> 
+    <path><![CDATA[bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/libboost_json.a]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emsdk/upstream/emscripten/emar"  rsc "bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/libboost_json.a" "bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/tools/boost_json.o"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:47.440795000 +0000" end="2026-10-09 05:42:47.579501000 +0000" user="0.095622" system="0.040285"> 
+    <name><![CDATA[emscripten%emscripten.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>json.js]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.js]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/em++"    -o "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.js" -Wl,--start-group "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json_test.o" "bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/libboost_json.a"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions -sNODERAWFS=1
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:47.579822000 +0000" end="2026-10-09 05:42:47.624830000 +0000" user="0.032205" system="0.011652"> 
+    <name><![CDATA[testing%testing.capture-output]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>json.run]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.run]]></path> 
+    <command><![CDATA[
+    
+    "$TMPDIR/webcpp-local-wj_7c6gn/local/emscripten/node" "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.js"   > "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output" 2>&1 < /dev/null
+    status=$?
+    echo >> "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output"
+    echo EXIT STATUS: $status >> "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output"
+    if test $status -eq 0 ; then
+        cp "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output" "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.run" >/dev/null
+    fi
+    verbose=0
+    if test $status -ne 0 ; then
+        verbose=1
+    fi
+    if test $verbose -eq 1 ; then
+        echo ====== BEGIN OUTPUT ======
+        cat "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.output"
+        echo ====== END OUTPUT ======
+    fi
+    exit $status
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 05:42:47.625133000 +0000" end="2026-10-09 05:42:47.628574000 +0000" user="0.000831" system="0.001380"> 
+    <name><![CDATA[testing%testing.expect-success]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>json.test]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.test]]></path> 
+    <command><![CDATA[
+    echo passed > "bin/libs/browser_demo/test/json.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/json.test"
 ]]></command> 
   </action> 
 </build>

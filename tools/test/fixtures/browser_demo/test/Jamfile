@@ -10,7 +10,14 @@ import webcpp ;
 
 webcpp.targets native emscripten ;
 
-webcpp.headers-alone browser_demo : ../include ;
+# The headers that build on every target, those that build only natively,
+# against the native backend's dependency, and those that build only on
+# emscripten. The fake dependency reports errors by throwing, so native.hpp
+# needs exceptions whatever the build asks.
+webcpp.headers-alone browser_demo : ../include : browser_demo.hpp ;
+webcpp.headers-alone browser_demo : ../include : browser_demo/native.hpp
+  : <library>/webcpp/browser_demo//native <exception-handling>on : native ;
+webcpp.headers-alone browser_demo : ../include : browser_demo/page.hpp : : emscripten ;
 # Reads the file it is given, which node reads from the host's disk on
 # emscripten.
 webcpp.run reads : reads_test.cpp : <testing.input-file>input.txt ;

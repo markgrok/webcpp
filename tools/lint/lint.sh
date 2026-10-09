@@ -28,22 +28,24 @@
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
 # for the libraries' tests and examples and for their own lanes, a served component among them,
 # natively and with the host's default toolset, and, for a source that no native program
-# compiles, as the first WASI target that compiles it does (wasip2, else wasip3), with
-# wasi-sdk's clang++, the one compiler of a WebAssembly command the database accepts; plus each
-# library's aggregate translation unit, through which every public header is analysed: natively,
-# or, for a library whose headers build only for WASI, on wasip2 and on wasip3. Every command,
-# a program's and an aggregate's, natively and on wasip2 and wasip3, is analysed as the tests
-# build it, with exceptions, and again as b2 compiles it with exception-handling=off (with the
-# handler tools/throw_exception.cpp, natively), so that what only a user's build without
+# compiles, as the first target that compiles it does (wasip2, wasip3, else emscripten), with
+# wasi-sdk's clang++, the one compiler of a WebAssembly command the database accepts, which it
+# gives an emscripten command in place of em++, after the words of em++ --cflags; plus each
+# library's aggregate translation units, through which every public header is analysed: one of
+# every header natively, or, for a library whose headers build only for WASI, on wasip2 and on
+# wasip3, or, for a library whose headers no one target builds, one per target of the headers
+# it builds. Every command, a program's and an aggregate's, on every target, is analysed as the
+# tests build it, with exceptions, and again as b2 compiles it with exception-handling=off (with
+# the handler tools/throw_exception.cpp, natively), so that what only a user's build without
 # exceptions compiles is analysed too, and a throw, try or catch outside it fails, in a template
 # where a program instantiates it; a program that declares <exception-handling>on has no such
-# twin, and the database names it. That database leaves out a source b2 expects not to
-# compile (webcpp.compile-fail), and one that must stop with the error it states
-# (webcpp.compile-diagnostic): an analysis would stop at the error the test exists to show. Each
-# is left out of clang-tidy only, the one rule that compiles: clang-format and the rules that read
-# text read it like any other C++ file. A run-fail test's sources compile, and are analysed. A
-# source that only some targets build (a native_only.cpp that stops with #error for WASI) is
-# analysed as the first of them builds it.
+# twin, nor does a header whose headers-alone unit declares it, and the database names both.
+# That database leaves out a source b2 expects not to compile (webcpp.compile-fail), and one that
+# must stop with the error it states (webcpp.compile-diagnostic): an analysis would stop at the
+# error the test exists to show. Each is left out of clang-tidy only, the one rule that compiles:
+# clang-format and the rules that read text read it like any other C++ file. A run-fail test's
+# sources compile, and are analysed. A source that only some targets build (a native_only.cpp
+# that stops with #error for WASI) is analysed as the first of them builds it.
 #
 # clang-tidy is most of the lint's time, so it can be split: --shard K/N analyses the K-th of N
 # interleaved slices of the files and runs every other rule as before. The N shards together
@@ -177,12 +179,15 @@ fi
 
 # 2. Static analysis, over what b2 would compile.
 rule 'clang-tidy'
+# An emscripten command is analysed with wasi-sdk's clang++, the one beside clang-tidy.
 if python3 tools/lint/compile_commands.py "${repository_root}" \
-        "${work_directory}/database/compile_commands.json"; then
+        "${work_directory}/database/compile_commands.json" \
+        --wasi-clang "$(dirname "${clang_tidy}")/clang++"; then
     # The files to analyse, each with whether its commands name wasi-sdk's clang++ (wasi) or
     # another compiler (host), and a compiler of the host's, when one is named. compile_commands.py
-    # refuses a WebAssembly command of any compiler but wasi-sdk's clang++, so a host command is
-    # a native one; both read wasi-sdk's clang++ with its function wasi_sdk.
+    # refuses a WebAssembly command of any compiler but wasi-sdk's clang++, and gives an
+    # emscripten command wasi-sdk's clang++ in place of em++, so a host command is a native one;
+    # both read wasi-sdk's clang++ with its function wasi_sdk.
     # A file of both kinds fails the rule, by name, and the rules after it still run.
     if python3 - tools/lint "${work_directory}/database/compile_commands.json" \
             "${work_directory}/analysed" > "${work_directory}/compiler" <<'PYTHON'; then
@@ -212,8 +217,9 @@ PYTHON
         # are; the wasi-sdk clang-tidy that reads them does not. It is told the target of that
         # compiler and, on macOS, the SDK: facts about the machine the analysis runs on, not build
         # flags. A command of wasi-sdk's clang++ (a program or an aggregate built only for WASI)
-        # names its own --target, and its sysroot is the one clang-tidy's wasi-sdk knows: it is
-        # told neither.
+        # names its own --target, and its sysroot is the one clang-tidy's wasi-sdk knows; one
+        # that em++ compiles names em++'s target and sysroot, from em++ --cflags: it is told
+        # neither.
         host_target=''
         host_sysroot=''
         if [ -n "$(cat "${work_directory}/compiler")" ]; then
@@ -311,20 +317,25 @@ fi
 # 3a. io_context::run, run_one and run_for block under the work guard, so the drivers may never
 #     call them. The ban is on the Asio object, not on the spelling: a scheduler of a library's
 #     own may have a run_one, and calling it is the whole point. Each file that declares an
-#     io_context is searched for calls on that object by the name it was given.
+#     io_context, however its type is qualified (boost::asio::io_context, asio::io_context
+#     through a namespace alias, or io_context after a using), is searched for calls on that
+#     object by the name it was given. A program whose purpose is network I/O may block on it:
+#     the line says why after lint-run:, as `io.run_for(timeout);  // lint-run: the memory
+#     relays post to it`.
 rule 'io_context::run'
 blocking_calls="$(while IFS= read -r -d '' file; do
-    { grep -oE 'boost::asio::io_context[[:space:]]+[A-Za-z_][A-Za-z0-9_]*' "${file}" || true; } \
-        | awk '{ print $NF }' | sort -u | while IFS= read -r object; do
+    { grep -oE '(^|[^A-Za-z0-9_])io_context[[:space:]]+[A-Za-z_][A-Za-z0-9_]*' "${file}" \
+        || true; } | awk '{ print $NF }' | sort -u | while IFS= read -r object; do
         [ -n "${object}" ] || continue
         { grep -nE "(^|[^A-Za-z0-9_])${object}\.(run|run_one|run_for)\(" "${file}" || true; } \
             | sed "s|^|${file}:|"
     done
     { grep -nE 'io_context::(run|run_one|run_for)\b' "${file}" || true; } | sed "s|^|${file}:|"
-done < "${work_directory}/sources")"
+done < "${work_directory}/sources" | grep -vE 'lint-run:[[:space:]]*[^[:space:]]' || true)"
 if [ -n "${blocking_calls}" ]; then
     printf '%s\n' "${blocking_calls}"
-    fail 'io_context::run, run_one and run_for are banned; poll and poll_one are the drivers'
+    fail "io_context::run, run_one and run_for are banned; poll and poll_one are the drivers, or
+      the line says why after lint-run: when blocking on network I/O is the program's purpose"
 else
     printf 'no io_context::run, run_one or run_for\n'
 fi
@@ -484,8 +495,11 @@ world_apis=(
     '(^|[^_[:alnum:].>])(fork|vfork|execl|execlp|execle|execv|execvp|execvpe|posix_spawn|popen)\('
     'std::system\('
     '(^|[^_[:alnum:].>])(secure_)?getenv\('
-    # Entropy, which a run cannot repeat.
+    # Entropy, which a run cannot repeat: the standard library's, the system's calls and
+    # header, and OpenSSL's.
     'random_device'
+    '(^|[^_[:alnum:]])(getentropy|getrandom|arc4random(_buf|_uniform)?|RAND_bytes)([^_[:alnum:]]|$)'
+    '<sys/random\.h>'
 )
 world_pattern="$(IFS='|'; printf '%s' "${world_apis[*]}")"
 world_reached="$(on_files "${work_directory}/headers" grep -nHE -e "${world_pattern}" \

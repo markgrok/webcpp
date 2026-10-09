@@ -498,6 +498,8 @@ def test_programs_of_records_link_and_drive(root):
         'drive driven native emscripten',
         'example hello native emscripten',
         'headers-alone alone-browser_demo native emscripten',
+        'headers-alone alone-browser_demo-native native',
+        'headers-alone alone-browser_demo-page emscripten',
         'link page emscripten',
         'run catches native emscripten',
         'run json native emscripten',

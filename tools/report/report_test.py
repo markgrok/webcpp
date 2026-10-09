@@ -696,9 +696,12 @@ def test_served_test_passes_and_fails_as_a_run(root: Path) -> None:
 
 
 # What an emscripten lane builds of browser_demo, by type: its tests and its example run under
-# node, and page, which webcpp.link links and never runs, is b2's link test.
+# node, page.hpp compiles alone there, and page, which webcpp.link links and never runs, is b2's
+# link test. native.hpp, which compiles alone natively alone, is a row the lane does not build.
+NATIVE_ALONE = 'alone-browser_demo-native'
 BROWSER_TYPES = {
     'alone-browser_demo': 'compile',
+    'alone-browser_demo-page': 'compile',
     'reads': 'run',
     'catches': 'run',
     'pointer': 'run',
@@ -717,10 +720,13 @@ def test_emscripten_lane_and_its_link_and_driven_tests(root: Path) -> None:
     assert result.returncode == 0, outcome(result)
     assert matrix(out / 'index.html').verdict('browser_demo', 'emscripten') == 'pass'
     browser = matrix(out / 'browser_demo.html')
-    assert browser.rows() == set(BROWSER_TYPES), browser.rows()
+    assert browser.rows() == set(BROWSER_TYPES) | {NATIVE_ALONE}, browser.rows()
     for name, kind in BROWSER_TYPES.items():
         assert browser.cells[(name, 'Type')].text == kind, (name, browser.cells[(name, 'Type')])
         assert browser.verdict(name, 'emscripten') == 'pass', name
+    assert browser.cells[(NATIVE_ALONE, 'Type')].text == 'compile'
+    assert browser.verdict(NATIVE_ALONE, 'emscripten') == 'n/a', browser.verdict(NATIVE_ALONE,
+                                                                                 'emscripten')
     check_pages(out)
     # It is built for emscripten, and a lane named after another target is refused.
     out = root / 'wasip2'

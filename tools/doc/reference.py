@@ -12,8 +12,10 @@ Usage: reference.py --library <name> --root <superproject> --output <reference.a
     [--define <macro>]...
 
 The target webcpp.reference declares runs it, from the directory b2 runs in, with the include
-directories and the defines of the library's target, and the language standard of the build.
-Beside the output it writes:
+directories and the defines of the library's target and of the requirements its doc Jamfile
+gives (the native backend's dependencies, Emscripten's own headers for a header that builds only
+on emscripten, the bindings of a WASI world), and the language standard of the build: one native
+parse of every public header. Beside the output it writes:
 
 - aggregate.cpp, the library's aggregate translation unit, which tools/lint/compile_commands.py
   writes for the lint too: an include of every public header;

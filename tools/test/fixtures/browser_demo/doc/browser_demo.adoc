@@ -47,6 +47,8 @@ browser_demo has {n-examples} example and {n-tests} tests: {n-tests-native}
 built natively and {n-tests-emscripten} for emscripten. Among them, {n-linked}
 is linked for emscripten and never run, and {n-driven} is driven by a script
 that node runs, on both targets. Its headers, {n-headers}, compile alone.
+`page.hpp` builds on emscripten alone, and `native.hpp` natively alone,
+against a dependency that reports errors by throwing.
 
 [#reference]
 == Reference

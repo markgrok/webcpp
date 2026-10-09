@@ -6,8 +6,16 @@
 #
 # browser_demo: a library that declares native and emscripten, which the
 # tests of tools/test place under libs/browser_demo of a scratch
-# superproject.
+# superproject. Its page.hpp builds only on emscripten, and its native.hpp
+# only natively, against the fake dependency of deps/include, which native
+# brings.
 
 project /webcpp/browser_demo ;
 
 alias browser_demo : : : : <include>include ;
+
+# The native backend: browser_demo with the fake dependency, which reports
+# errors by throwing. Each program built against it declares
+# <exception-handling>on itself: b2 lets no usage requirement override a
+# build's exception-handling=off.
+alias native : : : : <library>browser_demo <include>deps/include ;

@@ -21,15 +21,22 @@
 # library's target and of the requirements given: a library whose headers
 # build only for WASI gives those a native parse needs, such as the explicit
 # target <name>-headers of webcpp.wit-bindings, which generates the bindings
-# on any toolset and adds their directory, and the macro of one version. A
-# header it cannot parse fails it, naming the header. webcpp.doc converts the
-# page with Asciidoctor.js into libs/<library>/doc/html/index.html, the
-# reference included where the page says include::{reference}[...], once
-# doc-check.py finds the page whole (--complete), and installs it once the
-# converted page passes doc-check.py's check of a rendered page. webcpp.index
-# does the same for the superproject's index page, which includes the table
-# libraries.py writes from every library's meta/libraries.json, and from the
-# page its doc Jamfile declares, at {libraries}.
+# on any toolset and adds their directory, and the macro of one version; a
+# library whose headers no single target builds gives the target of its
+# native backend, which brings that backend's dependencies, and, for the
+# headers that build only on emscripten, /webcpp//emscripten-headers, which
+# puts Emscripten's own headers on the include path, found in the emsdk that
+# -sEMSDK=<dir> names, else in .local/emsdk (the Jamroot): MrDocs does not
+# parse an emscripten command on macOS, and a native parse of every header
+# is one reference. A header it cannot parse fails it, naming the header.
+# webcpp.doc converts the page with Asciidoctor.js into
+# libs/<library>/doc/html/index.html, the reference included where the page
+# says include::{reference}[...], once doc-check.py finds the page whole
+# (--complete), and installs it once the converted page passes doc-check.py's
+# check of a rendered page. webcpp.index does the same for the superproject's
+# index page, which includes the table libraries.py writes from every
+# library's meta/libraries.json, and from the page its doc Jamfile declares,
+# at {libraries}.
 #
 # Headers that branch by the macro of a version hide the other branch from
 # the reference. The requirements also-checked, those of the other version,

@@ -90,6 +90,8 @@ COMPONENT_PROGRAMS = (
 # them: a link-only program and a driven test among them.
 BROWSER_PROGRAMS = (
     'headers-alone alone-browser_demo native emscripten',
+    'headers-alone alone-browser_demo-native native',
+    'headers-alone alone-browser_demo-page emscripten',
     'run reads native emscripten',
     'run catches native emscripten',
     'run pointer native emscripten',
@@ -232,9 +234,9 @@ def test_linked_and_driven_programs_are_tests_and_counted(root: Path) -> None:
     found = counted(count(library(root, 'browser_demo'), BROWSER_PROGRAMS))
     assert {name: found[name] for name in found
             if any(kind in name for kind in ('tests', 'linked', 'driven'))} == {
-        'n-tests': '8',
-        'n-tests-native': '7',
-        'n-tests-emscripten': '8',
+        'n-tests': '10',
+        'n-tests-native': '8',
+        'n-tests-emscripten': '9',
         'n-tests-wasip2': '0',
         'n-tests-wasip3': '0',
         'n-linked': '1',
@@ -249,7 +251,7 @@ def test_linked_and_driven_programs_are_tests_and_counted(root: Path) -> None:
         'n-driven-wasip3': '0',
     }, found
     assert (found['n-examples'], found['n-examples-emscripten'], found['n-headers']) == (
-        '1', '1', '1'), found
+        '1', '1', '3'), found
 
 
 def test_headers_are_those_compiled_alone(root: Path) -> None:
