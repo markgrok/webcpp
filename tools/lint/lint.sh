@@ -26,8 +26,9 @@
 # commands MrDocs renders and puts no colon after a reference, which MrDocs drops, that every
 # Python file passes Pyright, keeps to 100 columns and has two blank lines before a top-level def
 # or class, that a comment of a Jam file keeps to 80 columns, that a library header raises
-# through boost::throw_exception, never with a bare throw, and that no code span of a Doc Comment
-# holds __X__ unescaped, which MrDocs shows as a bold X.
+# through boost::throw_exception, never with a bare throw, that no code span of a Doc Comment
+# holds __X__ unescaped, which MrDocs shows as a bold X, and that a library's changelog and a
+# version's release notes keep their form.
 #
 # clang-tidy reads the compilation database of tools/lint/compile_commands.py: what b2 compiles
 # for the libraries' tests and examples and for their own lanes, a served component among them,
@@ -662,6 +663,17 @@ if python3 tools/lint/rules.py doc-code-spans < "${work_directory}/sources"; the
     printf 'no code span of a Doc Comment holds __X__ unescaped\n'
 else
     fail 'a code span of a Doc Comment holds __X__, which MrDocs shows as a bold X; write \__X__'
+fi
+
+# 18. A library's changelog and a version's release notes keep the form of AGENTS.md chapter
+#     11: their sections and regions, and every line a bullet that starts with a verb of the
+#     list, or with *Breaking change:* and then one, with no cross-reference, at most ten per
+#     library and version (tools/release/changelog.py, through tools/lint/rules.py).
+rule 'changelog form'
+if python3 tools/lint/rules.py changelog < "${work_directory}/files"; then
+    printf 'every changelog keeps its form\n'
+else
+    fail 'a changelog breaks its form (AGENTS.md chapter 11)'
 fi
 
 printf '\n'

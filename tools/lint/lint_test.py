@@ -1814,6 +1814,25 @@ def test_doc_comment_code_spans(root):
                at(root, header, 'plain comment')))
 
 
+CHANGELOG = (CPP + '\n[appendix]\n[#demo-changelog]\n== Changelog\n\nWhat changed.\n\n'
+             '[#demo-changelog-unreleased]\n=== Unreleased\n\n// tag::unreleased[]\n'
+             '* Added a line that\nwraps.\n{line}\n// end::unreleased[]\n')
+
+
+def test_changelog(root):
+    prepare(root)
+    # A library's changelog keeps AGENTS.md chapter 11's form: a wrapped line is one line; one
+    # that starts with no verb of the list fails, at its line.
+    write(root, 'libs/demo/doc/changelog.adoc', CHANGELOG.format(line='* Fixed a crash.'))
+    commit(root / 'libs/demo', 'A changelog')
+    expect_clean(lint(root))
+    text = CHANGELOG.format(line='* Made a mistake.')
+    write(root, 'libs/demo/doc/changelog.adoc', text)
+    number = text.split('\n').index('* Made a mistake.') + 1
+    expect_alone(lint(root), 'changelog form',
+                 [f'libs/demo/doc/changelog.adoc:{number}: a line starts with'])
+
+
 def test_pyright(root):
     prepare(root)
     # A warning fails as an error does. lint_test.py itself proves the import paths: it imports
@@ -2004,6 +2023,7 @@ CASES = [
     test_doc_comments,
     test_doc_comment_references,
     test_doc_comment_code_spans,
+    test_changelog,
     test_pyright,
     test_python_line_length,
     test_python_blank_lines,

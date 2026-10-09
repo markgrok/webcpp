@@ -40,8 +40,8 @@ None.
 [#webcpp-0-1-0-tools-and-build]
 == Tools and build
 
-* *Breaking change:* wasip2 programs build with exceptions, as wasip3 does;
-whether a program uses them is its developer's choice.
+* *Breaking change:* changed wasip2 programs to build with exceptions, as
+wasip3 does; whether a program uses them is its developer's choice.
 * Added emscripten as a tested target (Emscripten 6.0.11 under Node):
 tests, link-only programs and driven tests, in CI and in own lanes.
 * Added the lint rule `bare-throw`: a library header raises only through
@@ -63,6 +63,7 @@ or before `_`, to those no library may take.
 * Added the lint rule refusing an unescaped `+__X__+` in a Doc Comment's
 code span.
 * Added each version's release notes to the index page, newest first.
+* Added the lint rule `changelog`: every changelog line keeps its form.
 
 [#webcpp-0-1-0-compilers-tested]
 == Compilers tested

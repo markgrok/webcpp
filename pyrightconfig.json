@@ -6,6 +6,7 @@
         "tools/drive",
         "tools/example",
         "tools/lint",
+        "tools/release",
         "tools/report",
         "tools/test"
     ],

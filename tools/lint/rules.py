@@ -29,6 +29,8 @@ Exit 0 when there is none, 1 when there is one, 2 on a usage error.
                       and before its decorators and the comments just above it;
   jam-comments        no comment line of a Jam file is longer than 80 columns, the width Jam
                       comments are wrapped at;
+  changelog           a library's changelog and a version's release notes keep AGENTS.md
+                      chapter 11's form, every line a bullet in it;
   include-boundaries  a library keeps to the include boundaries its own
                       libs/<name>/meta/include-boundaries.json declares, when it has one.
 """
@@ -41,7 +43,10 @@ import json
 import re
 import sys
 from collections.abc import Callable, Iterator
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'release'))
+import changelog  # noqa: E402  (tools/release, put on the path above)
 
 Finding = tuple[str, int, str]
 
@@ -630,6 +635,13 @@ def include_boundaries(paths: list[str]) -> Iterator[Finding]:
             yield from library_findings(config_path, paths)
 
 
+def changelog_lines(path: str, text: str) -> Iterator[Finding]:
+    """A library's changelog and a version's release notes keep AGENTS.md chapter 11's form, each
+    line of them a bullet in it (tools/release/changelog.py)."""
+    for line, message in changelog.file_findings(path, text):
+        yield path, line, message
+
+
 # Rules that look at one file at a time, each path read and handed to the rule with its text.
 PER_FILE_RULES: dict[str, Callable[[str, str], Iterator[Finding]]] = {
     'licence': licence,
@@ -640,6 +652,7 @@ PER_FILE_RULES: dict[str, Callable[[str, str], Iterator[Finding]]] = {
     'line-length': line_length,
     'blank-lines': blank_lines,
     'jam-comments': jam_comments,
+    'changelog': changelog_lines,
 }
 
 # Rules that need every path at once, to find a library's own files from among them.
