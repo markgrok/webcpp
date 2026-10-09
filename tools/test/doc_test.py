@@ -33,8 +33,9 @@ paths that hold a space are found; and a page shows a tagged region of a file th
 superproject's git tracks, at {webcpp-root}, or of one its library's own git tracks, at
 {library-root}, and fails on one it does not track; and the reference of a library named config,
 which holds macros alone, lists every WEBCPP_* macro but the include guards and fails on an
-undocumented one, any other library's lists its own WEBCPP_<NAME>_* alone, and the index refuses
-a library named as config's macros, such as target.
+undocumented one, a macro of no family config reserves and a declaration, any other library's
+lists its own WEBCPP_<NAME>_* alone, and the index refuses a library named as config's macros or
+the tests', alone or followed by an underscore, such as target or test_x.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is; the cases of
@@ -52,6 +53,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from html import unescape
 from pathlib import Path
 
@@ -1003,19 +1005,41 @@ VERSION_HPP = ('#ifndef WEBCPP_VERSION_HPP\n#define WEBCPP_VERSION_HPP\n\n'
 
 def test_config_reference_lists_every_webcpp_macro(root):
     # A library named config, macros only, as config's headers are: its reference lists every
-    # WEBCPP_* macro but the include guards, and an undocumented one fails, named.
+    # WEBCPP_* macro but the include guards, in a section Macros of its own and with no section of
+    # the global namespace. An undocumented macro fails, named at its line; so does a macro of no
+    # family the names of libraries leave to config, and any declaration in its headers.
     prepare(root)
     config = add_paged(root, 'config')
-    (config / 'include/webcpp/config.hpp').write_text(CONFIG_HPP)
-    (config / 'include/webcpp/version.hpp').write_text(VERSION_HPP)
+    config_hpp = 'libs/config/include/webcpp/config.hpp'
+    version_hpp = 'libs/config/include/webcpp/version.hpp'
+    (root / config_hpp).write_text(CONFIG_HPP)
+    (root / version_hpp).write_text(VERSION_HPP)
     harness.expect(harness.run_b2(root, 'libs/config/doc'), True)
     html = (config / 'doc/html/index.html').read_text()
     for macro in ('WEBCPP_VERSION', 'WEBCPP_LIB_VERSION', 'WEBCPP_TARGET_NATIVE',
                   'WEBCPP_NO_EXCEPTIONS', 'WEBCPP_HAS_EXCEPTIONS'):
         assert f'id="{macro}"' in html, (macro, html[-3000:])
     assert 'WEBCPP_CONFIG_HPP' not in html and 'WEBCPP_VERSION_HPP' not in html
-    harness.replace(config / 'include/webcpp/version.hpp', '/** The version as a number. */\n', '')
-    harness.expect(harness.run_b2(root, 'libs/config/doc'), False, 'WEBCPP_VERSION')
+    assert re.search(r'<h3 id="webcpp-config-macros">(<a class="anchor"[^>]*></a>)?Macros</h3>',
+                     html), html[-3000:]
+    assert 'Global namespace' not in html, html[-3000:]
+    edit(root, version_hpp, '/** The version as a number. */\n', '')
+    harness.expect(harness.run_b2(root, 'libs/config/doc'), False,
+                   f'{at(root, version_hpp, "#define WEBCPP_VERSION 100")}:',
+                   'WEBCPP_VERSION: macro is undocumented')
+    (root / version_hpp).write_text(VERSION_HPP)
+    edit(root, config_hpp, '#define WEBCPP_HAS_EXCEPTIONS\n',
+         '#define WEBCPP_HAS_EXCEPTIONS\n\n/** Of no family. */\n#define WEBCPP_STRAY 1\n')
+    harness.expect(harness.run_b2(root, 'libs/config/doc'), False,
+                   'reference.py: WEBCPP_STRAY: a macro of config is WEBCPP_<FAMILY> or '
+                   'WEBCPP_<FAMILY>_*')
+    (root / config_hpp).write_text(CONFIG_HPP.replace(
+        '#define WEBCPP_HAS_EXCEPTIONS\n',
+        '#define WEBCPP_HAS_EXCEPTIONS\n\nnamespace webcpp {\n\n/** A function. */\n'
+        'inline int planted() { return 0; }\n\n}  // namespace webcpp\n'))
+    harness.expect(harness.run_b2(root, 'libs/config/doc'), False,
+                   f'{at(root, config_hpp, "namespace webcpp {")}: webcpp: config holds macros '
+                   'alone')
 
 
 def test_other_libraries_list_only_their_own_macros(root):
@@ -1032,13 +1056,56 @@ def test_other_libraries_list_only_their_own_macros(root):
     assert 'id="WEBCPP_OTHER_OWN"' in html and 'WEBCPP_ELSEWHERE' not in html, html[-3000:]
 
 
-def test_a_library_named_as_config_s_macros_is_refused(root):
-    # A library named target would meet WEBCPP_TARGET_*: the index refuses it, naming it.
-    prepare(root)
-    add_paged(root, 'target')
-    harness.expect(harness.run_b2(root, 'doc'), False,
-                   'a library is not named target, which config\'s macros take')
+# The words no library's name may be, alone or followed by an underscore and more: config's
+# macros take WEBCPP_HAS_*, WEBCPP_LIB_*, WEBCPP_NO_*, WEBCPP_TARGET_* and WEBCPP_VERSION*, and the
+# tests' WEBCPP_TEST_*.
+RESERVED_WORDS = ('has', 'lib', 'no', 'target', 'test', 'version')
 
+
+def add_described(root: Path, name: str) -> Path:
+    """Places a library name, with a page and a meta/libraries.json, in the scratch superproject
+    root, and returns its directory."""
+    library = add_paged(root, name)
+    (library / 'meta').mkdir()
+    (library / 'meta/libraries.json').write_text(
+        '{\n'
+        f'    "key": "{name}",\n'
+        f'    "name": "{name}",\n'
+        '    "description": "A library the index lists.",\n'
+        '    "port-of": null\n'
+        '}\n')
+    return library
+
+
+def list_libraries(root: Path, name: str) -> subprocess.CompletedProcess:
+    """Runs libraries.py over a superproject of its own, under root, whose one library is name,
+    described and with its page."""
+    # A directory of its own for each: on a file system that ignores case, Target is target.
+    alone = Path(tempfile.mkdtemp(prefix=f'{name} ', dir=root))
+    (alone / 'libs').mkdir()
+    library = add_described(alone, name)
+    return subprocess.run([sys.executable, str(root / 'tools/doc/libraries.py'), '--root',
+                           str(alone), '--output', str(alone / 'libraries.adoc'), '--page',
+                           f'{name}={library / "doc" / (name + ".adoc")}'],
+                          capture_output=True, text=True, check=False)
+
+
+def test_a_library_named_as_config_s_macros_is_refused(root):
+    # A library named target would meet config's WEBCPP_TARGET_*: described and with its page, as
+    # the index would list it, it is refused, named. So is each word, alone or followed by _ and
+    # more, in any case; a name that only begins with a word's letters is not.
+    prepare(root)
+    add_described(root, 'target')
+    harness.expect(harness.run_b2(root, 'doc'), False,
+                   'a library is not named target: its macros, WEBCPP_TARGET_*')
+    refused = (*RESERVED_WORDS, *(f'{word}_x' for word in RESERVED_WORDS), 'Target', 'No_X')
+    for name in refused:
+        result = list_libraries(root, name)
+        assert result.returncode == 1, (name, result.returncode, result.stdout, result.stderr)
+        assert f'a library is not named {name}: ' in result.stdout, (name, result.stdout)
+    for name in ('hash', 'library', 'notes', 'targets', 'testing', 'versions', 'nox'):
+        result = list_libraries(root, name)
+        assert result.returncode == 0, (name, result.returncode, result.stdout, result.stderr)
 
 CASES = [
     test_page_builds_with_its_reference,

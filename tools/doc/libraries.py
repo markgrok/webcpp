@@ -32,9 +32,9 @@ a description may say C++, or hold a |. An apostrophe in a word of prose is the 
 it is written as it is, so that Asciidoctor makes it curly, as it does every other apostrophe of
 the page's prose. One in what reads as code, between backticks, or in a URL stays straight.
 
-Exit 0 with the table written; 1 when a library has a name config's macros take (RESERVED), no
-meta/libraries.json, no page, or a field that is missing or not what it should be, each named; 2
-on a usage error.
+Exit 0 with the table written; 1 when a library has a name config's macros or the tests' take
+(RESERVED), no meta/libraries.json, no page, or a field that is missing or not what it should be,
+each named; 2 on a usage error.
 """
 
 from __future__ import annotations
@@ -140,9 +140,21 @@ def page_of(library: Path, pages: dict[str, Path]) -> Path:
     return page
 
 
-# The names no library may take: config's macros are WEBCPP_TARGET_*, WEBCPP_HAS_*, WEBCPP_NO_*,
-# WEBCPP_LIB_* and WEBCPP_VERSION*, which a library's WEBCPP_<NAME>_* would meet.
-RESERVED = ('has', 'lib', 'no', 'target', 'version')
+# The families of config's macros, WEBCPP_HAS_*, WEBCPP_LIB_*, WEBCPP_NO_*, WEBCPP_TARGET_* and
+# WEBCPP_VERSION*: tools/doc/reference.py refuses a macro of config outside them.
+CONFIG_FAMILIES = ('has', 'lib', 'no', 'target', 'version')
+
+# The words no library's name may be, alone or followed by an underscore and more, in any case:
+# a library's macros, WEBCPP_<NAME>_*, would be among config's families, or among the tests'
+# WEBCPP_TEST_*. has_x's WEBCPP_HAS_X_* would read as one of config's WEBCPP_HAS_*.
+RESERVED = (*CONFIG_FAMILIES, 'test')
+
+
+def reserved_word(name: str) -> str | None:
+    """The reserved word a library's name is, or begins with before an underscore, if any."""
+    lowered = name.lower()
+    return next((word for word in RESERVED if lowered == word or lowered.startswith(f'{word}_')),
+                None)
 
 
 def rows(root: Path, pages: dict[str, Path], left_out: dict[str, str] | None = None) -> list[str]:
@@ -152,10 +164,13 @@ def rows(root: Path, pages: dict[str, Path], left_out: dict[str, str] | None = N
     found = []
     for build in sorted((root / 'libs').glob('*/build.jam')):
         library = build.parent
-        if library.name in RESERVED:
-            raise Invalid(f'{library}: a library is not named {library.name}, which config\'s '
-                          f'macros take, WEBCPP_{library.name.upper()}_*; the names taken are '
-                          f'{", ".join(RESERVED)}')
+        word = reserved_word(library.name)
+        if word is not None:
+            owner = 'the tests\'' if word == 'test' else 'config\'s'
+            raise Invalid(f'{library}: a library is not named {library.name}: its macros, '
+                          f'WEBCPP_{library.name.upper()}_*, would be among {owner} '
+                          f'WEBCPP_{word.upper()}_*; no library\'s name is '
+                          f'{", ".join(RESERVED)}, nor one of them followed by _ and more')
         origin = library / 'meta/libraries.json'
         entries = meta_entries(origin)
         page_of(library, pages)

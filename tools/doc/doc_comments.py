@@ -11,6 +11,10 @@ brief is one sentence, and every symbol has a Doc Comment of its own.
 
 Usage: doc_comments.py --library <name> --include <dir> [--clang <clang++>] -- <arguments>
 
+The command line checks a library that declares its namespace. config holds macros alone:
+tools/doc/reference.py checks it with check(..., namespace_required=False), which finds instead
+each declaration its headers write, since they must hold none.
+
 clang++ reads the translation unit the arguments compile (the language standard, the include
 paths, the defines and the source) and dumps, as JSON, the declarations of the namespace
 webcpp::<name>. A declaration is checked when it is written in a header under the include
@@ -392,10 +396,12 @@ class Checker:
         return sorted(found, key=lambda finding: (finding[0], finding[1]))
 
 
-def dump(clang: str, library: str, arguments: list[str]) -> list[Node]:
-    """The declarations of webcpp::<library>, as clang++ dumps them for arguments."""
-    command = [clang, '-fsyntax-only', '-Xclang', '-ast-dump=json', '-Xclang',
-               f'-ast-dump-filter=webcpp::{library}', *arguments]
+def dump(clang: str, library: str | None, arguments: list[str]) -> list[Node]:
+    """The declarations of webcpp::<library>, as clang++ dumps them for arguments, or, with no
+    library, the whole translation unit."""
+    command = [clang, '-fsyntax-only', '-Xclang', '-ast-dump=json',
+               *(['-Xclang', f'-ast-dump-filter=webcpp::{library}'] if library else []),
+               *arguments]
     environment = {name: value for name, value in os.environ.items()
                    if name not in COMPILER_PATHS}
     try:
@@ -423,17 +429,36 @@ class Unreadable(Exception):
     """clang++ could not give the declarations to check."""
 
 
+def declarations(clang: str, library: str, include: Path, arguments: list[str]) -> list[Finding]:
+    """A finding for each declaration written in a header under include, of a library that holds
+    macros alone: each top-level declaration of the translation unit there, a namespace with all
+    it holds being one."""
+    objects = dump(clang, None, arguments)
+    checker = Checker(objects, include)
+    found: list[Finding] = []
+    for unit in objects:
+        for node in unit.get('inner', []):
+            file, line = checker.locations.of(node)
+            if file is None or node.get('isImplicit') or not checker.ours(file):
+                continue
+            found.append((file, line or 0,
+                          f'{node.get("name") or node.get("kind")}: {library} holds macros '
+                          f'alone, and its headers declare nothing; this is a {node.get("kind")}'))
+    return found
+
+
 def check(clang: str, library: str, include: Path, arguments: list[str],
           namespace_required: bool = True) -> list[Finding]:
     """The findings of the library's headers under include, read through arguments. A library
     declares its namespace, webcpp::<library>, unless namespace_required is False: config's
-    headers hold macros alone."""
+    headers hold macros alone, and any declaration in them is then a finding."""
+    if not namespace_required:
+        return declarations(clang, library, include, arguments)
     objects = dump(clang, library, arguments)
     checker = Checker(objects, include)
     namespaces = [value for value in objects
                   if value.get('kind') == 'NamespaceDecl' and value.get('name') == library]
-    if namespace_required and not any(checker.ours(checker.locations.of(value)[0])
-                                      for value in namespaces):
+    if not any(checker.ours(checker.locations.of(value)[0]) for value in namespaces):
         raise Unreadable(f'no declaration of webcpp::{library} is in a header under {include}')
     for namespace in namespaces:
         checker.visit(namespace, ['webcpp'], False, True)

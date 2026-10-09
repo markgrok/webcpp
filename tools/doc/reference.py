@@ -80,6 +80,7 @@ sys.path.insert(0, str(HERE.parent / 'lint'))
 
 import compile_commands
 import doc_comments
+import libraries
 
 SHARED = HERE / 'mrdocs.yml.in'
 
@@ -103,6 +104,19 @@ PRESENTATION = {'sort-members', 'sort-members-by', 'sort-namespace-members-by',
 # config holds the collection's own macros, WEBCPP_*, as Boost.Config holds BOOST_*: its
 # reference lists them all, the include guards apart, and it declares nothing in a namespace.
 COLLECTION = 'config'
+
+
+# The section of a macro in MrDocs's reference, by its anchor, the macro's name.
+MACRO_SECTION = re.compile(r'^\[#(WEBCPP_\w+)\]$', re.MULTILINE)
+
+
+def stray_macros(text: str) -> list[str]:
+    """The macros of config's reference, MrDocs's text, that are of none of config's families,
+    WEBCPP_<FAMILY> or WEBCPP_<FAMILY>_*: a library's name may be none of them
+    (tools/doc/libraries.py), and a macro of another family could be a library's."""
+    families = [f'WEBCPP_{family.upper()}' for family in libraries.CONFIG_FAMILIES]
+    return [name for name in MACRO_SECTION.findall(text)
+            if not any(name == family or name.startswith(f'{family}_') for family in families)]
 
 
 def macro_prefix(library: str) -> str:
@@ -466,6 +480,12 @@ def reference(options: argparse.Namespace) -> int:
     }, override if override.is_file() else None))
 
     faults = run_mrdocs(options.mrdocs, config, written)
+    if library == COLLECTION and written.is_file():
+        faults += [f'reference.py: {name}: a macro of config is WEBCPP_<FAMILY> or '
+                   'WEBCPP_<FAMILY>_*, for a family no library\'s name may take '
+                   f'({", ".join(libraries.CONFIG_FAMILIES)}); a new family goes into '
+                   'CONFIG_FAMILIES, in tools/doc/libraries.py'
+                   for name in stray_macros(written.read_text())]
     try:
         found = doc_comments.check(clang, library, include,
                                    [*flags, f'-I{include}', *systems, str(aggregate)],
@@ -477,9 +497,11 @@ def reference(options: argparse.Namespace) -> int:
         faults.append(f'{file}:{line}: {message}')
     if found:
         faults.append(f'reference.py: doc_comments.py reported {len(found)} '
-                      f'{"fault" if len(found) == 1 else "faults"} above: every template '
-                      'parameter of a public template has a @tparam, and every detail symbol a '
-                      'brief')
+                      f'{"fault" if len(found) == 1 else "faults"} above: '
+                      + ('config holds macros alone, and its headers declare nothing'
+                         if library == COLLECTION else
+                         'every template parameter of a public template has a @tparam, and '
+                         'every detail symbol a brief'))
     if faults:
         print('\n'.join(faults))
         return 1

@@ -14,10 +14,11 @@
 
 # What MrDocs reads: one translation unit that includes every public header
 # of the library, compiled as compile_commands.json says, in which only the
-# library's headers and its namespace are documented. A detail namespace, at
-# any depth, is the library's own business: MrDocs shows no page for it and
-# asks no Doc Comment of it, and doc_comments.py asks each symbol in it for a
-# brief.
+# library's headers, its namespace and its macros are documented. A detail
+# namespace, at any depth, is the library's own business: MrDocs shows no page
+# for it and asks no Doc Comment of it, and doc_comments.py asks each symbol
+# in it for a brief. config declares no namespace: its headers hold macros
+# alone, which doc_comments.py checks.
 source-root: @SOURCE_ROOT@
 compilation-database: @DATABASE@
 input:
@@ -28,9 +29,10 @@ include-symbols:
   - 'webcpp::@LIBRARY@::**'
 implementation-defined:
   - 'webcpp::**::detail'
-# Every macro of the library is extracted, so that an undocumented one is
-# reported; the include guards, WEBCPP_<NAME>_<HEADER>_HPP, are not macros
-# of its interface.
+# Every macro of the library, WEBCPP_<NAME>_*, or every WEBCPP_* for config,
+# which holds the collection's, is extracted, so that an undocumented one is
+# reported; the include guards, WEBCPP_<NAME>_<HEADER>_HPP and config's
+# WEBCPP_<HEADER>_HPP, are not macros of its interface.
 extract-all-macros: true
 include-macros:
   - '@MACROS@*'

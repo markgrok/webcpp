@@ -8,7 +8,7 @@
 """Checks doc_comments.py: a public template without a @tparam for each of its parameters fails,
 naming the template, the parameter, the file and the line; so does a detail symbol without a
 brief; a documented library passes; and a library of macros alone, as config is, passes only when
-no namespace of its own is required.
+no namespace of its own is required, and declares nothing in its headers.
 
 Each case writes the headers of a library demo under a scratch directory whose path holds a space,
 and runs doc_comments.py on a translation unit that includes them, with the clang++ of $CLANG, or
@@ -477,6 +477,29 @@ def test_macros_only_library_needs_no_namespace(library: Library) -> None:
         raise AssertionError('a library without its namespace passed where one is required')
 
 
+def test_macros_only_library_declares_nothing(library: Library) -> None:
+    # A library of macros alone declares nothing in its headers: a namespace, a function and a
+    # type there are each a finding, at its line, whatever namespace holds them; what a header it
+    # includes from elsewhere declares, the standard library's, is not.
+    include = library.root / 'macros'
+    (include / 'webcpp').mkdir(parents=True)
+    header = include / 'webcpp/config.hpp'
+    header.write_text('#include <cstddef>\n\n/** A macro. */\n#define WEBCPP_PLANTED 1\n\n'
+                      'namespace webcpp {\n\n/** A function. */\n'
+                      'inline int planted() { return 0; }\n\n}  // namespace webcpp\n\n'
+                      '/** A type. */\nstruct loose {};\n')
+    source = library.root / 'macros.cpp'
+    source.write_text('#include <webcpp/config.hpp>\n')
+    arguments = ['-std=c++20', f'-I{include}', str(source)]
+    found = doc_comments.check(clang(), 'config', include, arguments, namespace_required=False)
+    lines = header.read_text().splitlines()
+    expected = [(str(header.resolve()), lines.index('namespace webcpp {') + 1),
+                (str(header.resolve()), lines.index('struct loose {};') + 1)]
+    assert [(str(Path(file).resolve()), line) for file, line, _ in found] == expected, found
+    assert 'webcpp: config holds macros alone' in found[0][2], found
+    assert 'loose: config holds macros alone' in found[1][2], found
+
+
 CASES: list[Callable[[Library], None]] = [
     test_documented_library_passes,
     test_missing_tparam_names_the_template,
@@ -490,6 +513,7 @@ CASES: list[Callable[[Library], None]] = [
     test_clang_failure_is_reported,
     test_library_namespace_missing,
     test_macros_only_library_needs_no_namespace,
+    test_macros_only_library_declares_nothing,
 ]
 
 
