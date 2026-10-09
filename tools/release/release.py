@@ -8,6 +8,7 @@
 """webcpp's release tooling (AGENTS.md chapter 11), which the Jamroot's explicit targets run.
 
 Usage: release.py check --root <superproject> --version <a.b.c>
+       release.py whats-new --root <superproject> --version <a.b.c>
 
 check names every fault that keeps the tree from being tagged webcpp-<a.b.c>:
 - the superproject or a library holds a change its HEAD does not record: a changed, staged,
@@ -33,7 +34,18 @@ check names every fault that keeps the tree from being tagged webcpp-<a.b.c>:
 - a name under Updated Libraries is new, removed or no library, or its region holds no line;
 - a library whose changelog has lines for this version is not under Updated Libraries;
 - a library changed since that tag, under USER_VISIBLE, and its region has no line; or the
-  commit a tag or HEAD records is not in its repository.
+  commit a tag or HEAD records is not in its repository;
+- once doc/releases/<a.b.c>.whats-new.md exists, its section Highlights holds more than its
+  five highlights, a highlight is not "- **<category>**: <sentence of at most 20 words>.", its
+  category is not one of CATEGORIES, or the highlights are not in CATEGORIES' order, each once.
+
+whats-new writes the skeleton of doc/releases/<a.b.c>.whats-new.md from the version's release
+notes, never over a What's new that exists: its own What's new's prose, each new and removed
+library's one line, each updated library's first three lines, and the Tools and build section's
+first three, in Markdown. Its section Highlights holds a comment naming the form check reads
+back once an agent, and then the owner, have written them in its place: at most five highlights,
+each "- **<category>**: <sentence>", in the order of CATEGORIES, a category with nothing to say
+left out.
 Exit 0 when nothing is wrong; 1 with each fault on a line of its own, `<command>: <fault>`; 2 on a
 usage error, or when a file it reads is not there, cannot be read or is not UTF-8.
 """
@@ -413,6 +425,101 @@ def library_findings(root: Path, version: Version, notes: changelog.Notes,
     return findings
 
 
+# The highlights of a What's new, Boost's: at most five, each one of these categories, in this
+# order, and one sentence of at most 20 words.
+CATEGORIES = ('New libraries', 'Performance improvements', 'Dependencies',
+              'Security & reliability', 'Developer experience')
+HIGHLIGHTS = ('<!-- At most five highlights, each "- **<category>**: <one sentence of at most 20 '
+              'words>.", in this\norder, a category with nothing to say left out: '
+              + ', '.join(CATEGORIES) + '. Written from the\nrelease notes, inventing nothing; '
+              'the owner approves them before the tag. -->')
+HIGHLIGHT = re.compile(r'- \*\*(?P<category>[^*]+)\*\*: (?P<sentence>.+)')
+
+
+def markdown(text: str) -> str:
+    """A line of AsciiDoc as the What's new's Markdown writes it: bold, links, {cpp}."""
+    text = text.replace(changelog.BREAKING.strip(), '**Breaking change:**')
+    text = re.sub(r'link:\{library-pages\}[a-z0-9_]+/\{library-page\}\[([^\]]*)\]', r'\1', text)
+    text = re.sub(r'(?:link:)?(https?://[^\s\[]+)\[([^\]]*)\]', r'[\2](\1)', text)
+    return text.replace('{cpp}', 'C++')
+
+
+def whats_new_text(root: Path, version: Version) -> str:
+    """The skeleton of the version's What's new, from its release notes."""
+    relative = f'doc/releases/{version.name}.adoc'
+    notes, faults = changelog.parse_notes((root / relative).read_text(encoding='utf-8'),
+                                          version.name)
+    if faults:
+        raise Failure('\n'.join(located(relative, faults)))
+    wanted = 'unreleased' if notes.preparing else version.name
+    parts = [f'# webcpp {version.name}', f'webcpp {version.name} is out.']
+    if notes.new:
+        parts.append('## New libraries\n\n' + '\n'.join(
+            f'- **{name}**: {markdown(what)}' for name, what in notes.new))
+    parts.append('## Highlights\n\n' + HIGHLIGHTS)
+    if notes.updated:
+        entries = []
+        for name, _ in notes.updated:
+            log = (root / 'libs' / name / 'doc/changelog.adoc').read_text(encoding='utf-8')
+            first = lines_of(changelog.parse_changelog(log, name)[0], wanted)[:3]
+            entries.append(f'- **{name}**: ' + ' '.join(markdown(line.text) for line in first))
+        parts.append('## Updated libraries\n\n' + '\n'.join(entries))
+    if notes.removed:
+        parts.append('## Removed libraries\n\n' + '\n'.join(
+            f'- **{name}**: {markdown(what)}' for name, what in notes.removed))
+    if notes.tools:
+        parts.append('## Tools and build\n\n' + '\n'.join(
+            f'- {markdown(line.text)}' for line in notes.tools[:3]))
+    parts.append(f'Release notes: https://webcpporg.github.io/webcpp/#webcpp-{version.anchor}. '
+                 f'Checksum:\n`webcpp-{version.name}.tar.gz.txt`.')
+    return '\n\n'.join(parts) + '\n'
+
+
+def whats_new(root: Path, version: Version) -> list[str]:
+    """Writes the skeleton of the version's What's new, never over one that exists."""
+    relative = f'doc/releases/{version.name}.whats-new.md'
+    if (root / relative).exists():
+        raise Failure(f'{relative} exists, and is never written over: remove it to write the '
+                      'skeleton again')
+    (root / relative).write_text(whats_new_text(root, version), encoding='utf-8')
+    print(relative)
+    return []
+
+
+def whats_new_findings(root: Path, version: Version) -> list[str]:
+    """What breaks the form of the version's What's new once its highlights are written: at
+    most five, each a category of CATEGORIES, in their order, each once, and one sentence of at
+    most 20 words."""
+    relative = f'doc/releases/{version.name}.whats-new.md'
+    if not (root / relative).is_file():
+        return []
+    text = (root / relative).read_text(encoding='utf-8')
+    section = re.search(r'^## Highlights\n(.*?)(?=^## |^Release notes: |\Z)', text,
+                        re.MULTILINE | re.DOTALL)
+    if section is None:
+        return [f'{relative} has no section ## Highlights']
+    body = re.sub(r'<!--.*?-->', '', section.group(1), flags=re.DOTALL)
+    lines = [line for line in body.split('\n') if line.strip()]
+    findings = []
+    categories = []
+    for line in lines:
+        match = HIGHLIGHT.fullmatch(line)
+        if match is None or match.group('category') not in CATEGORIES:
+            findings.append(f'{relative}: a highlight is "- **<category>**: <sentence>", its '
+                            f'category one of {", ".join(CATEGORIES)}: {line}')
+            continue
+        categories.append(match.group('category'))
+        if len(match.group('sentence').split()) > 20:
+            findings.append(f'{relative}: the highlight {match.group("category")} has more than '
+                            '20 words')
+    if len(lines) > 5:
+        findings.append(f'{relative}: {len(lines)} highlights, and there are at most 5')
+    if categories != sorted(set(categories), key=CATEGORIES.index):
+        findings.append(f'{relative}: the highlights come in the order {", ".join(CATEGORIES)}, '
+                        'each once')
+    return findings
+
+
 def check(root: Path, version: Version) -> list[str]:
     """Every fault that keeps the tree from being tagged webcpp-<version>; a change HEAD does
     not record is named first, and alone, since every other rule judges what the tag carries."""
@@ -430,6 +537,7 @@ def check(root: Path, version: Version) -> list[str]:
     findings += located(relative, sorted(faults + [fault for bullet in notes.tools
                                                    for fault in changelog.line_findings(bullet)]))
     findings += index_findings(root, version)
+    findings += whats_new_findings(root, version)
     logs: dict[str, list[changelog.Region]] = {}
     for name in current:
         path = f'libs/{name}/doc/changelog.adoc'
@@ -450,6 +558,7 @@ Command = Callable[[Path, Version, argparse.Namespace], list[str]]
 
 COMMANDS: dict[str, Command] = {
     'check': lambda root, version, _: check(root, version),
+    'whats-new': lambda root, version, _: whats_new(root, version),
 }
 
 

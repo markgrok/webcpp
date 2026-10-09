@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import re
 import shutil
 import sys
 import tempfile
@@ -523,6 +524,72 @@ def test_the_tree_s_notes_name_the_ci_lanes(directory: Path) -> None:
             notes.compilers)
 
 
+def test_whats_new_skeleton(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    tree.commit_file('doc/releases/0.1.0.adoc', scratch.notes_text(
+        '0.1.0', new=('alpha', 'beta', 'config'),
+        tools=('* Added `b2 dist`, which packages a release, for {cpp}20.',)))
+    assert release.whats_new(tree.root, V010) == []
+    written = tree.root / 'doc/releases/0.1.0.whats-new.md'
+    text = written.read_text(encoding='utf-8')
+    assert text.startswith('# webcpp 0.1.0\n\nwebcpp 0.1.0 is out.\n\n## New libraries\n'), text
+    assert '- **alpha**: alpha, a library, from R.\n' in text, text
+    assert '- Added `b2 dist`, which packages a release, for C++20.\n' in text, text
+    assert '<!-- At most five highlights' in text and '{' not in text and 'link:' not in text
+    assert 'https://webcpporg.github.io/webcpp/#webcpp-0-1-0' in text
+    try:
+        release.whats_new(tree.root, V010)
+    except release.Failure as failure:
+        assert 'doc/releases/0.1.0.whats-new.md exists, and is never written over' in str(failure)
+    else:
+        raise AssertionError('whats-new wrote over a What\'s new')
+    assert written.read_text(encoding='utf-8') == text
+
+
+def test_whats_new_lists_updated_libraries(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    tree.change('alpha', 'doc/changelog.adoc', scratch.changelog_text('alpha', unreleased=(
+        '* *Breaking change:* removed `x`; use `y`.',
+        '* Fixed a crash (https://github.com/webcpporg/alpha/issues/3[#3]).',
+        '* Added `z`.', '* Updated the page.')))
+    tree.commit_file('doc/releases/0.2.0.adoc',
+                     scratch.notes_text('0.2.0', updated=(('alpha', 'unreleased'),)))
+    release.whats_new(tree.root, V020)
+    text = (tree.root / 'doc/releases/0.2.0.whats-new.md').read_text(encoding='utf-8')
+    assert ('- **alpha**: **Breaking change:** removed `x`; use `y`. Fixed a crash '
+            '([#3](https://github.com/webcpporg/alpha/issues/3)). Added `z`.\n') in text, text
+    assert 'Updated the page' not in text
+
+
+def test_whats_new_highlights_are_checked(directory: Path) -> None:
+    # check names an uncommitted path first, alone (uncommitted_findings, Task 7): a written
+    # What's new is committed here before each check, as the release procedure commits it once
+    # its highlights are filled.
+    tree = scratch.make_tree(directory)
+    release.whats_new(tree.root, V010)
+    written = tree.root / 'doc/releases/0.1.0.whats-new.md'
+    skeleton = written.read_text(encoding='utf-8')
+    tree.commit_file('doc/releases/0.1.0.whats-new.md', skeleton)
+    assert release.check(tree.root, V010) == []
+
+    def highlights(*lines: str) -> None:
+        tree.commit_file('doc/releases/0.1.0.whats-new.md',
+                         re.sub(r'<!--.*?-->', '\n'.join(lines), skeleton, flags=re.DOTALL))
+
+    highlights('- **New libraries**: five header-only libraries arrive.',
+               '- **Developer experience**: every changelog line is checked.')
+    assert release.check(tree.root, V010) == []
+    highlights(*(['- **Dependencies**: one.'] * 6))
+    expect(release.check(tree.root, V010), '6 highlights, and there are at most 5')
+    highlights('- **Dependencies**: ' + ' '.join(['word'] * 21) + '.')
+    expect(release.check(tree.root, V010), 'the highlight Dependencies has more than 20 words')
+    highlights('- **Speed**: faster.')
+    expect(release.check(tree.root, V010), 'a highlight is "- **<category>**: <sentence>"')
+    highlights('- **Dependencies**: one.', '- **New libraries**: two.')
+    expect(release.check(tree.root, V010), 'the highlights come in the order')
+
+
 def git_checkout(root: Path) -> None:
     """Makes the harness's scratch superproject root a git checkout whose libraries, config and
     demo, are gitlinks, config holding the version.hpp of 0.1.0, with an index and notes of its
@@ -560,6 +627,8 @@ def test_jamroot_targets(root: Path) -> None:
     harness.expect(harness.run_b2(root, 'check-release', env_extra={'BOOST_ROOT': None}), False,
                    'check: libs/config/include/webcpp/version.hpp: WEBCPP_VERSION names 0.1.0, '
                    'and WEBCPP_LIB_VERSION "0_2" is not "0_1"')
+    harness.expect(harness.run_b2(root, 'whats-new'), True)
+    assert (root / 'doc/releases/0.1.0.whats-new.md').is_file()
 
 
 def test_jamroot_reads_the_version(root: Path) -> None:
@@ -619,6 +688,8 @@ def test_jamroot_without_config(root: Path) -> None:
     harness.expect(harness.run_b2(root, '-d0', 'doc'), True)
     harness.expect(harness.run_b2(root, '-d0', 'check-release'), False,
                    'libs/config/include/webcpp/version.hpp', 'check out libs/config')
+    harness.expect(harness.run_b2(root, '-d0', 'whats-new'), False,
+                   'libs/config/include/webcpp/version.hpp', 'check out libs/config')
 
 
 CASES: list[Callable[[Path], None]] = [
@@ -646,6 +717,9 @@ CASES: list[Callable[[Path], None]] = [
     test_index_includes_every_version_newest_first,
     test_template_opens_a_version_that_checks,
     test_the_tree_s_notes_name_the_ci_lanes,
+    test_whats_new_skeleton,
+    test_whats_new_lists_updated_libraries,
+    test_whats_new_highlights_are_checked,
 ]
 
 B2_CASES: list[Callable[[Path], None]] = [

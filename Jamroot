@@ -710,9 +710,21 @@ actions check-release
 
 notfile check-release : @check-release : : <webcpp-boost-check>off ;
 
+rule whats-new ( targets * : sources * : properties * )
+{
+    release-tool $(targets) : $(sources) : $(properties) ;
+}
+
+actions whats-new
+{
+    "$(PYTHON)" "$(SCRIPT)" whats-new --root "$(ROOT)" --version "$(VERSION)"
+}
+
+notfile whats-new : @whats-new : : <webcpp-boost-check>off ;
+
 explicit boost_version throw_exception boost_json boost_url boost_charconv
     boost_locale emscripten-reference test example doc install $(.install)
-    declared-targets declared-lanes site site-serve check-release ;
+    declared-targets declared-lanes site site-serve check-release whats-new ;
 if [ glob site/Jamfile ]
 {
     explicit site-declared.txt libraries.json site-pages ;
