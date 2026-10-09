@@ -86,15 +86,26 @@ explicit iconv ;
 # Boost.Locale without ICU (~/.buzz/RESEARCH/BOOST_LOCALE_ON_EVERY_TARGET.md
 # measured it): the shared sources of its own build/Jamfile.v2 and its std
 # backend on every target; with them the posix backend and iconv on Linux,
-# macOS and WASI, and the winapi backend on Windows, as Boost configures it
-# there. Refused on emscripten, whose single-threaded build Boost.Thread's
-# mutex rejects, and without exceptions, which Boost.Locale throws
+# macOS, WASI and emscripten, and the winapi backend on Windows, as Boost
+# configures it there. Refused without exceptions, which Boost.Locale throws
 # unguarded. A program that uses it therefore declares
 # <exception-handling>on in its own requirements, which b2 ignores as a usage
 # requirement, so that a build without exceptions, the lint's included,
 # builds it with them; the refusal can name that fix but not the program,
 # since b2 gives a dependency's conditional the properties its dependent
 # propagates, never the dependent.
+#
+# On emscripten, single-threaded, Boost.Config turns threads off, having no
+# _POSIX_THREADS, and three of Boost.Locale's sources include Boost.Thread's
+# mutex, which then stops with "Compiler threading support is not turned
+# on". Its sources alone are told that pthreads are there,
+# BOOST_HAS_PTHREADS, with which Boost.Config keeps the BOOST_HAS_THREADS
+# libc++ gives it: the mutex then calls Emscripten's single-threaded pthread
+# functions, which do nothing, and no program is built with -pthread, which
+# would make its memory shared. Sound because no public header of
+# Boost.Locale depends on the macro: every mutex is inside a source, behind a
+# pointer or in a function's static, and the headers preprocess to the same
+# code with it and without (tools/test/boost_libraries_test.py pins both).
 .locale-shared = encoding/codepage shared/date_time shared/format shared/formatting
     shared/generator shared/iconv_codecvt shared/ids shared/localization_backend
     shared/message shared/mo_lambda util/codecvt_converter util/default_locale
@@ -113,12 +124,10 @@ rule locale-configuration ( properties * )
             "with exceptions in a build without them (b2 ignores it as a usage"
             "requirement), or leaves Boost.Locale out" ;
     }
+    local threads ;
     if <toolset>emscripten in $(properties)
     {
-        errors.user-error "Boost.Locale is not built for emscripten: three of its sources"
-            "include <boost/thread/mutex.hpp>, which Boost.Config refuses in a"
-            "single-threaded build (\"Compiler threading support is not turned on\"), and"
-            "webcpp's emscripten is single-threaded" ;
+        threads = <define>BOOST_HAS_PTHREADS ;
     }
     if <target-os>windows in $(properties)
     {
@@ -127,7 +136,7 @@ rule locale-configuration ( properties * )
             <define>_CRT_SECURE_NO_WARNINGS <define>_SCL_SECURE_NO_WARNINGS ;
     }
     return <source>libs/locale/src/$(.locale-posix).cpp
-        <define>BOOST_LOCALE_WITH_ICONV=1 <define>BOOST_LOCALE_NO_WINAPI_BACKEND=1 ;
+        <define>BOOST_LOCALE_WITH_ICONV=1 <define>BOOST_LOCALE_NO_WINAPI_BACKEND=1 $(threads) ;
 }
 
 # Every source a target may compile must be in the tree, a backend's too, so

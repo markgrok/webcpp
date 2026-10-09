@@ -480,7 +480,7 @@ owner's:
    | native macOS (Apple clang, gcc) | backends posix and std; iconv from the system's libiconv, `-liconv` given by the target; no ICU (measured) | yes (measured) |
    | native Windows (MSVC) | backends winapi and std, no iconv, no ICU: Boost's own configuration on Windows. Not measured here: no Windows machine; the first CI run that builds it is its measurement, and a failure is reported to the owner, never hidden | yes; not measured here |
    | wasip2, wasip3 | backends posix and std; iconv from wasi-libc; number, currency and date formatting in the C locale's form (no locale data, no ICU); a catalog is read from a directory the test gives (`webcpp.data`) (measured) | yes (measured) |
-   | emscripten | refused by name: `shared/date_time.cpp`, `shared/generator.cpp` and `shared/localization_backend.cpp` include `<boost/thread/mutex.hpp>`, and Boost.Config stops with "Compiler threading support is not turned on" (`boost/config/requires_threads.hpp:47`), webcpp's emscripten being single-threaded (measured) | yes (measured) |
+   | emscripten | backends posix and std; iconv from Emscripten's libc; a catalog is read from the host's files, as natively; single-threaded: Boost.Locale's sources alone are compiled with `BOOST_HAS_PTHREADS`, so that Boost.Thread's mutex, which three of them include, builds against Emscripten's pthread functions, which do nothing there; no program gets it, nor `-pthread`, and no public header of Boost.Locale depends on it, which `tools/test/boost_libraries_test.py` checks by preprocessing every one with it and without (measured) | yes (measured) |
    | any target, `exception-handling=off` | refused by name: Boost.Locale throws and catches unguarded (61 `throw`, 14 `try` in its sources, 8 `throw` in its headers) | yes (measured natively and on wasip2) |
 
    Since Boost.Locale needs exceptions, a program that names
@@ -488,10 +488,7 @@ owner's:
    `<exception-handling>on` in its own requirements, which keeps it with
    exceptions in a build without them, the lint's twins included (chapter 6):
    b2 ignores it as a usage requirement, and the refusal stops the whole
-   build, naming that fix but not the program, which b2 does not give it. A
-   library whose programs run on emscripten keeps `/webcpp//boost_locale` out
-   of its main target's usage requirements, and gives it to the header and
-   the programs that need it.
+   build, naming that fix but not the program, which b2 does not give it.
 
    A library that needs Boost.JSON adds `<library>/webcpp//boost_json` to its
    target's usage requirements, as xstate's `build.jam` does: the Jamroot's
@@ -2543,8 +2540,8 @@ What webcpp does not have yet, and the chapters that mention it:
 - **Compiled Boost libraries.** Boost.URL, Boost.Charconv and Boost.Locale
   are built from Boost's sources (`/webcpp//boost_url`,
   `/webcpp//boost_charconv`, `/webcpp//boost_locale`). Boost.Locale has no
-  build for emscripten, which is single-threaded, nor without exceptions,
-  and it is not yet measured on Windows. A Boost.Test suite still compiles
-  the framework's header-only form (chapters 2 and 9).
+  build without exceptions, and it is not yet measured on Windows. A
+  Boost.Test suite still compiles the framework's header-only form (chapters
+  2 and 9).
 - **Bundled toolchains.** Each toolchain is installed by hand and configured
   in `user-config.jam` (chapter 1), until webcpp bundles them.

@@ -12,8 +12,9 @@ does not link; and the sources are -sBOOST_SOURCE=<dir>, else user-config.jam's 
 .local/boost-source, a missing tree, a tree of another Boost version and a tree without the
 library's sources each stopping the build by name, while a build that needs none never looks;
 /webcpp//boost_charconv links on every target, with and without exceptions; /webcpp//boost_locale
-converts, and translates from a catalog, natively and on wasip2 and wasip3, and is refused by name
-on emscripten and without exceptions.
+converts, and translates from a catalog, natively, on wasip2, wasip3 and emscripten, where its
+sources alone are told that pthreads are there, which no public header depends on, and is refused
+by name without exceptions.
 Each case builds a scratch superproject with the fixture library demo, whose path holds a space.
 Run with the names of some cases to run only those."""
 
@@ -269,7 +270,8 @@ int main() {
 }
 '''
 
-# translates reads its catalog natively alone until webcpp.data gives it the directory on WASI.
+# translates reads its catalog natively and on emscripten, which read the host's files, alone
+# until webcpp.data gives it the directory on WASI.
 LOCALE_JAMFILE = r'''import regex ;
 import webcpp ;
 
@@ -280,7 +282,7 @@ local catalogs = [ regex.replace $(CATALOGS) "\\\\" "/" ] ;
 webcpp.run converts : converts.cpp : <library>/webcpp//boost_locale ;
 webcpp.run translates : translates.cpp
   : <library>/webcpp//boost_locale <define>"\"WEBCPP_TEST_CATALOGS=\\\"$(catalogs)\\\"\""
-  : native ;
+  : native emscripten ;
 '''
 
 TRANSLATES_ON_WASI = False
@@ -368,10 +370,11 @@ def test_boost_charconv_links_on_every_target(root: Path) -> None:
         shutil.rmtree(root / 'bin')
 
 
-def test_boost_locale_on_native_wasip2_and_wasip3(root: Path) -> None:
+def test_boost_locale_on_every_target(root: Path) -> None:
+    harness.link_emsdk(root)
     add_locales(root)
     gcc = harness.gcc_request(root)
-    for request in ((), WASIP2, WASIP3, *((gcc,) if gcc else ())):
+    for request in ((), WASIP2, WASIP3, EMSCRIPTEN, *((gcc,) if gcc else ())):
         wasi = request in (WASIP2, WASIP3)
         result = harness.run_b2(root, '-a', '-d+2', *request, 'libs/locales/test')
         harness.expect(result, True)
@@ -387,13 +390,14 @@ def test_boost_locale_on_native_wasip2_and_wasip3(root: Path) -> None:
 
 CODEPAGES_JAMFILE = ('import webcpp ;\n'
                      '\n'
-                     'webcpp.targets native wasip2 wasip3 ;\n'
+                     'webcpp.targets native wasip2 wasip3 emscripten ;\n'
                      '\n'
                      'webcpp.run codepages : codepages.cpp : <library>/webcpp//boost_locale ;\n')
 
-# Shift_JIS, a multibyte charset, which each platform's iconv must know (macOS's libiconv,
-# wasi-libc's tables). converts proves that iconv is there, with ISO-8859-1, which Boost.Locale
-# 1.92 too converts only through iconv (or ICU); this one, that a charset beyond Latin-1 converts.
+# Shift_JIS, a multibyte charset, which each platform's iconv must know (macOS's libiconv, the
+# tables of wasi-libc's and of Emscripten's musl). converts proves that iconv is there, with
+# ISO-8859-1, which Boost.Locale 1.92 too converts only through iconv (or ICU); this one, that a
+# charset beyond Latin-1 converts.
 CODEPAGES_SOURCE = r'''#include <boost/locale.hpp>
 
 #include <iostream>
@@ -408,8 +412,9 @@ int main() {
 
 
 def test_boost_locale_converts_through_iconv(root: Path) -> None:
+    harness.link_emsdk(root)
     harness.add_library(root, 'codepages', CODEPAGES_JAMFILE, {'codepages.cpp': CODEPAGES_SOURCE})
-    for request in ((), WASIP2, WASIP3):
+    for request in ((), WASIP2, WASIP3, EMSCRIPTEN):
         result = harness.run_b2(root, '-a', '-d+2', *request, 'libs/codepages/test')
         harness.expect(result, True)
         assert passed(result) == {'codepages'}, (request, passed(result), result.stdout[-4000:])
@@ -455,12 +460,65 @@ def test_boost_locale_on_windows_is_boost_s_configuration(root: Path) -> None:
     assert '-liconv' not in result.stdout, result.stdout[-4000:]
 
 
-def test_boost_locale_is_refused_on_emscripten(root: Path) -> None:
+def test_boost_locale_on_emscripten_is_threaded_alone(root: Path) -> None:
+    # Single-threaded emscripten has pthreads' functions as stubs, and no _POSIX_THREADS, so
+    # Boost.Config turns threads off, which Boost.Thread's mutex refuses: Boost.Locale's sources
+    # alone are told that pthreads are there, never a program, and nothing is built with -pthread,
+    # which would make a program's memory shared.
     harness.link_emsdk(root)
     add_locales(root)
-    harness.expect(harness.run_b2(root, *EMSCRIPTEN, 'libs/locales/test'), False,
-                   'Boost.Locale is not built for emscripten',
-                   'Compiler threading support is not turned on')
+    result = harness.run_b2(root, '-a', '-n', '-d+2', *EMSCRIPTEN, 'libs/locales/test//converts')
+    harness.expect(result, True)
+    compiled = compiled_locale_sources(result.stdout)
+    assert {source.split('/')[0] for source in compiled} == {
+        'encoding', 'shared', 'util', 'std', 'posix'}, sorted(compiled)
+    for source, command in compiled.items():
+        assert '-DBOOST_HAS_PTHREADS' in command, (source, command)
+    others = [line for line in result.stdout.splitlines()
+              if ' -c ' in line and 'libs/locale/src/' not in line]
+    assert any('converts.cpp' in line for line in others), result.stdout[-4000:]
+    assert any('libs/charconv/src/' in line for line in others), result.stdout[-4000:]
+    for line in others:
+        assert 'BOOST_HAS_PTHREADS' not in line, line
+    assert '-pthread' not in result.stdout, result.stdout[-4000:]
+
+
+# Every public header of Boost.Locale, and a line that shows whether Boost.Config ended with
+# threads.
+EVERY_HEADER_JAMFILE = ('preprocessed plain : every.cpp ;\n'
+                        'preprocessed threaded : every.cpp : <define>BOOST_HAS_PTHREADS ;\n')
+THREADS_SEEN = 'int webcpp_test_boost_has_threads;\n'
+
+
+def test_boost_locale_s_headers_ignore_its_threading_macro(root: Path) -> None:
+    # What makes defining BOOST_HAS_PTHREADS for Boost.Locale's sources alone sound on emscripten:
+    # no type or inline function of its public headers, nor of what they include, depends on it,
+    # so a program built without it sees what the library was built with. Every header of the
+    # configured Boost's boost/locale/ preprocesses to the same text with the macro and without,
+    # Boost.Config's own BOOST_HAS_THREADS aside; a Boost whose headers come to depend on it fails
+    # here, before an ODR mismatch.
+    text = harness.user_config(root).read_text()
+    include = USING_BOOST_INCLUDE.search(text)
+    assert include, text
+    headers = sorted(path.relative_to(include.group(1)).as_posix()
+                     for path in Path(include.group(1), 'boost/locale').rglob('*.hpp'))
+    assert len(headers) > 30, headers
+    source = ''.join(f'#include <{header}>\n' for header in ['boost/locale.hpp', *headers])
+    source += '#ifdef BOOST_HAS_THREADS\n' + THREADS_SEEN + '#endif\n'
+    harness.link_emsdk(root)
+    harness.add_library(root, 'headers', EVERY_HEADER_JAMFILE, {'every.cpp': source})
+    harness.expect(harness.run_b2(root, '-a', *EMSCRIPTEN, 'libs/headers/test'), True)
+    plain, threaded = (code_of(output_of(root, f'{name}.ii')) for name in ('plain', 'threaded'))
+    seen = THREADS_SEEN.strip()
+    assert seen not in plain and seen in threaded, (plain[-3:], threaded[-3:])
+    assert [line for line in threaded if line != seen] == plain
+
+
+def code_of(preprocessed: str) -> list[str]:
+    """The lines of a preprocessed translation unit that hold code: neither empty nor the
+    preprocessor's line markers, which only place it."""
+    return [line for line in preprocessed.splitlines()
+            if line.strip() and not re.match(r'#\s*\d+ ', line)]
 
 
 def test_boost_locale_is_refused_without_exceptions(root: Path) -> None:
@@ -483,10 +541,11 @@ def test_boost_locale_is_refused_without_exceptions(root: Path) -> None:
 CASES = [
     test_boost_url_links_on_every_target,
     test_boost_charconv_links_on_every_target,
-    test_boost_locale_on_native_wasip2_and_wasip3,
+    test_boost_locale_on_every_target,
     test_boost_locale_converts_through_iconv,
     test_boost_locale_on_windows_is_boost_s_configuration,
-    test_boost_locale_is_refused_on_emscripten,
+    test_boost_locale_on_emscripten_is_threaded_alone,
+    test_boost_locale_s_headers_ignore_its_threading_macro,
     test_boost_locale_is_refused_without_exceptions,
     test_without_the_library_a_program_does_not_link,
     test_missing_sources_are_refused_naming_the_fix,
