@@ -154,9 +154,9 @@ does not declare for a target is skipped there.
 `b2 declared-targets -d0` lists the targets each library declares.
 
 webcpp has one version, `WEBCPP_VERSION` in `<webcpp/version.hpp>`, part of
-`libs/config`, whose `<webcpp/config.hpp>` every library includes first.
-Each library's page ends with its changelog, and the index page shows each
-version's release notes.
+`libs/config`. Each library's page ends with its changelog, and the index
+page shows each version's release notes. Each library moves onto
+`<webcpp/config.hpp>` once `webcpporg/config` exists (AGENTS.md's roadmap).
 
 A library may also run some of its programs in lanes of its own, which
 `test` and `example` leave out: the HTTP components wasmtime serves, for

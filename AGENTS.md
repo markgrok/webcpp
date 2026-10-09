@@ -411,7 +411,8 @@ told: `b2 --user-config=.local/user-config.jam ...`.
   (xstate, trystero). `index` is reserved, in any case: the index page is the
   doc build's page `index`, and the report refuses a library of that name,
   nor `target`, `has`, `no`, `lib` or `version`, which config's macros take
-  (`WEBCPP_TARGET_*`, `WEBCPP_HAS_EXCEPTIONS`, ...): the index refuses each.
+  (`WEBCPP_TARGET_*`, `WEBCPP_HAS_EXCEPTIONS`, ...), nor `test`, which the
+  test-only macros take (`WEBCPP_TEST_*`): the index refuses each.
 
 ### The checklist of a new library
 
@@ -2485,7 +2486,10 @@ superproject's new `main`. `main` is the only branch.
 
 webcpp has one version, `WEBCPP_VERSION` in `<webcpp/version.hpp>`
 (`libs/config`), the one place it is written: 0.1.0 is 100,
-`WEBCPP_LIB_VERSION` `"0_1"`. The Jamroot reads it for the release
+`WEBCPP_LIB_VERSION` `"0_1"`. Nothing may follow the number on its
+`#define WEBCPP_VERSION` line but trailing spaces: both the Jamroot and
+`tools/release/release.py` read that line, and both refuse anything else
+there, a trailing comment included. The Jamroot reads it for the release
 targets, which run only when named:
 
 | Command | What it does |
@@ -2493,6 +2497,10 @@ targets, which run only when named:
 | `b2 check-release` | fails, naming each fault, when a library changed since the last tag (under `include/`, `build.jam`, `wit/`, `meta/libraries.json`, `README.md`, `example/`, `doc/` or `LICENSE*`) has no line, when the notes miss a library, when a new or removed submodule is not under New or Removed Libraries, when the version disagrees anywhere, when a line or a file breaks the form above, or when the What's new's highlights break theirs |
 | `b2 whats-new` | writes `doc/releases/<version>.whats-new.md`, the skeleton of the GitHub Release's body, in Boost's form: at most five highlights, a bold category and at most 20 words each; never over a file that exists |
 | `b2 dist` | builds every page, then `bin/dist/webcpp-<version>.tar.gz`, reproducible (sources at the recorded commits, built pages, no dot files), and its `sha256sum` file `.tar.gz.txt` |
+
+`check-release` reads every library's checkout, so `git submodule update
+--init` runs first: a submodule of HEAD not checked out fails it by name
+(`git submodule update --init libs/<name>`).
 
 Nothing is released until the owner asks. Then:
 
