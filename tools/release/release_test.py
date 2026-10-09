@@ -588,6 +588,75 @@ def test_whats_new_highlights_are_checked(directory: Path) -> None:
     expect(release.check(tree.root, V010), 'a highlight is "- **<category>**: <sentence>"')
     highlights('- **Dependencies**: one.', '- **New libraries**: two.')
     expect(release.check(tree.root, V010), 'the highlights come in the order')
+    # A duplicated category, with no reordering and no smuggling, is "each once"'s own case.
+    highlights('- **Dependencies**: one.', '- **Dependencies**: two.')
+    expect(release.check(tree.root, V010), 'the highlights come in the order')
+    # Two or more highlights packed onto one physical line are read as that many highlights, as
+    # a reader of the Markdown sees them, not as one: the line is refused outright, named by its
+    # number, and each highlight it holds still counts towards the five, the order and the
+    # categories, so none of the three checks is fooled by where a line break falls.
+    highlights('- **New libraries**: five. - **Dependencies**: one.')
+    expect(release.check(tree.root, V010), 'a line holds 2 highlights')
+    highlights('- **Dependencies**: one. - **Dependencies**: two. - **Dependencies**: three.',
+               '- **Dependencies**: four.', '- **Dependencies**: five.',
+               '- **Dependencies**: six.')
+    expect(release.check(tree.root, V010), 'a line holds 3 highlights',
+           '6 highlights, and there are at most 5')
+    highlights('- **New libraries**: one. - **New libraries**: two.')
+    expect(release.check(tree.root, V010), 'a line holds 2 highlights',
+           'the highlights come in the order')
+
+
+def test_whats_new_names_unreadable_files(directory: Path) -> None:
+    # A missing, unreadable or non-UTF-8 file whats-new reads is a named Failure or Broken,
+    # never a traceback: the version's own release notes, an updated library's changelog, and,
+    # through whats_new_findings read directly (an uncommitted whats-new.md would be named by
+    # check's own uncommitted_findings before whats_new_findings ever runs), the What's new
+    # itself.
+    tree = scratch.make_tree(directory)
+    (tree.root / 'doc/releases/0.1.0.adoc').unlink()
+    try:
+        release.whats_new(tree.root, V010)
+    except release.Failure as failure:
+        assert str(failure) == ('doc/releases/0.1.0.adoc does not exist: open it from '
+                                'tools/release/template.adoc'), failure
+    else:
+        raise AssertionError('whats-new read release notes that do not exist')
+    (tree.root / 'doc/releases/0.1.0.adoc').write_bytes(b'\xff\n')
+    try:
+        release.whats_new(tree.root, V010)
+    except release.Broken as broken:
+        assert str(broken).startswith('doc/releases/0.1.0.adoc cannot be read: '), broken
+    else:
+        raise AssertionError('whats-new read release notes that are not UTF-8')
+    tree.commit_file('doc/releases/0.1.0.adoc',
+                     scratch.notes_text('0.1.0', new=('alpha', 'beta', 'config')))
+    released(tree)
+    tree.commit_file('doc/releases/0.2.0.adoc',
+                     scratch.notes_text('0.2.0', updated=(('alpha', 'unreleased'),)))
+    log = tree.library('alpha') / 'doc/changelog.adoc'
+    log.unlink()
+    try:
+        release.whats_new(tree.root, V020)
+    except release.Broken as broken:
+        assert str(broken).startswith('libs/alpha/doc/changelog.adoc cannot be read: '), broken
+    else:
+        raise AssertionError('whats-new read a changelog that does not exist')
+    log.write_bytes(b'\xff\n')
+    try:
+        release.whats_new(tree.root, V020)
+    except release.Broken as broken:
+        assert str(broken).startswith('libs/alpha/doc/changelog.adoc cannot be read: '), broken
+    else:
+        raise AssertionError('whats-new read a changelog that is not UTF-8')
+    written = tree.root / 'doc/releases/0.2.0.whats-new.md'
+    written.write_bytes(b'\xff\n')
+    try:
+        release.whats_new_findings(tree.root, V020)
+    except release.Broken as broken:
+        assert str(broken).startswith('doc/releases/0.2.0.whats-new.md cannot be read: '), broken
+    else:
+        raise AssertionError("whats_new_findings read a What's new that is not UTF-8")
 
 
 def git_checkout(root: Path) -> None:
@@ -720,6 +789,7 @@ CASES: list[Callable[[Path], None]] = [
     test_whats_new_skeleton,
     test_whats_new_lists_updated_libraries,
     test_whats_new_highlights_are_checked,
+    test_whats_new_names_unreadable_files,
 ]
 
 B2_CASES: list[Callable[[Path], None]] = [

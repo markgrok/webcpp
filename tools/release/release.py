@@ -433,7 +433,7 @@ HIGHLIGHTS = ('<!-- At most five highlights, each "- **<category>**: <one senten
               'words>.", in this\norder, a category with nothing to say left out: '
               + ', '.join(CATEGORIES) + '. Written from the\nrelease notes, inventing nothing; '
               'the owner approves them before the tag. -->')
-HIGHLIGHT = re.compile(r'- \*\*(?P<category>[^*]+)\*\*: (?P<sentence>.+)')
+HIGHLIGHT = re.compile(r'- \*\*(?P<category>[^*]+)\*\*: ')
 
 
 def markdown(text: str) -> str:
@@ -447,8 +447,9 @@ def markdown(text: str) -> str:
 def whats_new_text(root: Path, version: Version) -> str:
     """The skeleton of the version's What's new, from its release notes."""
     relative = f'doc/releases/{version.name}.adoc'
-    notes, faults = changelog.parse_notes((root / relative).read_text(encoding='utf-8'),
-                                          version.name)
+    if not (root / relative).is_file():
+        raise Failure(f'{relative} does not exist: open it from tools/release/template.adoc')
+    notes, faults = changelog.parse_notes(read(root, relative), version.name)
     if faults:
         raise Failure('\n'.join(located(relative, faults)))
     wanted = 'unreleased' if notes.preparing else version.name
@@ -460,7 +461,7 @@ def whats_new_text(root: Path, version: Version) -> str:
     if notes.updated:
         entries = []
         for name, _ in notes.updated:
-            log = (root / 'libs' / name / 'doc/changelog.adoc').read_text(encoding='utf-8')
+            log = read(root, f'libs/{name}/doc/changelog.adoc')
             first = lines_of(changelog.parse_changelog(log, name)[0], wanted)[:3]
             entries.append(f'- **{name}**: ' + ' '.join(markdown(line.text) for line in first))
         parts.append('## Updated libraries\n\n' + '\n'.join(entries))
@@ -488,32 +489,61 @@ def whats_new(root: Path, version: Version) -> list[str]:
 
 def whats_new_findings(root: Path, version: Version) -> list[str]:
     """What breaks the form of the version's What's new once its highlights are written: at
-    most five, each a category of CATEGORIES, in their order, each once, and one sentence of at
-    most 20 words."""
+    most five, each a category of CATEGORIES, in their order, each once, one sentence of at
+    most 20 words, and one highlight per line. A highlight is read wherever it starts, as the
+    Markdown a reader sees it, never by splitting its section on raw newlines, so two or more
+    packed onto one line are read as that many highlights, not as one; such a line is refused
+    outright, naming the file and the line."""
     relative = f'doc/releases/{version.name}.whats-new.md'
     if not (root / relative).is_file():
         return []
-    text = (root / relative).read_text(encoding='utf-8')
+    text = read(root, relative)
     section = re.search(r'^## Highlights\n(.*?)(?=^## |^Release notes: |\Z)', text,
                         re.MULTILINE | re.DOTALL)
     if section is None:
         return [f'{relative} has no section ## Highlights']
-    body = re.sub(r'<!--.*?-->', '', section.group(1), flags=re.DOTALL)
-    lines = [line for line in body.split('\n') if line.strip()]
+    # A comment's own example text holds a literal "- **<category>**: ", so it is blanked out
+    # character for character before a highlight is read: its newlines stay, so a line found
+    # after it still carries its true number in the file.
+    body = re.sub(r'<!--.*?-->',
+                  lambda comment: ''.join('\n' if char == '\n' else ' ' for char in
+                                          comment.group(0)),
+                  section.group(1), flags=re.DOTALL)
+    offset = section.start(1)
+
+    def line_of(position: int) -> int:
+        return text.count('\n', 0, offset + position) + 1
+
+    items = list(HIGHLIGHT.finditer(body))
     findings = []
+    leading = body[:items[0].start()] if items else body
+    if leading.strip():
+        findings.append(f'{relative}:{line_of(0)}: a highlight is "- **<category>**: '
+                        f'<sentence>", its category one of {", ".join(CATEGORIES)}')
+    by_line: dict[int, int] = {}
+    for item in items:
+        line = line_of(item.start())
+        by_line[line] = by_line.get(line, 0) + 1
+    for line in sorted(line for line, count in by_line.items() if count > 1):
+        findings.append(f'{relative}:{line}: a line holds {by_line[line]} highlights, and each '
+                        '"- **<category>**: <sentence>." is on its own line')
     categories = []
-    for line in lines:
-        match = HIGHLIGHT.fullmatch(line)
-        if match is None or match.group('category') not in CATEGORIES:
-            findings.append(f'{relative}: a highlight is "- **<category>**: <sentence>", its '
-                            f'category one of {", ".join(CATEGORIES)}: {line}')
+    for index, item in enumerate(items):
+        end = items[index + 1].start() if index + 1 < len(items) else len(body)
+        sentence = body[item.end():end].strip()
+        category = item.group('category')
+        line = line_of(item.start())
+        if category not in CATEGORIES or not sentence:
+            findings.append(f'{relative}:{line}: a highlight is "- **<category>**: <sentence>",'
+                            f' its category one of {", ".join(CATEGORIES)}: '
+                            f'- **{category}**: {sentence}')
             continue
-        categories.append(match.group('category'))
-        if len(match.group('sentence').split()) > 20:
-            findings.append(f'{relative}: the highlight {match.group("category")} has more than '
-                            '20 words')
-    if len(lines) > 5:
-        findings.append(f'{relative}: {len(lines)} highlights, and there are at most 5')
+        categories.append(category)
+        if len(sentence.split()) > 20:
+            findings.append(f'{relative}:{line}: the highlight {category} has more than 20 '
+                            'words')
+    if len(items) > 5:
+        findings.append(f'{relative}: {len(items)} highlights, and there are at most 5')
     if categories != sorted(set(categories), key=CATEGORIES.index):
         findings.append(f'{relative}: the highlights come in the order {", ".join(CATEGORIES)}, '
                         'each once')
