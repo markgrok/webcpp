@@ -39,7 +39,8 @@ compiler's. Beside the output it writes:
   ${MRDOCS_SOURCE_ROOT}, libs/<name>, and whose other include directories are system ones;
 - mrdocs.yml, tools/doc/mrdocs.yml.in filled in for the library, with the keys of
   libs/<name>/doc/mrdocs.yml, when there is one, added: only keys of how the reference is
-  presented, PRESENTATION below.
+  presented, PRESENTATION below. The macros it documents are the macros of the library,
+  `WEBCPP_<NAME>_*`, or every `WEBCPP_*` for config, which holds the collection's.
 
 Then MrDocs writes the reference, and any warning fails it; and tools/doc/doc_comments.py checks
 the @tparam of each public template and the brief of each detail symbol. Both run, and the
@@ -98,6 +99,17 @@ PRESENTATION = {'sort-members', 'sort-members-by', 'sort-namespace-members-by',
                 'sort-members-assignment-1st', 'sort-members-conversion-last',
                 'sort-members-relational-last', 'overloads', 'sfinae', 'inherit-base-members',
                 'inherit-hidden-friends', 'legible-names', 'show-enum-constants'}
+
+# config holds the collection's own macros, WEBCPP_*, as Boost.Config holds BOOST_*: its
+# reference lists them all, the include guards apart, and it declares nothing in a namespace.
+COLLECTION = 'config'
+
+
+def macro_prefix(library: str) -> str:
+    """The prefix of the macros the library's reference lists: WEBCPP_<NAME>_, or WEBCPP_ for
+    config."""
+    return 'WEBCPP_' if library == COLLECTION else f'WEBCPP_{library.upper()}_'
+
 
 # A top-level key of a YAML mapping, at the start of its line.
 KEY = re.compile(r'([A-Za-z][\w-]*)\s*:(\s|$)')
@@ -446,7 +458,7 @@ def reference(options: argparse.Namespace) -> int:
     config = work / 'mrdocs.yml'
     config.write_text(settings(library, {
         'LIBRARY': library,
-        'MACROS': f'WEBCPP_{library.upper()}_',
+        'MACROS': macro_prefix(library),
         'SOURCE_ROOT': quoted(source_root),
         'DATABASE': quoted(database),
         'INPUT': quoted(include),
@@ -456,7 +468,8 @@ def reference(options: argparse.Namespace) -> int:
     faults = run_mrdocs(options.mrdocs, config, written)
     try:
         found = doc_comments.check(clang, library, include,
-                                   [*flags, f'-I{include}', *systems, str(aggregate)])
+                                   [*flags, f'-I{include}', *systems, str(aggregate)],
+                                   namespace_required=library != COLLECTION)
     except doc_comments.Unreadable as unreadable:
         print('\n'.join([*faults, f'reference.py: doc_comments.py: {unreadable}']))
         return 2

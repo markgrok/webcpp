@@ -423,13 +423,17 @@ class Unreadable(Exception):
     """clang++ could not give the declarations to check."""
 
 
-def check(clang: str, library: str, include: Path, arguments: list[str]) -> list[Finding]:
-    """The findings of the library's headers under include, read through arguments."""
+def check(clang: str, library: str, include: Path, arguments: list[str],
+          namespace_required: bool = True) -> list[Finding]:
+    """The findings of the library's headers under include, read through arguments. A library
+    declares its namespace, webcpp::<library>, unless namespace_required is False: config's
+    headers hold macros alone."""
     objects = dump(clang, library, arguments)
     checker = Checker(objects, include)
     namespaces = [value for value in objects
                   if value.get('kind') == 'NamespaceDecl' and value.get('name') == library]
-    if not any(checker.ours(checker.locations.of(value)[0]) for value in namespaces):
+    if namespace_required and not any(checker.ours(checker.locations.of(value)[0])
+                                      for value in namespaces):
         raise Unreadable(f'no declaration of webcpp::{library} is in a header under {include}')
     for namespace in namespaces:
         checker.visit(namespace, ['webcpp'], False, True)

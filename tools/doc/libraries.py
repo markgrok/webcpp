@@ -32,8 +32,9 @@ a description may say C++, or hold a |. An apostrophe in a word of prose is the 
 it is written as it is, so that Asciidoctor makes it curly, as it does every other apostrophe of
 the page's prose. One in what reads as code, between backticks, or in a URL stays straight.
 
-Exit 0 with the table written; 1 when a library has no meta/libraries.json, no page, or a field
-that is missing or not what it should be, each named; 2 on a usage error.
+Exit 0 with the table written; 1 when a library has a name config's macros take (RESERVED), no
+meta/libraries.json, no page, or a field that is missing or not what it should be, each named; 2
+on a usage error.
 """
 
 from __future__ import annotations
@@ -139,6 +140,11 @@ def page_of(library: Path, pages: dict[str, Path]) -> Path:
     return page
 
 
+# The names no library may take: config's macros are WEBCPP_TARGET_*, WEBCPP_HAS_*, WEBCPP_NO_*,
+# WEBCPP_LIB_* and WEBCPP_VERSION*, which a library's WEBCPP_<NAME>_* would meet.
+RESERVED = ('has', 'lib', 'no', 'target', 'version')
+
+
 def rows(root: Path, pages: dict[str, Path], left_out: dict[str, str] | None = None) -> list[str]:
     """The rows of the table, one per entry of each library, by the library's directory; a
     library of left_out without a link, with its reason."""
@@ -146,6 +152,10 @@ def rows(root: Path, pages: dict[str, Path], left_out: dict[str, str] | None = N
     found = []
     for build in sorted((root / 'libs').glob('*/build.jam')):
         library = build.parent
+        if library.name in RESERVED:
+            raise Invalid(f'{library}: a library is not named {library.name}, which config\'s '
+                          f'macros take, WEBCPP_{library.name.upper()}_*; the names taken are '
+                          f'{", ".join(RESERVED)}')
         origin = library / 'meta/libraries.json'
         entries = meta_entries(origin)
         page_of(library, pages)

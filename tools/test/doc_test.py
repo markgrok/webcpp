@@ -31,7 +31,10 @@ types and fails a native parse, naming its line, and its header that builds only
 dependency, and fails on an undocumented function of either; and MrDocs and clang++ given at
 paths that hold a space are found; and a page shows a tagged region of a file the
 superproject's git tracks, at {webcpp-root}, or of one its library's own git tracks, at
-{library-root}, and fails on one it does not track.
+{library-root}, and fails on one it does not track; and the reference of a library named config,
+which holds macros alone, lists every WEBCPP_* macro but the include guards and fails on an
+undocumented one, any other library's lists its own WEBCPP_<NAME>_* alone, and the index refuses
+a library named as config's macros, such as target.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is; the cases of
@@ -987,6 +990,56 @@ def test_index_lists_every_library(root):
                    f'{other}/meta/libraries.json: there is no such file')
 
 
+CONFIG_HPP = ('#ifndef WEBCPP_CONFIG_HPP\n#define WEBCPP_CONFIG_HPP\n\n'
+              '#include <webcpp/version.hpp>\n\n'
+              '#ifdef __MRDOCS__\n/** Defined by the developer. */\n#define WEBCPP_NO_EXCEPTIONS\n'
+              '#undef WEBCPP_NO_EXCEPTIONS\n#endif\n\n'
+              '/** Defined natively. */\n#define WEBCPP_TARGET_NATIVE\n\n'
+              '/** Defined with exceptions. */\n#define WEBCPP_HAS_EXCEPTIONS\n\n#endif\n')
+VERSION_HPP = ('#ifndef WEBCPP_VERSION_HPP\n#define WEBCPP_VERSION_HPP\n\n'
+               '/** The version as a number. */\n#define WEBCPP_VERSION 100\n\n'
+               '/** The version as text. */\n#define WEBCPP_LIB_VERSION "0_1"\n\n#endif\n')
+
+
+def test_config_reference_lists_every_webcpp_macro(root):
+    # A library named config, macros only, as config's headers are: its reference lists every
+    # WEBCPP_* macro but the include guards, and an undocumented one fails, named.
+    prepare(root)
+    config = add_paged(root, 'config')
+    (config / 'include/webcpp/config.hpp').write_text(CONFIG_HPP)
+    (config / 'include/webcpp/version.hpp').write_text(VERSION_HPP)
+    harness.expect(harness.run_b2(root, 'libs/config/doc'), True)
+    html = (config / 'doc/html/index.html').read_text()
+    for macro in ('WEBCPP_VERSION', 'WEBCPP_LIB_VERSION', 'WEBCPP_TARGET_NATIVE',
+                  'WEBCPP_NO_EXCEPTIONS', 'WEBCPP_HAS_EXCEPTIONS'):
+        assert f'id="{macro}"' in html, (macro, html[-3000:])
+    assert 'WEBCPP_CONFIG_HPP' not in html and 'WEBCPP_VERSION_HPP' not in html
+    harness.replace(config / 'include/webcpp/version.hpp', '/** The version as a number. */\n', '')
+    harness.expect(harness.run_b2(root, 'libs/config/doc'), False, 'WEBCPP_VERSION')
+
+
+def test_other_libraries_list_only_their_own_macros(root):
+    # Any other library's reference lists its own WEBCPP_<NAME>_* alone.
+    prepare(root)
+    other = add_paged(root, 'other')
+    header = other / 'include/webcpp/other.hpp'
+    header.write_text(header.read_text().replace(
+        '#define WEBCPP_OTHER_HPP\n',
+        '#define WEBCPP_OTHER_HPP\n\n/** Its own. */\n#define WEBCPP_OTHER_OWN 1\n\n'
+        '/** Not its own. */\n#define WEBCPP_ELSEWHERE 1\n'))
+    harness.expect(harness.run_b2(root, 'libs/other/doc'), True)
+    html = (other / 'doc/html/index.html').read_text()
+    assert 'id="WEBCPP_OTHER_OWN"' in html and 'WEBCPP_ELSEWHERE' not in html, html[-3000:]
+
+
+def test_a_library_named_as_config_s_macros_is_refused(root):
+    # A library named target would meet WEBCPP_TARGET_*: the index refuses it, naming it.
+    prepare(root)
+    add_paged(root, 'target')
+    harness.expect(harness.run_b2(root, 'doc'), False,
+                   'a library is not named target, which config\'s macros take')
+
+
 CASES = [
     test_page_builds_with_its_reference,
     test_undocumented_function_fails_naming_it,
@@ -1019,6 +1072,9 @@ CASES = [
     test_page_outside_git,
     test_counts_warn_and_fail_through_the_build,
     test_index_lists_every_library,
+    test_config_reference_lists_every_webcpp_macro,
+    test_other_libraries_list_only_their_own_macros,
+    test_a_library_named_as_config_s_macros_is_refused,
 ]
 
 

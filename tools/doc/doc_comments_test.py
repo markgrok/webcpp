@@ -7,7 +7,8 @@
 
 """Checks doc_comments.py: a public template without a @tparam for each of its parameters fails,
 naming the template, the parameter, the file and the line; so does a detail symbol without a
-brief; and a documented library passes.
+brief; a documented library passes; and a library of macros alone, as config is, passes only when
+no namespace of its own is required.
 
 Each case writes the headers of a library demo under a scratch directory whose path holds a space,
 and runs doc_comments.py on a translation unit that includes them, with the clang++ of $CLANG, or
@@ -23,6 +24,8 @@ import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+
+import doc_comments
 
 HERE = Path(__file__).resolve().parent
 CHECK = HERE / 'doc_comments.py'
@@ -455,6 +458,25 @@ def test_library_namespace_missing(library: Library) -> None:
     expect(result, 2, 'no declaration of webcpp::demo')
 
 
+def test_macros_only_library_needs_no_namespace(library: Library) -> None:
+    # config holds macros alone, as Boost.Config does: with no namespace of its own required,
+    # the check passes; required, as for every other library, it fails naming webcpp::config.
+    include = library.root / 'macros'
+    (include / 'webcpp').mkdir(parents=True)
+    (include / 'webcpp/config.hpp').write_text('/** A macro. */\n#define WEBCPP_PLANTED 1\n')
+    source = library.root / 'macros.cpp'
+    source.write_text('#include <webcpp/config.hpp>\n')
+    arguments = ['-std=c++20', f'-I{include}', str(source)]
+    assert doc_comments.check(clang(), 'config', include, arguments,
+                              namespace_required=False) == []
+    try:
+        doc_comments.check(clang(), 'config', include, arguments)
+    except doc_comments.Unreadable as unreadable:
+        assert 'webcpp::config' in str(unreadable), unreadable
+    else:
+        raise AssertionError('a library without its namespace passed where one is required')
+
+
 CASES: list[Callable[[Library], None]] = [
     test_documented_library_passes,
     test_missing_tparam_names_the_template,
@@ -467,6 +489,7 @@ CASES: list[Callable[[Library], None]] = [
     test_lines_across_headers,
     test_clang_failure_is_reported,
     test_library_namespace_missing,
+    test_macros_only_library_needs_no_namespace,
 ]
 
 
