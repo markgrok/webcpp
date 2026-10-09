@@ -433,11 +433,17 @@ HIGHLIGHTS = ('<!-- At most five highlights, each "- **<category>**: <one senten
               'words>.", in this\norder, a category with nothing to say left out: '
               + ', '.join(CATEGORIES) + '. Written from the\nrelease notes, inventing nothing; '
               'the owner approves them before the tag. -->')
-# The marker pattern anywhere in the section - inside a code span or a link's text included -
-# and the same marker as a line reads it: its own first characters, no leading space, which is
-# the only occurrence a reader's rendered Markdown shows as a highlight.
-HIGHLIGHT = re.compile(r'- \*\*(?P<category>[^*]+)\*\*: ')
-HIGHLIGHT_LINE = re.compile(r'^- \*\*(?P<category>[^*]+)\*\*: ', re.MULTILINE)
+# The grammar of the section Highlights, a whitelist: every non-blank line is one of two
+# shapes, or it is refused, whatever other text, markup or fencing might make it look like a
+# highlight. A highlight: its marker, a category of CATEGORIES verbatim, one space after the
+# colon, then its sentence, which does not start with a space. A continuation of the previous
+# highlight's sentence: indented by exactly two spaces, its own text not starting with a space
+# either. A fence delimiter, ``` with at most three leading spaces, opens or closes a fenced
+# block, every line of which, delimiters included, is refused: a highlight is never read out
+# of one, since a reader's rendered Markdown never shows one as a highlight either.
+HIGHLIGHT = re.compile(r'- \*\*(?P<category>[^*]*)\*\*: (?P<text>\S.*)')
+CONTINUATION = re.compile(r'  (?P<text>\S.*)')
+FENCE = re.compile(r' {0,3}`{3,}')
 
 
 def markdown(text: str) -> str:
@@ -492,56 +498,90 @@ def whats_new(root: Path, version: Version) -> list[str]:
 
 
 def whats_new_findings(root: Path, version: Version) -> list[str]:
-    """What breaks the form of the version's What's new once its highlights are written: at
-    most five, each a category of CATEGORIES, in their order, each once, one sentence of at
-    most 20 words, and a marker only where it starts a line - a reader's rendered Markdown
-    shows no other occurrence as a highlight, a code span or a link's text included, and such
-    an occurrence is refused outright, naming the file and the line. A highlight's sentence may
-    span lines up to the next highlight's own line or the section's end."""
+    """What breaks the form of the version's What's new once its highlights are written: one
+    section ## Highlights, a second named by its line; after its placeholder comment, every
+    non-blank line of the section is a highlight or a continuation of one (HIGHLIGHT,
+    CONTINUATION), each other line refused, named by its line, as specifically as its own shape
+    allows; at most five highlights, each a category of CATEGORIES, in their order, each once,
+    and one sentence of at most 20 words, these four checked on the highlights alone."""
     relative = f'doc/releases/{version.name}.whats-new.md'
     if not (root / relative).is_file():
         return []
     text = read(root, relative)
-    section = re.search(r'^## Highlights\n(.*?)(?=^## |^Release notes: |\Z)', text,
-                        re.MULTILINE | re.DOTALL)
-    if section is None:
+    headings = [match.start() for match in re.finditer(r'^## Highlights$', text, re.MULTILINE)]
+    if not headings:
         return [f'{relative} has no section ## Highlights']
+
+    def line_of(position: int) -> int:
+        return text.count('\n', 0, position) + 1
+
+    findings = [f'{relative}:{line_of(start)}: a second ## Highlights heading'
+               for start in headings[1:]]
+    body_start = text.index('\n', headings[0]) + 1
+    following = re.search(r'^## |^Release notes: ', text[body_start:], re.MULTILINE)
+    body_end = body_start + following.start() if following else len(text)
     # A comment's own example text holds a literal "- **<category>**: ", so it is blanked out
-    # character for character before a highlight is read: its newlines stay, so a line found
-    # after it still carries its true number in the file.
+    # character for character before a line is read: its newlines stay, so a line found after
+    # it still carries its true number in the file.
     body = re.sub(r'<!--.*?-->',
                   lambda comment: ''.join('\n' if char == '\n' else ' ' for char in
                                           comment.group(0)),
-                  section.group(1), flags=re.DOTALL)
-    offset = section.start(1)
+                  text[body_start:body_end], flags=re.DOTALL)
 
-    def line_of(position: int) -> int:
-        return text.count('\n', 0, offset + position) + 1
-
-    items = list(HIGHLIGHT_LINE.finditer(body))
-    starts = {item.start() for item in items}
-    findings = [f'{relative}:{line_of(stray.start())}: a highlight marker that does not start '
-               'a line' for stray in HIGHLIGHT.finditer(body) if stray.start() not in starts]
-    leading = body[:items[0].start()] if items else body
-    stray_text = re.search(r'\S', leading)
-    if stray_text is not None:
-        findings.append(f'{relative}:{line_of(stray_text.start())}: a highlight is '
-                        f'"- **<category>**: <sentence>", its category one of '
-                        f'{", ".join(CATEGORIES)}')
-    categories = []
-    for index, item in enumerate(items):
-        end = items[index + 1].start() if index + 1 < len(items) else len(body)
-        sentence = body[item.end():end].strip()
-        category = item.group('category')
-        line = line_of(item.start())
-        if category not in CATEGORIES or not sentence:
-            findings.append(f'{relative}:{line}: a highlight is "- **<category>**: <sentence>",'
-                            f' its category one of {", ".join(CATEGORIES)}: '
-                            f'- **{category}**: {sentence}')
+    items: list[list[object]] = []
+    has_open_item = False
+    in_fence = False
+    offset = 0
+    for raw_line in body.split('\n'):
+        number = line_of(body_start + offset)
+        offset += len(raw_line) + 1
+        if not raw_line.strip():
+            has_open_item = False
             continue
+        if FENCE.fullmatch(raw_line):
+            in_fence = not in_fence
+            findings.append(f'{relative}:{number}: line {number} is not a highlight: a fence')
+            has_open_item = False
+            continue
+        if in_fence:
+            findings.append(f'{relative}:{number}: line {number} is not a highlight: a fence')
+            has_open_item = False
+            continue
+        if '\t' in raw_line:
+            findings.append(f'{relative}:{number}: line {number} is not a highlight: a tab')
+            has_open_item = False
+            continue
+        highlight = HIGHLIGHT.fullmatch(raw_line)
+        if highlight is not None:
+            category = highlight.group('category')
+            if category not in CATEGORIES:
+                findings.append(f'{relative}:{number}: line {number} is not a highlight: its '
+                                f'category is not one of {", ".join(CATEGORIES)}')
+                has_open_item = False
+                continue
+            items.append([number, category, highlight.group('text')])
+            has_open_item = True
+            continue
+        continuation = CONTINUATION.fullmatch(raw_line)
+        if continuation is not None:
+            if not has_open_item:
+                findings.append(f'{relative}:{number}: line {number} is not a highlight: a '
+                                'continuation with no highlight before it')
+                continue
+            items[-1][2] = f'{items[-1][2]} {continuation.group("text")}'
+            continue
+        if re.match(r' +- \*\*', raw_line):
+            findings.append(f'{relative}:{number}: line {number} is not a highlight: an '
+                            'indented marker')
+        else:
+            findings.append(f'{relative}:{number}: line {number} is not a highlight')
+        has_open_item = False
+
+    categories = []
+    for number, category, sentence in items:
         categories.append(category)
-        if len(sentence.split()) > 20:
-            findings.append(f'{relative}:{line}: the highlight {category} has more than 20 '
+        if len(str(sentence).split()) > 20:
+            findings.append(f'{relative}:{number}: the highlight {category} has more than 20 '
                             'words')
     if len(items) > 5:
         findings.append(f'{relative}: {len(items)} highlights, and there are at most 5')
