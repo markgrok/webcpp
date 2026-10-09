@@ -1,0 +1,106 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The rule of a driven test, which tools/webcpp.jam offers a library's test
+# and example Jamfiles as webcpp.drive:
+#
+#     import webcpp ;
+#     webcpp.original <word> + ;
+#     webcpp.drive <name> : <sources> + : <requirements> * : <script>
+#       : <argument> * : <targets> * ;
+#
+# webcpp.drive declares the test <name>, which builds a program from the
+# sources, as webcpp.serve builds its component, and runs `<original words>
+# <script> <arguments> <program>`, with the words of the Jamfile's
+# webcpp.original (node, for a script of node's), the script beside the
+# Jamfile, and the path of the linked program: its JavaScript on emscripten,
+# which a script runs with node, its executable natively. The test passes
+# when that command exits with 0: a test that only a script can drive, such
+# as one of a peer that a browser or another process meets. It is a test of
+# b2's, which --dump-tests lists and --out-xml records, so that the report
+# sees it fail (as a run). It depends on the Jamfile's node-modules, the
+# packages its package-lock.json pins, which webcpp.original declares and
+# which must come first. It is run again at every build: what the script
+# reads is its own business. It runs in an own lane, never in the ordinary
+# ones (tools/webcpp.jam's lanes).
+#
+# This file is loaded as the module webcpp-drive, beside webcpp-component.
+# Its rule receives first where its Jamfile is, as tools/webcpp.jam's
+# `where` finds it (found): the project, its directory absolute in b2's
+# form, that directory relative to the superproject, the Jamfile relative to
+# the superproject, and the superproject's directory, absolute.
+import errors ;
+import feature ;
+import generators ;
+import modules ;
+import path ;
+import testing ;
+import toolset ;
+import type ;
+
+# The driven test is a test of b2's, as webcpp.serve's is: DRIVE, a type of
+# TEST that testing.make-test declares, which --dump-tests lists and whose
+# actions --out-xml records. It is a type of its own, so that no generator of
+# RUN's reaches it, and it is made as RUN is: the program, an EXE, is driven
+# by drive-and-check into <name>.driven, which testing.expect-success turns
+# into <name>.test when it was written.
+type.register DRIVEN : driven ;
+type.register DRIVE : : TEST ;
+generators.register-standard webcpp-drive.drive-and-check : EXE : DRIVEN ;
+generators.register-standard testing.expect-success : DRIVEN : DRIVE ;
+
+# A driven test's script, a file beside its Jamfile, bound in the action as
+# testing.run binds its input files; the words of the original and the
+# arguments, and the test's key, which a message names it by.
+feature.feature webcpp-drive-script : : free dependency ;
+feature.feature webcpp-drive : : free incidental ;
+toolset.flags webcpp-drive.drive-and-check SCRIPT <webcpp-drive-script> ;
+
+# webcpp.drive <name> : <sources> + : <requirements> * : <script>
+#   : <argument> * ; the test <name>. original is the words of the
+# Jamfile's webcpp.original, and only what builds the program for its
+# targets alone (webcpp.jam's filter).
+rule drive ( found + : name : sources + : requirements * : script : arguments * : original +
+    : only * )
+{
+    local key = $(found[3])/$(name) ;
+    .shown.$(key) = "webcpp.drive $(name) in $(found[4])" ;
+    .original.$(key) = $(original) ;
+    .arguments.$(key) = $(arguments) ;
+    if ! [ path.glob $(found[2]) : $(script) ]
+    {
+        errors.user-error "$(.shown.$(key)): there is no $(script) beside it, which"
+            "webcpp.drive runs" ;
+    }
+    testing.make-test drive : $(sources)
+      : $(requirements) $(only) <webcpp-drive-script>$(script) <webcpp-drive>$(key)
+        <dependency>node-modules
+      : $(name) ;
+    $(found[1]).mark-target-as-always $(name) ;
+}
+
+# The original's words and the arguments of the test, which the action
+# places around the script and the program.
+rule drive-and-check ( target : source : properties * )
+{
+    # As testing.capture-output does: the file a dependency feature names is
+    # bound before the target is built.
+    DEPENDS $(target) : [ on $(target) return $(SCRIPT) ] ;
+    local key = [ feature.get-values <webcpp-drive> : $(properties) ] ;
+    ORIGINAL on $(target) = $(.original.$(key)) ;
+    ARGUMENTS on $(target) = $(.arguments.$(key)) ;
+}
+
+# The program is the first file of the EXE, its JavaScript on emscripten,
+# beside which Emscripten writes its .wasm. What the script prints is the
+# action's output, which b2 shows and --out-xml records; the target is
+# written only once the script exits with 0.
+actions drive-and-check bind SCRIPT
+{
+    set -e
+    "$(ORIGINAL)" "$(SCRIPT)" "$(ARGUMENTS)" "$(>[1])"
+    echo driven > "$(<)"
+}

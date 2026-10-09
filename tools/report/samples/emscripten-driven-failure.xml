@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<build format="1.0" version="5.5.3"> 
+  <directory><![CDATA[$TMPDIR/webcpp run g4txgl6x/webcpp scratch 6tihxbix]]></directory> 
+  <command><![CDATA["b2" "--user-config=$TMPDIR/webcpp run g4txgl6x/webcpp scratch 6tihxbix/.local/user-config.jam" "-a" "--dump-tests" "--out-xml=emscripten-driven-failure.xml" "toolset=emscripten" "libs/browser_demo/test/driver//driver"]]></command> 
+  <targets> 
+    <target> 
+      <name><![CDATA[.//boost_version.o]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[.//tools/test/boost_version.cpp]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none]]></path> 
+      <jam-target><![CDATA[<pbin/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>boost_version.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/browser_demo/test/driver//node-modules.stamp]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/browser_demo/test/driver//package-lock.json]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[$TMPDIR/webcpp run g4txgl6x/webcpp scratch 6tihxbix/bin/libs/browser_demo/test/driver]]></path> 
+      <jam-target><![CDATA[<p$TMPDIR/webcpp run g4txgl6x/webcpp scratch 6tihxbix/bin/libs/browser_demo/test/driver>node-modules.stamp]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/browser_demo/test/driver//driven.o]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/browser_demo/test/driver//driven.cpp]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none]]></path> 
+      <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.o]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/browser_demo/test/driver//driven.js]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/browser_demo/test/driver//driven.o]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none]]></path> 
+      <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.js]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/browser_demo/test/driver//driven.driven]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/browser_demo/test/driver//driven.js]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none]]></path> 
+      <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.driven]]></jam-target> 
+    </target> 
+    <target> 
+      <name><![CDATA[libs/browser_demo/test/driver//driven.test]]></name> 
+      <dependencies> 
+        <dependency><![CDATA[libs/browser_demo/test/driver//driven.driven]]></dependency> 
+      </dependencies> 
+      <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none]]></path> 
+      <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.test]]></jam-target> 
+    </target> 
+  </targets> 
+  <test type="COMPILE" name="browser_demo/alone-browser_demo"> 
+    <target><![CDATA[libs/browser_demo/test//alone-browser_demo.test]]></target> 
+  </test> 
+  <test type="RUN" name="browser_demo/reads"> 
+    <target><![CDATA[libs/browser_demo/test//reads.test]]></target> 
+    <source><![CDATA[libs/browser_demo/test/reads_test.cpp]]></source> 
+  </test> 
+  <test type="RUN" name="browser_demo/catches"> 
+    <target><![CDATA[libs/browser_demo/test//catches.test]]></target> 
+    <source><![CDATA[libs/browser_demo/test/catches_test.cpp]]></source> 
+  </test> 
+  <test type="RUN" name="browser_demo/pointer"> 
+    <target><![CDATA[libs/browser_demo/test//pointer.test]]></target> 
+    <source><![CDATA[libs/browser_demo/test/pointer_test.cpp]]></source> 
+  </test> 
+  <test type="RUN" name="browser_demo/json"> 
+    <target><![CDATA[libs/browser_demo/test//json.test]]></target> 
+    <source><![CDATA[libs/browser_demo/test/json_test.cpp]]></source> 
+  </test> 
+  <test type="RUN_FAIL" name="browser_demo/fails"> 
+    <target><![CDATA[libs/browser_demo/test//fails.test]]></target> 
+    <source><![CDATA[libs/browser_demo/test/fails_test.cpp]]></source> 
+  </test> 
+  <test type="DRIVE" name="browser_demo/driven"> 
+    <target><![CDATA[libs/browser_demo/test/driver//driven.test]]></target> 
+    <source><![CDATA[libs/browser_demo/test/driver/driven.cpp]]></source> 
+  </test> 
+  <action status="0" start="2026-10-09 03:06:46.212739000 +0000" end="2026-10-09 03:06:46.380793000 +0000" user="0.001328" system="0.002144"> 
+    <name><![CDATA[webcpp-oracle%npm-ci]]></name> 
+    <jam-target><![CDATA[<p$TMPDIR/webcpp run g4txgl6x/webcpp scratch 6tihxbix/bin/libs/browser_demo/test/driver>node-modules.stamp]]></jam-target> 
+    <path><![CDATA[$TMPDIR/webcpp run g4txgl6x/webcpp scratch 6tihxbix/bin/libs/browser_demo/test/driver/node-modules.stamp]]></path> 
+    <command><![CDATA[
+    set -e
+    "python3" "$TMPDIR/webcpp run g4txgl6x/webcpp scratch 6tihxbix/tools/node/install.py" "$TMPDIR/webcpp run g4txgl6x/webcpp scratch 6tihxbix/libs/browser_demo/test/driver"
+    touch "$TMPDIR/webcpp run g4txgl6x/webcpp scratch 6tihxbix/bin/libs/browser_demo/test/driver/node-modules.stamp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 03:06:46.381032000 +0000" end="2026-10-09 03:06:46.462874000 +0000" user="0.054931" system="0.020229"> 
+    <name><![CDATA[emscripten%emscripten.compile.c++]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.o]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.o]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-fstn3_q1/local/emscripten/em++"   -std=c++20 -fwasm-exceptions -O0 -fno-inline -Wall -Wextra -Werror -g -m32 --system-header-prefix="boost/" -DBOOST_ALL_NO_LIB   -I"/opt/homebrew/opt/boost/include" -I"libs/browser_demo/include"  -c -o "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.o" "libs/browser_demo/test/driver/driven.cpp"
+]]></command> 
+  </action> 
+  <action status="0" start="2026-10-09 03:06:46.463200000 +0000" end="2026-10-09 03:06:46.719071000 +0000" user="0.258753" system="0.054956"> 
+    <name><![CDATA[emscripten%emscripten.link]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.js]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.js]]></path> 
+    <command><![CDATA[
+    "$TMPDIR/webcpp-local-fstn3_q1/local/emscripten/em++"    -o "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.js" -Wl,--start-group "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.o"  -Wl,-Bstatic  -Wl,-Bdynamic  -Wl,--end-group -std=c++20 -g -m32 -fwasm-exceptions 
+]]></command> 
+  </action> 
+  <action status="1" start="2026-10-09 03:06:46.719401000 +0000" end="2026-10-09 03:06:46.752363000 +0000" user="0.023243" system="0.007551"> 
+    <name><![CDATA[webcpp-drive%webcpp-drive.drive-and-check]]></name> 
+    <jam-target><![CDATA[<pbin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none>driven.driven]]></jam-target> 
+    <path><![CDATA[bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.driven]]></path> 
+    <command><![CDATA[
+    set -e
+    "node" "libs/browser_demo/test/driver/drive.mjs" "--program" "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.js"
+    echo driven > "bin/libs/browser_demo/test/driver/driven.test/emscripten-6.0.11/debug/address-model-32/cxxstd-20-iso/link-static/target-os-none/driven.driven"
+]]></command> 
+  </action> 
+</build>

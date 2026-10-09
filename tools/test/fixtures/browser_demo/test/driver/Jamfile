@@ -1,0 +1,16 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+import webcpp ;
+
+webcpp.targets native emscripten ;
+
+# drive.mjs runs the program, with node on emscripten, and passes when it
+# prints ready: a test that only a script of node's can drive, in its own
+# lane on both targets.
+webcpp.original node ;
+webcpp.drive driven : driven.cpp : : drive.mjs : --program ;
+webcpp.lane driver : driven : native emscripten ;

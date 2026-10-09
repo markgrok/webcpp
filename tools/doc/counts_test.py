@@ -7,12 +7,13 @@
 
 """Checks tools/doc/counts.py: the fixture demo counts its examples and its tests per target, its
 Boost.Test suite and its headers compiled alone, from the programs b2 recorded; the fixture
-component_demo counts its served programs, as tests and on their own; the fixture oracle_demo counts
-its agreeing, divergent and without-twin programs from twins.py --list, which runs no twin; a
-library's own doc/counts.py adds its counts, its standard error shown and never counted, and fails
-the count when it names a generic one, counts nothing, prints nothing or fails; and so does a
-library that declares twins and has none. Each case copies a fixture library into a scratch
-directory. Run with the names of some cases to run only those."""
+component_demo counts its served programs, as tests and on their own; the fixture browser_demo
+counts its link-only program and its driven test, as tests and on their own; the fixture
+oracle_demo counts its agreeing, divergent and without-twin programs from twins.py --list, which
+runs no twin; a library's own doc/counts.py adds its counts, its standard error shown and never
+counted, and fails the count when it names a generic one, counts nothing, prints nothing or fails;
+and so does a library that declares twins and has none. Each case copies a fixture library into a
+scratch directory. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -60,6 +61,16 @@ DEMO_COUNTS = {
     'n-served-emscripten': '0',
     'n-served-wasip2': '0',
     'n-served-wasip3': '0',
+    'n-linked': '0',
+    'n-linked-native': '0',
+    'n-linked-emscripten': '0',
+    'n-linked-wasip2': '0',
+    'n-linked-wasip3': '0',
+    'n-driven': '0',
+    'n-driven-native': '0',
+    'n-driven-emscripten': '0',
+    'n-driven-wasip2': '0',
+    'n-driven-wasip3': '0',
     'n-boost-test-suites': '1',
     'n-headers': '2',
 }
@@ -73,6 +84,20 @@ COMPONENT_PROGRAMS = (
     'serve answers wasip2 wasip3',
     'serve hello wasip2',
     'headers-alone alone-component_demo native',
+)
+
+# The programs of browser_demo's test, driver and example Jamfiles, as tools/webcpp.jam records
+# them: a link-only program and a driven test among them.
+BROWSER_PROGRAMS = (
+    'headers-alone alone-browser_demo native emscripten',
+    'run reads native emscripten',
+    'run catches native emscripten',
+    'run pointer native emscripten',
+    'run json native emscripten',
+    'run-fail fails native emscripten',
+    'drive driven native emscripten',
+    'example hello native emscripten',
+    'link page emscripten',
 )
 
 ORACLE_PROGRAMS = (
@@ -201,6 +226,32 @@ def test_served_programs_are_tests_and_counted(root: Path) -> None:
           'tools/doc/counts.py')
 
 
+def test_linked_and_driven_programs_are_tests_and_counted(root: Path) -> None:
+    # A link-only program (webcpp.link) and a driven test (webcpp.drive) are tests of their
+    # targets, each counted on its own too.
+    found = counted(count(library(root, 'browser_demo'), BROWSER_PROGRAMS))
+    assert {name: found[name] for name in found
+            if any(kind in name for kind in ('tests', 'linked', 'driven'))} == {
+        'n-tests': '8',
+        'n-tests-native': '7',
+        'n-tests-emscripten': '8',
+        'n-tests-wasip2': '0',
+        'n-tests-wasip3': '0',
+        'n-linked': '1',
+        'n-linked-native': '0',
+        'n-linked-emscripten': '1',
+        'n-linked-wasip2': '0',
+        'n-linked-wasip3': '0',
+        'n-driven': '1',
+        'n-driven-native': '1',
+        'n-driven-emscripten': '1',
+        'n-driven-wasip2': '0',
+        'n-driven-wasip3': '0',
+    }, found
+    assert (found['n-examples'], found['n-examples-emscripten'], found['n-headers']) == (
+        '1', '1', '1'), found
+
+
 def test_headers_are_those_compiled_alone(root: Path) -> None:
     # n-headers counts what webcpp.headers-alone recorded, one program per header, and reads no
     # header itself: the tree's headers are b2's to find.
@@ -291,6 +342,7 @@ CASES = [
     test_headers_are_those_compiled_alone,
     test_a_compile_diagnostic_is_a_test,
     test_served_programs_are_tests_and_counted,
+    test_linked_and_driven_programs_are_tests_and_counted,
     test_library_counts_are_added,
     test_library_count_named_as_a_generic_one_fails,
     test_library_count_of_nothing_fails,

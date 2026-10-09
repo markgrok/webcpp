@@ -13,8 +13,10 @@ it is not there; `b2 doc` builds the index page from every library's meta/librar
 linking each page in the tree, or, with -sWEBCPP_INDEX=site, where the site serves it, and fails
 on a library whose doc Jamfile declares no page, or one that is not there; a page
 shows the counts its build computes, of the programs b2 recorded and of the twins of the fixture
-library oracle_demo, whose divergent twin's output the page must show; and a page's link into
-another library's page, in either layout, is checked against that page, built first; the
+library oracle_demo, whose divergent twin's output the page must show, and of the link-only
+program of the fixture library browser_demo, whose code the page must show, and of its driven
+test; and a page's link into another library's page, in either layout, is checked against that
+page, built first; the
 reference of the fixture library component_demo parses natively, with the requirements its doc
 Jamfile gives, the header of its world, which builds only for WASI, documents it and fails on an
 undocumented function of it, and without those requirements fails naming the header; the Doc
@@ -26,7 +28,8 @@ of a file the superproject's git tracks, at {webcpp-root}, and fails on one it d
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is; the cases of
-twins and links add oracle_demo beside it, and the case of WASI component_demo. Run with the
+twins and links add oracle_demo beside it, the case of WASI component_demo, and the case of
+link-only and driven programs browser_demo. Run with the
 names of some cases to run only those.
 """
 
@@ -483,6 +486,34 @@ def test_page_shows_the_counts_of_its_programs(root):
                    'webcpp.doc demo: tools/doc/counts.py could not count')
 
 
+def add_browser_demo(root: Path) -> None:
+    """Places the fixture library browser_demo beside demo in the scratch superproject root, a git
+    repository of its own too."""
+    shutil.copytree(harness.FIXTURES / 'browser_demo', root / 'libs/browser_demo',
+                    ignore=harness.built)
+    subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=root / 'libs/browser_demo',
+                   check=True)
+
+
+def test_page_shows_its_linked_and_driven_programs(root):
+    # browser_demo links page and never runs it, and drives driven in its own lane: both are
+    # counted among its tests and on their own, and the page must show page's code, which
+    # doc-check is given from the example Jamfile. No emscripten is needed to count them.
+    prepare(root)
+    add_browser_demo(root)
+    harness.expect(harness.run_b2(root, 'libs/browser_demo/doc'), True)
+    text = page_text(root, 'libs/browser_demo/doc/html/index.html')
+    assert ('browser_demo has 1 example and 8 tests: 7 built natively and 8 for emscripten. Among '
+            'them, 1 is linked for emscripten and never run, and 1 is driven by a script that '
+            'node runs, on both targets.') in text, text
+    source = 'libs/browser_demo/doc/browser_demo.adoc'
+    edit(root, source, '[source]\n----\ninclude::{examples}/page.cpp[tag=page]\n----\n', '')
+    page = root / 'libs/browser_demo/example/page.cpp'
+    harness.expect(harness.run_b2(root, 'libs/browser_demo/doc'), False,
+                   f'{page.resolve()}: the page does not show the code of this program, which '
+                   'is linked')
+
+
 def test_page_shows_twins_and_their_counts(root):
     prepare(root)
     add_oracle_demo(root)
@@ -792,6 +823,7 @@ CASES = [
     test_page_includes_a_file_of_the_superproject,
     test_page_shows_the_counts_of_its_programs,
     test_page_shows_twins_and_their_counts,
+    test_page_shows_its_linked_and_driven_programs,
     test_links_between_pages,
     test_links_into_two_pages,
     test_reference_reads_a_header_built_only_for_wasi,

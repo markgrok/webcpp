@@ -11,7 +11,8 @@ Usage: record_samples.py [NAME ...]
 
 A sample is what `b2 -a --dump-tests --out-xml=FILE` writes, run with the arguments of a lane (the
 Jamroot's lane command) in a scratch superproject that holds the fixture library demo, or
-component_demo with this checkout's wit-bindgen and WIT, and whatever SAMPLES plants beside it. It
+component_demo with this checkout's wit-bindgen and WIT, or browser_demo with its emsdk, and
+whatever SAMPLES plants beside it. It
 is then trimmed of what report.py never reads, and of what would only describe the machine that
 recorded it: the <os> element (uname, which names the host), every <properties> and <sources>
 element, and the actions b2 runs for itself, which have no <name>, when they succeeded (creating a
@@ -43,6 +44,7 @@ SAMPLES = Path(__file__).resolve().parent / 'samples'
 
 NATIVE = ('toolset=clang',)
 WASIP2 = ('toolset=clang-wasip2', 'testing.launcher=wasmtime')
+EMSCRIPTEN = ('toolset=emscripten',)
 
 PLANTED_TESTS = """import webcpp ;
 
@@ -128,6 +130,14 @@ def plant_wrong_transcript(root: Path) -> None:
                     'HTTP/1.1 405 Method Not Allowed')
 
 
+def plant_failing_driver(root: Path) -> None:
+    """Makes the script that drives browser_demo's driven test exit with 1 before it runs the
+    program."""
+    harness.replace(root / 'libs/browser_demo/test/driver/drive.mjs',
+                    "import { spawnSync } from 'node:child_process';\n",
+                    "import { spawnSync } from 'node:child_process';\n\nprocess.exit(1);\n")
+
+
 def plant_odd_output(root: Path) -> None:
     """Adds the library odd, whose test prints what CDATA cannot hold."""
     harness.add_library(root, 'odd', 'import webcpp ;\n\nwebcpp.run prints : prints.cpp ;\n',
@@ -138,7 +148,7 @@ def plant_odd_output(root: Path) -> None:
 class Sample:
     """A lane to record: its toolset arguments, what it builds, what is planted first, and the
     fixture library it is recorded beside, demo, or component_demo, which needs wit-bindgen and
-    the WIT."""
+    the WIT, or browser_demo, which needs the emsdk."""
 
     lane: tuple[str, ...]
     targets: tuple[str, ...]
@@ -171,16 +181,25 @@ SAMPLES_BY_NAME = {
     # The same, its served component answering other than the transcript it expects.
     'wasip2-served-failure': Sample(WASIP2, ('libs/component_demo/test',),
                                     plant_wrong_transcript, fixture='component_demo'),
+    # browser_demo's tests and examples on emscripten, under node, page linked and never run:
+    # all pass.
+    'emscripten-pass': Sample(EMSCRIPTEN, ('libs/browser_demo/test', 'libs/browser_demo/example'),
+                              fixture='browser_demo'),
+    # Its own lane driver on emscripten, the script that drives driven exiting with 1.
+    'emscripten-driven-failure': Sample(EMSCRIPTEN, ('libs/browser_demo/test/driver//driver',),
+                                        plant_failing_driver, fixture='browser_demo'),
 }
 
 
 def scratch(name: str) -> Path:
     """A scratch superproject in which the sample name is recorded: with its fixture library,
-    and, for component_demo, this checkout's wit-bindgen and WIT."""
+    and, for component_demo, this checkout's wit-bindgen and WIT, for browser_demo its emsdk."""
     fixture = SAMPLES_BY_NAME[name].fixture
     root = harness.scratch_superproject(fixture)
     if fixture == 'component_demo':
         harness.link_wasi_tools(root)
+    if fixture == 'browser_demo':
+        harness.link_emsdk(root)
     return root
 
 

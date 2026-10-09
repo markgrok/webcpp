@@ -1,0 +1,6 @@
+{
+    "name": "browser-demo-driver",
+    "version": "1.0.0",
+    "private": true,
+    "description": "The driver of browser_demo's driven test, which needs no package."
+}

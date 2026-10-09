@@ -9,7 +9,8 @@
 leaves none of its actions running. b2 gives each action a process group of its own, so killing
 b2's group alone would leave them running. Lanes run at once start on a bin that exists, and a
 lane that fails stops the others, with what they started. Run with the names of some cases to run
-only those. b2 gets one environment, without CPATH and its kin, however it is started."""
+only those. b2 gets one environment, without CPATH and its kin, however it is started, with
+Emscripten's cache of the run's own; and a scratch superproject gets the emsdk it is given."""
 
 from __future__ import annotations
 
@@ -193,8 +194,70 @@ def test_every_b2_gets_one_environment(root):
     assert printed == [expected] * 3, printed
 
 
+def test_emscripten_has_one_cache_per_run(root):
+    # Emscripten writes its cache where EM_CACHE names, else inside the emsdk, which is read-only:
+    # every b2 gets the run's own cache, over the shell's, beside the run's scratch superprojects,
+    # made once and shared by the cases, since Emscripten locks it, and named by its resolved
+    # path. Emscripten's sanity check, which a fresh cache would print, is skipped. env_extra may
+    # name another cache.
+    tools = root / 'fake tools'
+    tools.mkdir()
+    (tools / 'b2').write_text(ENVIRONMENT_B2.format(python=sys.executable))
+    (tools / 'b2').chmod(0o755)
+    extra = {'PATH': f'{tools}{os.pathsep}{os.environ["PATH"]}',
+             'SHOWN': 'EM_CACHE EMCC_SKIP_SANITY_CHECK'}
+    cache = harness.emscripten_cache()
+    assert cache == harness.emscripten_cache() and cache.is_dir(), cache
+    assert cache.parent == root.parent.resolve() and cache.name == 'emscripten-cache', (cache, root)
+    saved = os.environ.get('EM_CACHE')
+    os.environ['EM_CACHE'] = str(harness.ROOT / '.local/emscripten-cache')
+    try:
+        printed = harness.run_b2(root, env_extra=extra).stdout
+        given = harness.run_b2(root, env_extra={**extra, 'EM_CACHE': '/elsewhere'}).stdout
+    finally:
+        if saved is None:
+            del os.environ['EM_CACHE']
+        else:
+            os.environ['EM_CACHE'] = saved
+    assert printed == f'EM_CACHE={cache}\nEMCC_SKIP_SANITY_CHECK=1\n', printed
+    assert given == 'EM_CACHE=/elsewhere\nEMCC_SKIP_SANITY_CHECK=1\n', given
+
+
+def test_link_emsdk_links_the_emsdk_it_is_given(root):
+    # A scratch superproject gets the emsdk in its .local: $EMSDK_ROOT, else this checkout's
+    # .local/emsdk, which must hold upstream/emscripten/em++, or the case stops naming it.
+    given = root / 'given emsdk'
+    (given / 'upstream/emscripten').mkdir(parents=True)
+    (given / 'upstream/emscripten/em++').write_text('')
+    empty = root / 'empty emsdk'
+    empty.mkdir()
+    saved = os.environ.get('EMSDK_ROOT')
+    try:
+        os.environ['EMSDK_ROOT'] = str(given)
+        harness.link_emsdk(root)
+        assert (root / '.local/emsdk').resolve() == given.resolve()
+        assert (root / '.local/emsdk/upstream/emscripten/em++').is_file()
+        (root / '.local/emsdk').unlink()
+        os.environ['EMSDK_ROOT'] = str(empty)
+        try:
+            harness.link_emsdk(root)
+        except RuntimeError as error:
+            assert str(error) == (f'no upstream/emscripten/em++ in {empty}: install emsdk there, '
+                                  'or set EMSDK_ROOT'), error
+        else:
+            raise AssertionError('link_emsdk linked an emsdk without em++')
+        assert not (root / '.local/emsdk').exists()
+    finally:
+        if saved is None:
+            os.environ.pop('EMSDK_ROOT', None)
+        else:
+            os.environ['EMSDK_ROOT'] = saved
+
+
 CASES = [
     test_every_b2_gets_one_environment,
+    test_emscripten_has_one_cache_per_run,
+    test_link_emsdk_links_the_emsdk_it_is_given,
     test_a_timeout_stops_every_action,
     test_lanes_start_on_bin_and_a_failure_stops_the_others,
 ]

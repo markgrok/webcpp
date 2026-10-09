@@ -1,0 +1,10 @@
+{
+    "key": "browser_demo",
+    "name": "browser_demo",
+    "authors": ["WebCpp.org"],
+    "description": "A library that declares native and emscripten, which the tests of the build place in libs/browser_demo.",
+    "category": ["Testing"],
+    "maintainers": ["WebCpp.org"],
+    "cxxstd": "20",
+    "port-of": null
+}

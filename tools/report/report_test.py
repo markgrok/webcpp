@@ -5,21 +5,22 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks tools/report/report.py on the samples b2 wrote for lanes over the fixture libraries demo
-and component_demo, and the libraries record_samples.py plants beside them: a lane that passes, its
-failures named by kind with their output a click away, an expected failure told from a real one, an
-empty lane failed by name, and so a library a lane built nothing of, two lanes merged into one
-matrix, input it cannot read or report truthfully refused before anything is written (a lane whose
-name says another target than its toolset builds for, among them), a failure outside every test,
-output that b2's XML cannot hold, and a served component's test that passes and one whose transcript
-differs, a run failure, and a library's own lane on a target, named after the target and the
-library, which its column and its failures show and which it must hold true. One case uses lanes.py
-and pages.py alone; one checks that no sample names the machine's temporary directory; a last one
-records every sample afresh, untrimmed, and checks that the report reads it as it reads the
-committed one. Every page written is checked to be self-contained, to link only to the report's own
-pages, to the site it is served in (its index and each library's page) and to github.com/webcpporg,
-and to name its lane on every lane cell, which a phone shows as a chip. Run with the names of some
-cases to run only those."""
+"""Checks tools/report/report.py on the samples b2 wrote for lanes over the fixture libraries demo,
+component_demo and browser_demo, and the libraries record_samples.py plants beside them: a lane that
+passes, its failures named by kind with their output a click away, an expected failure told from a
+real one, an empty lane failed by name, and so a library a lane built nothing of, two lanes merged
+into one matrix, input it cannot read or report truthfully refused before anything is written (a
+lane whose name says another target than its toolset builds for, among them), a failure outside
+every test, output that b2's XML cannot hold, and a served component's test that passes and one
+whose transcript differs, a run failure, and a library's own lane on a target, named after the
+target and the library, which its column and its failures show and which it must hold true; an
+emscripten lane, its link-only program a link test, and a driven test whose driver fails, a run
+failure. One case uses lanes.py and pages.py alone; one checks that no sample names the machine's
+temporary directory; a last one records every sample afresh, untrimmed, and checks that the report
+reads it as it reads the committed one. Every page written is checked to be self-contained, to link
+only to the report's own pages, to the site it is served in (its index and each library's page) and
+to github.com/webcpporg, and to name its lane on every lane cell, which a phone shows as a chip. Run
+with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -693,6 +694,53 @@ def test_served_test_passes_and_fails_as_a_run(root: Path) -> None:
     check_pages(out)
 
 
+# What an emscripten lane builds of browser_demo, by type: its tests and its example run under
+# node, and page, which webcpp.link links and never runs, is b2's link test.
+BROWSER_TYPES = {
+    'alone-browser_demo': 'compile',
+    'reads': 'run',
+    'catches': 'run',
+    'pointer': 'run',
+    'json': 'run',
+    'fails': 'run-fail',
+    'hello': 'example',
+    'page': 'link',
+}
+
+
+def test_emscripten_lane_and_its_link_and_driven_tests(root: Path) -> None:
+    # An emscripten lane is a lane like any other: its cells are green, and a link-only program
+    # is a test of type link, which passes when it links.
+    out = root / 'passes'
+    result = report(out, ('emscripten', sample('emscripten-pass')))
+    assert result.returncode == 0, outcome(result)
+    assert matrix(out / 'index.html').verdict('browser_demo', 'emscripten') == 'pass'
+    browser = matrix(out / 'browser_demo.html')
+    assert browser.rows() == set(BROWSER_TYPES), browser.rows()
+    for name, kind in BROWSER_TYPES.items():
+        assert browser.cells[(name, 'Type')].text == kind, (name, browser.cells[(name, 'Type')])
+        assert browser.verdict(name, 'emscripten') == 'pass', name
+    check_pages(out)
+    # It is built for emscripten, and a lane named after another target is refused.
+    out = root / 'wasip2'
+    result = report(out, ('wasip2', sample('emscripten-pass')))
+    assert result.returncode == 2, outcome(result)
+    assert 'the lane wasip2 is built with emscripten-' in result.stderr, outcome(result)
+    assert not out.exists()
+    # A driven test whose driver fails is a run failure, whose output holds the driver's.
+    out = root / 'fails'
+    result = report(out, ('emscripten', sample('emscripten-driven-failure')))
+    assert result.returncode == 1, outcome(result)
+    assert result.stderr.splitlines() == ['report: emscripten: browser_demo/driven: run'], (
+        outcome(result))
+    browser = matrix(out / 'browser_demo.html')
+    assert browser.cells[('driven', 'Type')].text == 'drive'
+    assert browser.verdict('driven', 'emscripten') == 'run'
+    output = linked(out / 'browser_demo.html', browser.cells[('driven', 'emscripten')].href)
+    assert 'drive.mjs' in output.text, output.text
+    check_pages(out)
+
+
 def test_lanes_and_pages_work_alone(root: Path) -> None:
     # lanes.py reads and judges a lane, with no page written.
     lane = lanes.read_lane('native', sample('native-failures'))
@@ -784,6 +832,7 @@ CASES = [
     test_a_failure_outside_every_test_fails_the_lane,
     test_output_cdata_cannot_hold_is_shown,
     test_served_test_passes_and_fails_as_a_run,
+    test_emscripten_lane_and_its_link_and_driven_tests,
     test_lanes_and_pages_work_alone,
     test_samples_name_no_temporary_directory,
     test_samples_read_as_b2_writes_them_today,

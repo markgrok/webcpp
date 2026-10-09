@@ -1,0 +1,54 @@
+// Copyright (c) 2026 WebCpp.org
+//
+// Distributed under the Boost Software License, Version 1.0. (See
+// accompanying file LICENSE_1_0.txt or copy at
+// https://www.boost.org/LICENSE_1_0.txt)
+
+= browser_demo: the fixture of a browser's target
+:toc: left
+:toclevels: 2
+:idprefix:
+:sectanchors:
+
+browser_demo is a library that declares native and emscripten, which the tests
+of the build place in `libs/browser_demo` of a scratch superproject.
+
+[#browser_demo-hello]
+== A greeting
+
+A program greets the name its standard input holds:
+
+[source]
+----
+include::{examples}/hello.cpp[tag=hello]
+----
+
+Given `node`, it prints:
+
+[listing]
+----
+include::{examples}/hello.expected[]
+----
+
+[#browser_demo-page]
+== The program of a page
+
+A program for a browser alone is linked, and never run:
+
+[source]
+----
+include::{examples}/page.cpp[tag=page]
+----
+
+[#browser_demo-holds]
+== What it holds
+
+browser_demo has {n-examples} example and {n-tests} tests: {n-tests-native}
+built natively and {n-tests-emscripten} for emscripten. Among them, {n-linked}
+is linked for emscripten and never run, and {n-driven} is driven by a script
+that node runs, on both targets. Its headers, {n-headers}, compile alone.
+
+[#reference]
+== Reference
+
+include::{reference}[leveloffset=+1]

@@ -52,6 +52,9 @@
 # - {twins}, the twins' directory, for a library whose oracle declares
 #   webcpp.twins, which doc-check.py is given too (--twins): the page shows
 #   every divergent twin's own output;
+# - the programs its example Jamfiles link and never run (webcpp.link),
+#   which only doc-check.py is given (--linked): the page shows each one's
+#   code, and none has an output beside it;
 # - the counts tools/doc/counts.py computes as the page is made, {n-examples}
 #   and the others its comment lists: from the programs tools/webcpp.jam
 #   records as it loads the library's test and example Jamfiles (each
@@ -452,6 +455,7 @@ rule doc-check ( targets * : sources * : properties * )
     LIBRARY on $(targets) = ;
     README on $(targets) = ;
     WEBCPP_ROOT on $(targets) = ;
+    LINKED on $(targets) = ;
     if $(id) != index
     {
         local library = $(.root)/libs/$(id) ;
@@ -463,12 +467,13 @@ rule doc-check ( targets * : sources * : properties * )
         LIBRARY on $(targets) = $(id) ;
         README on $(targets) = [ path.native $(library)/README.md ] ;
         WEBCPP_ROOT on $(targets) = [ path.native $(.root) ] ;
+        LINKED on $(targets) = [ modules.call-in webcpp : linked-of $(id) ] ;
     }
 }
 
 actions doc-check
 {
-    "$(PYTHON)" "$(SCRIPT)" --page "$(PAGE)" $(COMPLETE) --examples$(_)"$(EXAMPLES)" --twins$(_)"$(TWINS)" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --readme$(_)"$(README)" --webcpp-root$(_)"$(WEBCPP_ROOT)" "$(SECTIONS)"
+    "$(PYTHON)" "$(SCRIPT)" --page "$(PAGE)" $(COMPLETE) --examples$(_)"$(EXAMPLES)" --twins$(_)"$(TWINS)" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --readme$(_)"$(README)" --webcpp-root$(_)"$(WEBCPP_ROOT)" --linked$(_)"$(LINKED)" "$(SECTIONS)"
 }
 
 # What the oracle of library declares with webcpp.twins, its examples and

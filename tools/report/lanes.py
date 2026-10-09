@@ -42,7 +42,8 @@ KINDS = {
     'linked': 'The program linked, and the test expects it not to.',
     'build': 'A step other than compiling, linking and running failed.',
     'run': 'The program exited with a status other than 0, the example printed other than its '
-           '.expected file, or the served component answered other than its .expected file.',
+           '.expected file, the served component answered other than its .expected file, or the '
+           'script that drives the program exited with a status other than 0.',
     'ran': 'The program exited with status 0, and the test expects another status.',
     'not run': 'b2 did not take it to the end: a target it needs failed, or the lane was not '
                'built from scratch (b2 -a).',
@@ -137,8 +138,8 @@ class Row:
     library: str
     example: bool
     name: str
-    # run, run-fail, compile, compile-fail, serve (b2's type, as webcpp's rule is named), or
-    # example.
+    # run, run-fail, compile, compile-fail, link, serve, drive (b2's type, as webcpp's rule is
+    # named), or example.
     type: str
     # Empty when the lane did not build it.
     builds: list[Build] = field(default_factory=list)
@@ -186,14 +187,17 @@ class Lane:
 
 def step(action: str) -> str:
     """The step an action is, by its rule: compile, link, run, or build for any other. Running
-    a program is b2's capture-output and unit-test, webcpp.example's run-and-compare, and
-    webcpp.serve's serve-and-compare, which serves a component and sends it its requests."""
+    a program is b2's capture-output and unit-test, webcpp.example's run-and-compare,
+    webcpp.serve's serve-and-compare, which serves a component and sends it its requests, and
+    webcpp.drive's drive-and-check, which runs a script over the program. A test of webcpp.link
+    is linked, and then only marked as passed (expect-success), which is no step of its own."""
     words = set(action.rpartition('%')[2].split('.'))
     if 'compile' in words:
         return 'compile'
     if words & {'link', 'archive'}:
         return 'link'
-    if words & {'capture-output', 'run-and-compare', 'unit-test', 'serve-and-compare'}:
+    if words & {'capture-output', 'run-and-compare', 'unit-test', 'serve-and-compare',
+                'drive-and-check'}:
         return 'run'
     return 'build'
 

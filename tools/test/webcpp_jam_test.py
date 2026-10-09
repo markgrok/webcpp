@@ -16,7 +16,8 @@ passes only on the error it states, and is skipped on a toolset that is not clan
 `b2 declared-targets` lists what each library declares; a lane of a library's own is listed once per
 target it runs on, which must be one its Jamfile declares, what it names leaves the ordinary lanes,
 a build of it for another target stops by name, and every served program runs in one on every target
-it is served on; a Boost.Test suite is built and run natively only, its framework always with
+it is served on; the programs of a library are recorded by kind, a link-only program and a driven
+test among them; a Boost.Test suite is built and run natively only, its framework always with
 exceptions; Boost.JSON's definitions link on every target; and every program sees C++20 and
 exceptions, on every target. Each case builds a scratch superproject with the fixture library demo.
 Run with the names of some cases to run only those."""
@@ -455,7 +456,7 @@ def test_every_served_program_runs_in_an_own_lane(root):
          'webcpp.lane that names its targets'),
         # A lane on wasip2 alone would drop wasip3 without a word.
         ('webcpp.lane http : answers by_script : wasip2 ;\n',
-         'webcpp.serve answers.cpp in libs/web/test/Jamfile is served on wasip3, which no own '
+         'webcpp.serve answers.cpp in libs/web/test/Jamfile is built for wasip3, which no own '
          'lane that names it runs on'),
     ):
         jamfile.write_text(text.replace(
@@ -467,6 +468,43 @@ def test_every_served_program_runs_in_an_own_lane(root):
                                     'webcpp.lane p2 : answers by_script : wasip2 ;\n'
                                     'webcpp.lane p3 : answers by_script : wasip3 ;\n'))
     harness.expect(harness.run_b2(root, '-d0', 'declared-lanes'), True)
+
+
+# A target of the scratch superproject's Jamroot that prints what webcpp.jam records of the programs
+# of a library, as tools/doc/doc.jam gives them to counts.py.
+SHOW_PROGRAMS = """
+rule show-programs ( targets * : sources * : properties * )
+{
+    for local program in [ webcpp.programs-of browser_demo ]
+    {
+        ECHO $(program) ;
+    }
+}
+notfile show-programs : @show-programs : : <webcpp-boost-check>off ;
+explicit show-programs ;
+"""
+
+
+def test_programs_of_records_link_and_drive(root):
+    # A link-only program is recorded with the kind link, on its targets, and a driven test with
+    # the kind drive, so that the page's counts see them.
+    shutil.copytree(harness.FIXTURES / 'browser_demo', root / 'libs/browser_demo',
+                    ignore=harness.built)
+    jamroot = root / 'Jamroot'
+    jamroot.write_text(jamroot.read_text() + SHOW_PROGRAMS)
+    result = harness.run_b2(root, '-d0', 'show-programs')
+    harness.expect(result, True)
+    assert sorted(result.stdout.splitlines()) == [
+        'drive driven native emscripten',
+        'example hello native emscripten',
+        'headers-alone alone-browser_demo native emscripten',
+        'link page emscripten',
+        'run catches native emscripten',
+        'run json native emscripten',
+        'run pointer native emscripten',
+        'run reads native emscripten',
+        'run-fail fails native emscripten',
+    ], result.stdout
 
 
 def test_example_mismatch_fails_naming_the_program(root):
@@ -901,6 +939,7 @@ CASES = [
     test_a_lanes_programs_leave_the_ordinary_lanes,
     test_a_lane_built_for_another_target_fails_by_name,
     test_every_served_program_runs_in_an_own_lane,
+    test_programs_of_records_link_and_drive,
     test_example_mismatch_fails_naming_the_program,
     test_example_reads_its_input,
     test_example_input_change_reruns,

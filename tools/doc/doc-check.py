@@ -57,7 +57,10 @@ whole: every block's language is one of the page's, C++, JavaScript, JSON or she
 reads it; its C++ is included from the example programs, the reference's synopses being MrDocs's;
 it shows JavaScript only as an include of a twin; it shows every example's code or output, and
 every output of a twin, each a difference from the original that the page explains; and it shows
-the reference, `include::{reference}[leveloffset=+1]`.
+the reference, `include::{reference}[leveloffset=+1]`. Each `--linked <program.cpp>`, a program
+under `--examples` that webcpp.link links and never runs, which webcpp.doc gives from the library's
+example Jamfiles, is shown by an include of its code, with --complete; and an `.expected` beside
+one is a fault in any case, since it prints nothing that is compared.
 
 And the rendered page, given alone with `--rendered`, shows no cross-reference left as text,
 `&lt;&lt;id&gt;&gt;`, outside its blocks of code, inline code included; no literal `++` outside
@@ -78,7 +81,8 @@ libraries whose pages the library's files refer to, one per line: the pages the 
 first; none outside a git checkout, or without git.
 
 Usage: doc-check.py --page <page.adoc> [--examples <dir>] [--twins <dir>] [--repository <dir>]
-[--library <name>] [--readme <README.md>] [--webcpp-root <dir>] [--complete] <section.adoc>...;
+[--library <name>] [--readme <README.md>] [--webcpp-root <dir>] [--linked <program.cpp>]...
+[--complete] <section.adoc>...;
 doc-check.py
 --rendered <page.html> [--repository <dir> --library <name>] [--webcpp-libs <path> --webcpp-page
 <path>] [--linked-page <page.html>]...; or doc-check.py
@@ -976,9 +980,16 @@ def examples_of(directory: Path | None) -> Iterator[Path]:
             yield program
 
 
-def completeness_faults(page: Path, sections: list[Path], library: Library) -> list[str]:
-    """Each example and each twin's output the page does not show, and the reference when the
-    page does not show it."""
+def linked_faults(linked: list[Path]) -> list[str]:
+    """Each program webcpp.link links that has an output beside it, which nothing compares."""
+    return [f'{program} is linked, never run: it has no output to compare'
+            for program in linked if program.with_suffix('.expected').is_file()]
+
+
+def completeness_faults(page: Path, sections: list[Path], library: Library,
+                        linked: list[Path]) -> list[str]:
+    """Each example and each twin's output the page does not show, each linked program whose
+    code it does not show, and the reference when the page does not show it."""
     shown = set()
     references = []
     for section in sections:
@@ -990,6 +1001,12 @@ def completeness_faults(page: Path, sections: list[Path], library: Library) -> l
             if include is not None and include.group(1) == REFERENCE:
                 references.append((section, number, attributes(include.group(2))))
     found = []
+    for program in linked:
+        assert library.examples is not None
+        name = program.relative_to(library.examples).with_suffix('').as_posix()
+        if ('examples', name, 'cpp') not in shown:
+            found.append(f'{program}: the page does not show the code of this program, which is '
+                         'linked')
     for program in examples_of(library.examples):
         assert library.examples is not None
         name = program.relative_to(library.examples).with_suffix('').as_posix()
@@ -1100,10 +1117,11 @@ def page_check(arguments: argparse.Namespace) -> list[str]:
         found += see_faults(files, titles(reached_sections))
     if arguments.readme is not None:
         found += readme_faults(arguments.readme)
+    found += linked_faults(arguments.linked)
     if arguments.complete:
         for section in sections:
             found += block_faults(section)
-        found += completeness_faults(page, reached_sections, library)
+        found += completeness_faults(page, reached_sections, library, arguments.linked)
     return found
 
 
@@ -1118,6 +1136,7 @@ def main() -> int:
     parser.add_argument('--readme', type=Path)
     parser.add_argument('--webcpp-root', type=Path)
     parser.add_argument('--complete', action='store_true')
+    parser.add_argument('--linked', type=Path, action='append', default=[])
     parser.add_argument('--rendered', type=Path)
     parser.add_argument('--webcpp-libs')
     parser.add_argument('--webcpp-page')
@@ -1127,7 +1146,7 @@ def main() -> int:
     arguments = parser.parse_args()
     of_the_page = (arguments.sections or arguments.page or arguments.examples or
                    arguments.twins or arguments.readme or arguments.complete or
-                   arguments.webcpp_root is not None)
+                   arguments.linked or arguments.webcpp_root is not None)
     of_the_rendered = (arguments.webcpp_libs is not None or arguments.webcpp_page is not None or
                        arguments.linked_page)
     if arguments.linked_libraries:
@@ -1155,6 +1174,10 @@ def main() -> int:
             parser.error('--webcpp-libs, --webcpp-page and the linked pages are --rendered\'s')
         if not (arguments.page and arguments.sections):
             parser.error('--page and at least one section are required')
+        for program in arguments.linked:
+            if arguments.examples is None or not program.is_relative_to(arguments.examples):
+                parser.error(f'--linked {program} is not under --examples: a linked program is '
+                             'one of the examples')
         found = page_check(arguments)
     for fault in found:
         print(fault)

@@ -7,14 +7,17 @@
 """Runs b2 on scratch copies of the superproject, for the tests of the build itself.
 
 A scratch superproject is the superproject's own files, without what is local, built or a
-library, plus the fixture libraries a test places under its libs/. It lives under $TMPDIR in a
-directory whose name contains a space, so every test also proves that such a checkout builds.
-run_cases runs a test file's cases, each on a scratch superproject of its own.
+library, plus the fixture libraries a test places under its libs/. It lives in the run's own
+directory under $TMPDIR, whose name contains a space, as its own does, so every test also proves
+that such a checkout builds. run_cases runs a test file's cases, each on a scratch superproject of
+its own. Every b2 gets Emscripten's cache of the run's own, beside its scratch superprojects.
 """
 
 from __future__ import annotations
 
+import atexit
 import contextlib
+import functools
 import os
 import re
 import shutil
@@ -59,10 +62,42 @@ def user_config(root: Path) -> Path:
                        'and WEBCPP_USER_CONFIG is not set')
 
 
+@functools.cache
+def run_directory() -> Path:
+    """The directory under $TMPDIR, whose name contains a space, that holds every scratch
+    superproject of this run, and Emscripten's cache: made once, and removed when the run ends."""
+    directory = Path(tempfile.mkdtemp(prefix='webcpp run '))
+    atexit.register(shutil.rmtree, directory, True)
+    return directory
+
+
+def emscripten_cache() -> Path:
+    """Emscripten's cache for every b2 of this run, beside its scratch superprojects: Emscripten
+    writes it where EM_CACHE names, else inside the emsdk, which may be read-only. One per run,
+    made once and shared by its cases, since Emscripten locks it; and never the checkout's
+    .local/emscripten-cache, which a test would otherwise write.
+
+    It is named by its resolved path: Emscripten 6.0.11 builds a system library from a relative
+    path it computes from EM_CACHE as given, which misses its sources by one directory when the
+    cache is reached through a link, as macOS's $TMPDIR is (/var is /private/var)."""
+    cache = run_directory() / 'emscripten-cache'
+    cache.mkdir(exist_ok=True)
+    return cache.resolve()
+
+
 def b2_environment(env_extra: Mapping[str, str | None] | None = None) -> dict[str, str]:
     """The environment every b2 of the harness runs in: this process's, without CPATH and its kin,
-    with env_extra's variables added, a value of None removing its variable instead."""
+    and with EM_CACHE the run's own cache over the shell's, with env_extra's variables added, a
+    value of None removing its variable instead.
+
+    EMCC_SKIP_SANITY_CHECK=1 keeps Emscripten from checking its configuration when it first meets
+    the cache, which a fresh cache does in every run: the check prints "Running sanity checks" in
+    the output of the b2 that configures the toolset, which a test compares whole (b2 -d0
+    declared-targets), and its one other use, clearing a cache of another toolchain, has nothing
+    to clear in a cache of the run's own."""
     env = {name: value for name, value in os.environ.items() if name not in COMPILER_PATHS}
+    env['EM_CACHE'] = str(emscripten_cache())
+    env['EMCC_SKIP_SANITY_CHECK'] = '1'
     for name, value in (env_extra or {}).items():
         if value is None:
             env.pop(name, None)
@@ -198,7 +233,8 @@ def ignored_by_git(top: Path, names: list[str]) -> set[str]:
 
 
 def copy_tree(src: Path) -> Path:
-    """Copies src to a new directory under $TMPDIR whose path contains a space, and returns it.
+    """Copies src to a new directory of the run's own, whose path contains a space, and returns
+    it.
 
     Only src's user-config.jam comes from its .local/, so that the copy builds with the same
     toolsets without copying the toolchains themselves.
@@ -211,7 +247,7 @@ def copy_tree(src: Path) -> Path:
         return (built(directory, names) | {name for name in names if name in TOP_IGNORED}
                 | ignored_by_git(top, names))
 
-    scratch = Path(tempfile.mkdtemp(prefix='webcpp scratch '))
+    scratch = Path(tempfile.mkdtemp(prefix='webcpp scratch ', dir=run_directory()))
     shutil.copytree(top, scratch, ignore=left_out, symlinks=True, dirs_exist_ok=True)
     config = top / '.local/user-config.jam'
     if config.is_file():
@@ -245,6 +281,19 @@ def link_wasi_tools(root: Path) -> None:
                                f'{variable}')
         (root / '.local').mkdir(exist_ok=True)
         (root / '.local' / name).symlink_to(source.resolve())
+
+
+def link_emsdk(root: Path) -> None:
+    """Gives the scratch superproject root, in its .local, the emsdk that a copy leaves out: a link
+    to $EMSDK_ROOT, else to this checkout's .local/emsdk, which must hold
+    upstream/emscripten/em++."""
+    configured = os.environ.get('EMSDK_ROOT')
+    source = Path(configured) if configured else ROOT / '.local/emsdk'
+    if not (source / 'upstream/emscripten/em++').is_file():
+        raise RuntimeError(f'no upstream/emscripten/em++ in {source}: install emsdk there, or set '
+                           'EMSDK_ROOT')
+    (root / '.local').mkdir(exist_ok=True)
+    (root / '.local/emsdk').symlink_to(source.resolve())
 
 
 # A line of a user-config.jam that configures Boost.

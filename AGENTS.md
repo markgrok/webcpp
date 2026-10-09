@@ -83,12 +83,14 @@ webcpp/
     component/        component.jam, the rules of a WebAssembly component (webcpp.wit-bindings,
                       webcpp.serve, webcpp.serve-script), and serve.py, which serves one with
                       wasmtime and compares its answers, and its test
+    drive/            drive.jam, the rule of a driven test (webcpp.drive), which a script of the
+                      original's language runs over a linked program
     node/             install.py, which installs the Node packages of the documentation, an
                       oracle and the lint once per lockfile, and its test
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
     test/             the tests of the Jamroot, webcpp.jam, the oracle's rules, the component
-                      rules and the doc build, their harness, and the fixture libraries demo,
-                      oracle_demo and component_demo
+                      rules, the emscripten target and the doc build, their harness, and the
+                      fixture libraries demo, oracle_demo, component_demo and browser_demo
     ci/               matrix.py (the lanes), assemble.py (the site), download.sh, wasi-sdk.jam
                       (the lines that register the WASI toolsets), and
                       actions/{boost,wasi-sdk,wasmtime,wit-bindgen,wasi-wit,mrdocs,node}/
@@ -153,7 +155,9 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
 - for the lint: wasi-sdk 34's clang-format and clang-tidy, Node, the wasip2
   and wasip3 toolsets, and wit-bindgen and the WIT, since it reads what those
   toolsets compile;
-- later: Emscripten for trystero, and OpenSSL for trystero natively.
+- for emscripten: Emscripten 6.0.11, from emsdk, and Node, which runs its
+  programs; the tests of the build need it too;
+- later: OpenSSL for trystero natively.
 
 Each toolchain is installed by hand and configured in `user-config.jam`,
 until webcpp bundles the toolchains (chapter 13). b2 reads
@@ -224,8 +228,12 @@ file `$WEBCPP_USER_CONFIG` names, and stop with an error when neither
 exists (`tools/test/harness.py`); a test that needs wit-bindgen and the WIT
 links `.local/wit-bindgen`, `.local/wasi-wit` and `.local/wasi-sdk`, or the
 directories `$WIT_BINDGEN_ROOT`, `$WASI_WIT_ROOT` and `$WASI_SDK` name, into
-its scratch copy, and
-one that needs MrDocs `.local/mrdocs`, or `$MRDOCS_ROOT`. The doc build
+its scratch copy, one that needs Emscripten `.local/emsdk`, or `$EMSDK_ROOT`,
+and
+one that needs MrDocs `.local/mrdocs`, or `$MRDOCS_ROOT`. Emscripten writes its
+cache where `EM_CACHE` names, else inside the emsdk: every b2 of a test gets
+the cache of its run, beside its scratch copies, by its resolved path, over
+the shell's `EM_CACHE`, so that no test writes `.local/emscripten-cache`. The doc build
 finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when
 told: `b2 --user-config=.local/user-config.jam ...`.
 
@@ -241,6 +249,7 @@ told: `b2 --user-config=.local/user-config.jam ...`.
 | `b2 libs/<name>/test//<test>` | one test, while working on it (`scheduler`) |
 | `b2 libs/<name>/doc//reference` | one library's API reference alone, MrDocs strict |
 | `b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test libs/<name>/example` | the same for wasm32-wasip2; `clang-wasip3` for wasm32-wasip3; one toolset per command |
+| `b2 toolset=emscripten libs/<name>/test libs/<name>/example` | the same for emscripten, whose programs b2's toolset runs with node itself: never with a `testing.launcher` (chapter 9) |
 | `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/` |
 | `b2 declared-targets -d0` | prints each `<library> <target>` pair the libraries declare: the CI's lanes |
 | `b2 declared-lanes -d0` | prints each `<library> <lane> <directory>` line of a library's own lanes, such as its oracle's, and `<library> <lane> <directory> <target>` once per target for a lane that names the targets it runs on (chapters 5 and 9) |
@@ -478,7 +487,7 @@ webcpp.lane oracle : twins cases-machines cases-actors ;
 | `webcpp.original <word> + ;` | how a program of the original's language runs, once and first; and the target `node-modules`, which installs what `package-lock.json` beside the Jamfile pins with `npm ci`, through `tools/node/install.py`: once per lockfile under `.node-modules/`, linked at `node_modules`, so that runs at once never install over each other |
 | `webcpp.twins <examples> : <twins> : <suffix> : <extra-word> * ;` | the target `twins`: `twins.py` runs the twin `<twins>/<path><suffix>` of every program `<examples>/<path>.cpp`, at any depth, with the original's words and the extra words, and compares what it prints with the program's `.expected`, or with the twin's own `.expected` for a difference, which must then differ from the program's. Declared once per library: the page shows and counts its twins (chapter 8) |
 | `webcpp.cases <name> : <script> : <cases> : <expected> ;` | the target `cases-<name>`: the original runs `<script> <cases> <output>` into the build directory, and `compare.py` finds the output equal to `<expected>`, file by file and byte by byte. The Jamfile stops loading at a cases directory that does not exist, and at an expected directory whose removal would take the oracle's directory or the cases |
-| `webcpp.lane <name> : <b2-target> + : <target> * ;` | an own lane of the library, the explicit alias `<name>` over the b2 targets, each a main target of the same Jamfile, which the lane makes explicit too, so that the ordinary lanes never build them; `b2 declared-lanes` lists it and the CI runs it (chapter 9). An oracle's names no target. One that names targets runs on each, as the CI's lane of that target does, and its tests reach the report: each is one of the Jamfile's `webcpp.targets` (`native` without any), or the build stops naming it. Every program of `webcpp.serve` and `webcpp.serve-script` must be named by a lane of its Jamfile on every target it is served on, or `b2 declared-lanes`, and with it the CI's plan, stops naming it. Only a Jamfile under the library's `test/` or `example/` declares one |
+| `webcpp.lane <name> : <b2-target> + : <target> * ;` | an own lane of the library, the explicit alias `<name>` over the b2 targets, each a main target of the same Jamfile, which the lane makes explicit too, so that the ordinary lanes never build them; `b2 declared-lanes` lists it and the CI runs it (chapter 9). An oracle's names no target. One that names targets runs on each, as the CI's lane of that target does, and its tests reach the report: each is one of the Jamfile's `webcpp.targets` (`native` without any), or the build stops naming it. Every lane-only program, of `webcpp.serve`, `webcpp.serve-script` or `webcpp.drive`, must be named by a lane of its Jamfile on every target it is built for, or `b2 declared-lanes`, and with it the CI's plan, stops naming it. Only a Jamfile under the library's `test/` or `example/` declares one |
 
 The first `webcpp.twins` or `webcpp.cases` also declares the target
 `update-expected`, which writes every expected directory again from the
@@ -630,7 +639,7 @@ rule that failed.
 | licence notice | a source file that does not open with the notice (chapter 11) |
 | banned word | the word that the pattern `veru[s]` matches, in any case, in a file, a file name or a commit (its author, committer or message) of any repository |
 | no clock, disk or network | a library header that names a clock, a file, a socket, a process, a thread, the environment or entropy without `lint-world:` |
-| raw b2 rules | `run`, `run-fail`, `compile`, `compile-fail`, `exe` or `unit-test` in a library's test or example Jamfile (chapter 9) |
+| raw b2 rules | `run`, `run-fail`, `compile`, `compile-fail`, `exe`, `unit-test`, `link` or `link-fail` in a library's test or example Jamfile (chapter 9) |
 | Doc Comments | a command webcpp does not allow, a bare `@`, or a colon after a reference (chapter 7) |
 | Pyright | an error or a warning in any Python file, with `pyrightconfig.json` (unused imports and variables are errors) |
 | Python line length | a Python line over 100 columns |
@@ -945,6 +954,10 @@ build:
 - every example's code or output is shown, every block's language is allowed,
   C++ is shown only as an include of an example, and the page includes the
   reference;
+- every program an example Jamfile links and never runs (`webcpp.link`),
+  which `doc.jam` gives as `--linked <program.cpp>`, is shown by an include of
+  its code, and an `.expected` beside one is a fault ("<program> is linked,
+  never run: it has no output to compare");
 - every include names a file that exists, inside `doc/`, `{examples}` or
   `{twins}`; an output's include names a program that exists;
 - an include of `{webcpp-root}/<path>` names a region, `tag=` or `tags=`, of
@@ -975,8 +988,11 @@ every build, so that no count drifts from the tree:
 - from the programs b2 records as it loads the library's test and example
   Jamfiles: `{n-examples}` and `{n-examples-<target>}`, `{n-tests}` and
   `{n-tests-<target>}` (each header compiled alone is one test, and so is
-  each served component), `{n-served}` and `{n-served-<target>}`, the
-  served components alone, `{n-boost-test-suites}` and `{n-headers}`;
+  each served component, each linked program and each driven test),
+  `{n-served}` and `{n-served-<target>}`, the served components alone,
+  `{n-linked}` and `{n-linked-<target>}`, the programs `webcpp.link` links
+  and never runs, `{n-driven}` and `{n-driven-<target>}`, the tests
+  `webcpp.drive` drives, `{n-boost-test-suites}` and `{n-headers}`;
 - for a library whose oracle declares twins, from `twins.py --list`:
   `{n-twins-agreeing}`, `{n-twins-divergent}`, `{n-examples-without-twin}`
   and `{n-examples-with-original}`;
@@ -1035,7 +1051,7 @@ A target is what a program is built for:
 | Target | Toolset | Runs with |
 | --- | --- | --- |
 | `native` | any toolset not below: gcc, clang, msvc, darwin | the host |
-| `emscripten` | b2's `emscripten` | no CI lane yet: one comes when emsdk is pinned (chapter 13) |
+| `emscripten` | b2's `emscripten`, wasm32, single-threaded, static | node, run by the toolset itself; no `testing.launcher`. No CI lane yet: one comes when emsdk is pinned (chapter 13) |
 | `wasip2` | `clang-wasip2`, a clang registered against wasi-sdk with version `wasip2` | `testing.launcher=wasmtime`; a component, `wasmtime serve` (below) |
 | `wasip3` | `clang-wasip3`, likewise | `testing.launcher=wasmtime`; a component, `wasmtime serve` (below) |
 
@@ -1045,11 +1061,25 @@ it with its own targets, and with no declaration a program is built for
 it without a word. This filter is conditioned on `<toolset>` and its version
 only, never on a derived feature (chapter 12).
 
+On emscripten the Jamroot builds wasm32, single-threaded and static (its
+region `emscripten-target`): browsers do not all run memory64, and an
+`address-model=64` request would add `-sMEMORY64=1`; pthreads need
+cross-origin isolation in a page; and Emscripten's shared libraries are
+experimental. b2's toolset runs a program's JavaScript with the node it
+found, so a build that also gives `testing.launcher` stops ("webcpp: b2's
+emscripten toolset runs a program with node itself; give no
+testing.launcher on emscripten", chapter 12). Every program that node runs
+(`webcpp.run`, `webcpp.run-fail`, `webcpp.example`) links
+`-sNODERAWFS=1`, so that it reads the host's files and its standard input:
+without it, node gives it an empty file system of Emscripten's own, and a
+test reads its input file as empty. No other program gets it.
+
 ### The Jamfile API (`tools/webcpp.jam`)
 
 A library's test and example Jamfiles declare their programs only with these
 rules; the lint rejects b2's own `run`, `run-fail`, `compile`,
-`compile-fail`, `exe` and `unit-test` there, by file and line.
+`compile-fail`, `exe`, `unit-test`, `link` and `link-fail` there, by file and
+line.
 
 ```
 import webcpp ;
@@ -1062,18 +1092,20 @@ webcpp.compile-diagnostic <name> : <sources> + : <requirements> * : <targets> * 
 webcpp.boost-test   <name> : <sources> + : <requirements> * ;
 webcpp.example      <source> : <requirements> * : <targets> * ;
 webcpp.headers-alone <library> : <include-root> : <only> * : <requirements> * : <targets> * ;
+webcpp.link         <name> : <sources> + : <requirements> * : <targets> * ;
 ```
 
 | Rule | Passes when | Notes |
 | --- | --- | --- |
 | `webcpp.targets t ...` | | the Jamfile's default targets; before its first program, once; each is `native`, `emscripten`, `wasip2` or `wasip3`, or the build stops naming it |
-| `webcpp.run` | the program exits with 0 | built once per target it declares; a user's `exception-handling=off` links `tools/throw_exception.cpp` |
+| `webcpp.run` | the program exits with 0 | built once per target it declares; a user's `exception-handling=off` links `tools/throw_exception.cpp`; on emscripten, run by node, linked with `-sNODERAWFS=1` |
 | `webcpp.run-fail` | the program exits with another status | |
 | `webcpp.compile` | the sources compile | no program is linked |
 | `webcpp.compile-fail` | the sources do not compile | left out of clang-tidy; any error passes it, the wrong one included |
 | `webcpp.compile-diagnostic` | the sources stop with every error they state in clang's `-verify` comments, `// expected-error@<file>:* {{<message>}}` for a header they include or `// expected-error@+1 {{<message>}}` for the next line | compiled with `-Xclang -verify -Xclang -verify-ignore-unexpected=error,note`, so an error not stated and a note are ignored; built on b2's `clang` toolset only (native clang, `clang-wasip2`, `clang-wasip3`) and skipped elsewhere, since `-verify` is clang's: a refusal would turn every gcc and msvc lane red for a declaration that holds; left out of clang-tidy |
 | `webcpp.boost-test` | every case of the Boost.Test suite passes | native only, whatever the Jamfile declares; the header-only framework, `tools/boost_test_runner.cpp`, is one object of the suite's, always compiled with exceptions |
-| `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | its standard input is `<stem>.input` beside it, else empty, never the terminal, on every target (wasmtime passes it through); run through `testing.launcher` for wasm, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again, and `<stem>.input` is a source of the run |
+| `webcpp.example` | the program exits with 0, and its standard output, carriage returns removed, equals `<stem>.expected` beside it | its standard input is `<stem>.input` beside it, else empty, never the terminal, on every target (wasmtime passes it through, and node under `-sNODERAWFS=1`); run through `testing.launcher` for WASI, and with node on emscripten, by `tools/example/run_example.py`, which names a failing exit status (or the signal) before the diff; always run again, and `<stem>.input` is a source of the run |
+| `webcpp.link` | the program links | never run: a program for a browser, which node refuses to run (`-sENVIRONMENT=web`), or one that needs the network; b2's `link` test, which `--dump-tests` lists and the report shows as a link test; never linked with `-sNODERAWFS=1`. The explicit target `<name>-program` is the same program, an `exe` of the same sources and requirements, `<name>-program.js` on emscripten, for a target that needs its files, such as a page that loads it. An example Jamfile's is shown on the page by its code, and has no `.expected` (chapter 8) |
 | `webcpp.headers-alone` | each public header compiles alone | one test per header, `alone-<path>` with `/` as `-` (`alone-xactor-scheduler`), against `/webcpp/<library>//<library>` and the requirements given, for the targets given or the Jamfile's; `only` restricts a call to the public headers its globs match, relative to `<include-root>/webcpp/` (`wasi/http/response.hpp`), a glob that matches none stopping the build; a library may call it several times, and a header two calls take stops the build, naming it |
 
 **WebAssembly components** (`tools/component/component.jam`). A library's
@@ -1108,6 +1140,34 @@ HTTP/1.1 200 OK
 content-type: text/plain; method=GET
 
 GET /a?b=c%20d
+```
+
+**Driven tests** (`tools/drive/drive.jam`). A test that only a script can
+drive, such as one of a peer that a browser or another process meets, is
+declared in a test or example Jamfile that says first how a program of the
+original's language runs, with `webcpp.original` (chapter 5), beside the
+`package.json` and `package-lock.json` that pin what the script needs:
+
+```
+webcpp.drive <name> : <sources> + : <requirements> * : <script> : <argument> * : <targets> * ;
+```
+
+| Rule | Passes when | Notes |
+| --- | --- | --- |
+| `webcpp.drive` | `<original words> <script> <arguments> <program>` exits with 0 | builds the program from the sources, for its own targets, else its Jamfile's, as `webcpp.serve` builds its component, and runs the script beside the Jamfile with the words of `webcpp.original`, the arguments and the path of the linked program: its JavaScript on emscripten, its executable natively. It depends on the Jamfile's `node-modules`, and a Jamfile without `webcpp.original` stops at it by name. b2's test `DRIVE`, which `--dump-tests` lists and `--out-xml` records, so the report sees it fail (as a run). Always run again. A lane-only program: it runs in an own lane, never in the ordinary ones (Lanes, below) |
+
+The fixture browser_demo's `test/driver/Jamfile`, whose `drive.mjs` runs the
+program, with node when it is JavaScript, and passes when it printed
+`ready`:
+
+```
+import webcpp ;
+
+webcpp.targets native emscripten ;
+
+webcpp.original node ;
+webcpp.drive driven : driven.cpp : : drive.mjs : --program ;
+webcpp.lane driver : driven : native emscripten ;
 ```
 
 The rules of the doc Jamfiles are in chapter 8: `webcpp.doc <library> :
@@ -1198,7 +1258,8 @@ b2 -a --dump-tests --out-xml=<lane>.xml toolset=<toolset> libs/<library>/test li
 ```
 
 A wasip2 or wasip3 lane adds `testing.launcher=wasmtime`, which applies to
-every toolset of one b2 request, so a lane is always one toolset. The lane
+every toolset of one b2 request, so a lane is always one toolset. An
+emscripten lane adds nothing: b2's toolset runs its programs with node. The lane
 runs from the superproject's root. `--dump-tests` is required: it lists every
 test, those the lane skips included, and the report refuses a file without
 it. With `--out-xml`, b2 exits 0 even when a test fails, so b2's status is
@@ -1264,11 +1325,13 @@ lanes, which build only its test and example directories' other programs.
   native: give toolset=clang-wasip2 or toolset=clang-wasip3, with
   testing.launcher=wasmtime`), rather than build nothing and read green.
 
-  A served program always runs so: `b2 declared-lanes` stops, naming it,
-  when no lane of its Jamfile names it (`webcpp.serve answers.cpp in
-  libs/web/test/Jamfile is in no own lane; name it in a webcpp.lane that
-  names its targets`), or when its lanes leave out a target it is served on,
-  so the CI's plan fails before any job runs rather than leave it untested.
+  A lane-only program, served (`webcpp.serve`, `webcpp.serve-script`) or
+  driven (`webcpp.drive`), always runs so: `b2 declared-lanes` stops, naming
+  it, when no lane of its Jamfile names it (`webcpp.drive driven in
+  libs/browser_demo/test/driver/Jamfile is in no own lane; name it in a
+  webcpp.lane that names its targets`), or when its lanes leave out a target
+  it is built for, so the CI's plan fails before any job runs rather than
+  leave it untested.
 
   A lane on emscripten is declared like any other, and the CI refuses it by
   name until it gets an emscripten lane (chapter 13); it never runs one
@@ -1487,17 +1550,18 @@ only branch.
   - the tests of the build and of the tools, when they or what they test
     changed: `tools/test/jamroot_test.py`, `tools/test/webcpp_jam_test.py`,
     `tools/test/oracle_jam_test.py`, `tools/test/component_jam_test.py`,
-    `tools/test/doc_test.py`, `tools/test/harness_test.py`,
-    `tools/lint/lint_test.py`, `tools/report/report_test.py`,
-    `tools/doc/doc_check_test.py`, `tools/doc/doc_comments_test.py`,
-    `tools/doc/extensions_test.py`, `tools/doc/counts_test.py`,
-    `tools/oracle/twins_test.py`, `tools/oracle/compare_test.py`,
-    `tools/example/run_example_test.py`, `tools/component/serve_test.py`,
-    `tools/node/install_test.py`, `tools/ci/matrix_test.py`,
-    `tools/ci/assemble_test.py` and `tools/ci/actions_test.py`: every
-    `tools/**/*_test.py`, as the CI runs them, each as `python3 <path>`. They
-    build in scratch copies under `$TMPDIR`, whose path holds a space, so they
-    run beside a build of the tree;
+    `tools/test/emscripten_test.py`, `tools/test/doc_test.py`,
+    `tools/test/harness_test.py`, `tools/lint/lint_test.py`,
+    `tools/report/report_test.py`, `tools/doc/doc_check_test.py`,
+    `tools/doc/doc_comments_test.py`, `tools/doc/extensions_test.py`,
+    `tools/doc/counts_test.py`, `tools/oracle/twins_test.py`,
+    `tools/oracle/compare_test.py`, `tools/example/run_example_test.py`,
+    `tools/component/serve_test.py`, `tools/node/install_test.py`,
+    `tools/ci/matrix_test.py`, `tools/ci/assemble_test.py` and
+    `tools/ci/actions_test.py`: every `tools/**/*_test.py`, as the CI runs
+    them, each as `python3 <path>`. They build in scratch copies under
+    `$TMPDIR`, whose path holds a space, so they run beside a build of the
+    tree;
   - CI green, the library's and the superproject's.
 - **Fix the lint, the failures and the flakiness you meet,** even when they
   are not yours; report what you cannot fix.
@@ -1592,6 +1656,9 @@ Each of these was measured; each has cost time.
   libs/xactor/test//scheduler`, `b2 libs/xactor/doc//reference`.
 - **`testing.launcher` applies to every toolset of one request,** so a wasm
   lane and a native one are two b2 runs.
+- **b2's emscripten toolset runs a test with node itself:**
+  `testing.launcher=node` makes the command `node "node" x.js`, and webcpp
+  refuses it.
 - **With `--out-xml`, b2 exits 0 even when a test fails;** the report's exit
   status is the verdict, and the report needs `--dump-tests`.
 - **b2 5.5.3's `--command-database` writes nothing,** so the compilation

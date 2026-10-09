@@ -234,10 +234,12 @@ def test_no_library_passes(root):
 
 def test_a_user_config_the_environment_names_is_read(root):
     # A checkout whose user-config.jam is not in .local/ but where $WEBCPP_USER_CONFIG says: the
-    # cases that rewrite it read that one, as b2 does.
+    # cases that rewrite it read that one, as b2 does. The scratch's .local may hold no
+    # user-config.jam to begin with, as in a checkout configured by $WEBCPP_USER_CONFIG alone.
     given = root / 'elsewhere/user-config.jam'
     given.parent.mkdir()
-    (root / '.local/user-config.jam').rename(given)
+    given.write_text('using clang ;\n')
+    (root / '.local/user-config.jam').unlink(missing_ok=True)
     saved = os.environ.get('WEBCPP_USER_CONFIG')
     os.environ['WEBCPP_USER_CONFIG'] = str(given)
     try:
@@ -1035,7 +1037,9 @@ def test_raw_rules(root):
            f'compile-fail rejects.cpp : {library} : raw_compile_fail ;\n'
            f'unit-test raw_unit_test : pass.cpp : {library} ;\n'
            f'alias raw_suite : [ run pass.cpp : : : {library} : raw_bracket ] ;\n'
-           f'testing.run pass.cpp : : : {library} : raw_qualified ;\n')
+           f'testing.run pass.cpp : : : {library} : raw_qualified ;\n'
+           f'link pass.cpp : {library} : raw_link ;\n'
+           f'link-fail fails.cpp : {library} : raw_link_fail ;\n')
     example = 'libs/demo/example/Jamfile'
     append(root, example, f'exe raw_exe : hello.cpp : {library} ;\n')
     # What Jam reads as something else than an invocation of run: a block comment, assignments,
@@ -1070,6 +1074,10 @@ def test_raw_rules(root):
         'webcpp.boost-test\n',
         at(root, test, 'raw_bracket'),
         at(root, test, 'raw_qualified'),
+        f"{at(root, test, 'raw_link ;')} link is b2's own rule; a test or example Jamfile "
+        'declares its programs with the rules of tools/webcpp.jam, here webcpp.link\n',
+        f"{at(root, test, 'raw_link_fail')} link-fail is b2's own rule; a test or example "
+        'Jamfile declares its programs with the rules of tools/webcpp.jam, here webcpp.link\n',
         f"{at(root, example, 'raw_exe')} exe is b2's own rule; a test or example Jamfile "
         'declares its programs with the rules of tools/webcpp.jam, here webcpp.example, '
         'webcpp.run or webcpp.serve\n',

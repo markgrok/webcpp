@@ -1,0 +1,22 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+project : requirements <library>/webcpp/browser_demo//browser_demo ;
+
+import webcpp ;
+
+webcpp.targets native emscripten ;
+
+webcpp.headers-alone browser_demo : ../include ;
+# Reads the file it is given, which node reads from the host's disk on
+# emscripten.
+webcpp.run reads : reads_test.cpp : <testing.input-file>input.txt ;
+# It throws and catches, so it needs exceptions whatever the build asks.
+webcpp.run catches : catches_test.cpp : <exception-handling>on ;
+# A pointer of wasm32 on emscripten, whatever address model is asked for.
+webcpp.run pointer : pointer_test.cpp ;
+webcpp.run json : json_test.cpp : <library>/webcpp//boost_json ;
+webcpp.run-fail fails : fails_test.cpp ;

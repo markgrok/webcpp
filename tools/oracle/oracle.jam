@@ -91,15 +91,18 @@ local rule natives ( location : paths * )
     return $(found) ;
 }
 
-# The build stops, naming the Jamfile of found, when that Jamfile has not
-# called webcpp.original yet.
-local rule original-of ( rule-name : found + )
+# The words of the Jamfile of found's webcpp.original, for the rule
+# rule-name, as a message names it (twins, drive <name>); the build stops,
+# naming the Jamfile, when that Jamfile has not called webcpp.original yet.
+# tools/webcpp.jam's webcpp.drive runs its script with them too.
+rule original-of ( rule-name : found + )
 {
     if ! $(.original.$(found[3]))
     {
         errors.user-error "webcpp.$(rule-name): webcpp.original must come first, in"
             "$(found[4]): it says how a program of the original's language runs" ;
     }
+    return $(.original.$(found[3])) ;
 }
 
 # The requirements of every target of the Jamfile key.

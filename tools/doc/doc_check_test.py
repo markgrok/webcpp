@@ -5,7 +5,8 @@
 # accompanying file LICENSE_1_0.txt or copy at
 # https://www.boost.org/LICENSE_1_0.txt)
 
-"""Checks doc-check.py: each rule fires on its own fault, and a whole page passes.
+"""Checks doc-check.py: each rule fires on its own fault, and a whole page passes; a program that
+webcpp.link links and never runs is shown by its code, and has no output.
 
 Each check runs on a library written to a scratch directory: its page under doc/, its examples
 under example/, at any depth, its twins under twins/, a header, a README and a git repository
@@ -681,6 +682,35 @@ def check_without_git(root: Path) -> None:
     expect(result, 1, f'{root}: is not a git checkout')
 
 
+def check_linked(root: Path) -> None:
+    """A program webcpp.link links and never runs is shown by its code, and has no output."""
+    page = root / 'example/browser/page.cpp'
+    write(page, '// tag::page[]\nint main() { return 1; }\n// end::page[]\n')
+    linked = ('--linked', str(page))
+    # A source without its output is no example, so only --linked makes the page show it.
+    expect(check(root, '--complete'), 0, '')
+    expect(check(root, '--complete', *linked), 1,
+           f'{page}: the page does not show the code of this program, which is linked')
+    # Its output shown is not its code.
+    write(root / 'example/browser/page.expected', '')
+    write(root / 'doc/page.adoc',
+          PAGE + '\n[listing]\n----\ninclude::{examples}/browser/page.expected[]\n----\n')
+    expect(check(root, '--complete', *linked), 1,
+           f'{page}: the page does not show the code of this program, which is linked')
+    # A linked program never runs, so an output beside it is a fault, shown or not.
+    write(root / 'doc/page.adoc',
+          PAGE + '\n[source]\n----\ninclude::{examples}/browser/page.cpp[tag=page]\n----\n')
+    expect(check(root, *linked), 1,
+           f'{page} is linked, never run: it has no output to compare')
+    (root / 'example/browser/page.expected').unlink()
+    expect(check(root, '--complete', *linked), 0, '')
+    # A linked program is one of the examples.
+    expect(run('--examples', str(root / 'example'), '--page', str(root / 'doc/page.adoc'),
+               '--linked', str(root / 'elsewhere.cpp'), str(root / 'doc/page.adoc')), 2, '')
+    write(root / 'doc/page.adoc', PAGE)
+    page.unlink()
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix='doc check ') as scratch:
         root = Path(scratch)
@@ -697,7 +727,7 @@ def main() -> int:
         write(root / 'doc/page.adoc', PAGE)
         for part in (check_page, check_reference, check_examples, check_graph, check_references,
                      check_see_titles, check_readme, check_rendered, check_links,
-                     check_superproject, check_without_git):
+                     check_superproject, check_without_git, check_linked):
             part(root)
             print(f'{part.__name__}: ok')
     print('doc-check.py: ok')
