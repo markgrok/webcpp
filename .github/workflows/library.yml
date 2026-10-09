@@ -198,7 +198,8 @@ jobs:
         uses: ./tools/ci/actions/emsdk
 
       # The CI's Node, for a lane whose entry asks for it: the emscripten lane, whose programs b2's
-      # toolset runs with it, through the wrapper the emsdk action installs, and every own lane.
+      # toolset runs with it, through the wrapper the emsdk action installs, and every own lane on
+      # emscripten or of the kind original, which runs the original's language.
       - &node
         if: matrix.node
         uses: ./tools/ci/actions/node
@@ -225,14 +226,15 @@ jobs:
   # there. One that names no target, such as an oracle, compiles nothing, but its targets inherit
   # the requirements of the library's test project, the library's target among them, and with it
   # the Jamroot's check of Boost, so the job has Boost and a toolset, Clang 18, as the docs job
-  # does; and Node, whose npm cache the action keys on every oracle's lock file. One that names a
-  # target, such as wasi's served tests and examples on wasip2, installs what that target's lane
-  # installs (its entry's wasm and emsdk, as a lane's, select the WASI steps and emsdk's, by
-  # their anchors), runs with its toolset and uploads its XML as a lane does, under its id:
-  # wasip2.wasi.http. Every own lane has the CI's Node (its entry's node), since a driven test
-  # runs its driver with it on every target, natively too. The job's name and image are its
-  # entry's, which tools/ci/matrix.py writes: Own lane (xstate, oracle) and Own lane (wasi, http,
-  # wasip2).
+  # does. One that names a target, such as wasi's served tests and examples on wasip2, installs
+  # what that target's lane installs (its entry's wasm and emsdk, as a lane's, select the WASI
+  # steps and emsdk's, by their anchors), runs with its toolset and uploads its XML as a lane
+  # does, under its id: wasip2.wasi.http. An own lane of the kind original, which runs the
+  # original's language (an oracle, a driven test's driver, natively too), has the CI's Node,
+  # whose npm cache the action keys on every oracle's lock file, and so does one on emscripten,
+  # as the emscripten lane does; one of the kind programs elsewhere, a served lane, has none (its
+  # entry's node). The job's name and image are its entry's, which tools/ci/matrix.py writes: Own
+  # lane (xstate, oracle) and Own lane (wasi, http, wasip2).
   own-lanes:
     name: ${{ matrix.name }}
     needs: plan

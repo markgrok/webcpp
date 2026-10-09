@@ -240,22 +240,19 @@ def test_own_lanes_of_every_library_and_of_one(root):
         'import webcpp ;\n'
         'webcpp.example page.cpp ;\n'
         'webcpp.lane browser : page.output ;\n')
-    harness.add_library(root, 'beta', 'import webcpp ;\n', {})
-    (root / 'libs/beta/test/oracle').mkdir()
-    (root / 'libs/beta/test/oracle/Jamfile').write_text(
-        'import webcpp ;\n'
-        'alias twins ;\n'
-        'webcpp.lane oracle : twins ;\n')
-    # Every entry names its job and its image, which the job reads from here alone.
+    oracle_library(root, 'beta')
+    # Every entry names its job and its image, which the job reads from here alone, and its kind,
+    # by which it has Node: an oracle runs its original with it, and the lanes of programs alone
+    # need none.
     alpha = [{'library': 'alpha', 'lane': 'browser', 'directories': ['libs/alpha/example/browser'],
-              'name': 'Own lane (alpha, browser)', 'os': 'ubuntu-24.04', 'wasm': False,
-              'emsdk': False, 'node': True},
+              'kind': 'programs', 'name': 'Own lane (alpha, browser)', 'os': 'ubuntu-24.04',
+              'wasm': False, 'emsdk': False, 'node': False},
              {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
-              'name': 'Own lane (alpha, http)', 'os': 'ubuntu-24.04', 'wasm': False,
-              'emsdk': False, 'node': True}]
+              'kind': 'programs', 'name': 'Own lane (alpha, http)', 'os': 'ubuntu-24.04',
+              'wasm': False, 'emsdk': False, 'node': False}]
     beta = [{'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
-             'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False,
-             'emsdk': False, 'node': True}]
+             'kind': 'original', 'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04',
+             'wasm': False, 'emsdk': False, 'node': True}]
     assert own_lanes(root) == alpha + beta
     assert own_lanes(root, '--library', 'beta') == beta
     assert own_lanes(root, '--library', 'demo') == []
@@ -265,15 +262,20 @@ def test_own_lanes_of_every_library_and_of_one(root):
     assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
     assert 'libs/nothing is no library of libs/' in result.stderr, result.stderr
     assert result.stdout == '', result.stdout
-    # What the job runs, b2 -a <directory>//<lane>, is built from these words alone: a line that
-    # is not three of them, or whose directory is not the library's, fails the listing.
-    for printed, named in (('alpha http', 'not "<library> <lane> <directory> [<target>]"'),
-                           ('alpha http libs/beta/test', 'not in libs/alpha/test or'),
-                           ('alpha http; libs/alpha/test',
-                            'not "<library> <lane> <directory> [<target>]"'),
-                           ('alpha http libs/alpha/test wasm', 'wasm is not a target'),
-                           ('alpha http libs/alpha/test wasip2 wasip3',
-                            'not "<library> <lane> <directory> [<target>]"')):
+    # What the job runs, b2 -a <directory>//<lane>, is built from these words alone, and what it
+    # sets up from the kind: a line that is not four or five of them, whose directory is not the
+    # library's, or whose target or kind is none, fails the listing.
+    form = 'not "<library> <lane> <directory> [<target>] <kind>"'
+    for printed, named in (('alpha http programs', form),
+                           ('alpha http libs/alpha/test', form),
+                           ('alpha http libs/beta/test programs', 'not in libs/alpha/test or'),
+                           ('alpha http; libs/alpha/test programs', form),
+                           ('alpha http libs/alpha/test wasm programs', 'wasm is not a target'),
+                           ('alpha http libs/alpha/test wasip2',
+                            'wasip2 is not a kind; the kinds are original, programs'),
+                           ('alpha http libs/alpha/test wasip2 node',
+                            'node is not a kind; the kinds are original, programs'),
+                           ('alpha http libs/alpha/test wasip2 wasip3 programs', form)):
         try:
             matrix.parsed_own_lanes(printed)
         except matrix.Failure as failure:
@@ -299,54 +301,67 @@ def test_own_lanes_on_targets(root):
         'webcpp.targets native wasip2 ;\n'
         'webcpp.example page.cpp ;\n'
         'webcpp.lane http : page.output : native wasip2 ;\n')
-    harness.add_library(root, 'beta', 'import webcpp ;\n', {})
-    (root / 'libs/beta/test/oracle').mkdir()
-    (root / 'libs/beta/test/oracle/Jamfile').write_text(
-        'import webcpp ;\n'
-        'alias twins ;\n'
-        'webcpp.lane oracle : twins ;\n')
+    oracle_library(root, 'beta')
+    # A lane of programs alone, a served one on wasip2 or wasip3 among them, needs no Node.
     alpha = [{'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/example'],
-              'platform': 'native', 'id': 'native.alpha.http', 'name': 'Own lane (alpha, http, '
-              'native)', 'os': 'ubuntu-24.04', 'wasm': False, 'emsdk': False, 'node': True},
+              'platform': 'native', 'id': 'native.alpha.http', 'kind': 'programs',
+              'name': 'Own lane (alpha, http, native)', 'os': 'ubuntu-24.04', 'wasm': False,
+              'emsdk': False, 'node': False},
              {'library': 'alpha', 'lane': 'http',
               'directories': ['libs/alpha/example', 'libs/alpha/test'], 'platform': 'wasip2',
-              'id': 'wasip2.alpha.http', 'name': 'Own lane (alpha, http, wasip2)',
-              'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False, 'node': True},
+              'id': 'wasip2.alpha.http', 'kind': 'programs', 'name': 'Own lane (alpha, http, '
+              'wasip2)', 'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False, 'node': False},
              {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
-              'platform': 'wasip3', 'id': 'wasip3.alpha.http', 'name': 'Own lane (alpha, http, '
-              'wasip3)', 'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False, 'node': True}]
+              'platform': 'wasip3', 'id': 'wasip3.alpha.http', 'kind': 'programs',
+              'name': 'Own lane (alpha, http, wasip3)', 'os': 'ubuntu-24.04', 'wasm': True,
+              'emsdk': False, 'node': False}]
     beta = {'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
-            'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04', 'wasm': False,
-            'emsdk': False, 'node': True}
+            'kind': 'original', 'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04',
+            'wasm': False, 'emsdk': False, 'node': True}
     assert own_lanes(root) == [*alpha, beta]
     assert own_lanes(root, '--library', 'alpha') == alpha
     assert run(root, 'own-lanes', '--library', 'beta').stdout == (
         '{"include":[{"library":"beta","lane":"oracle","directories":["libs/beta/test/oracle"],'
-        '"name":"Own lane (beta, oracle)","os":"ubuntu-24.04","wasm":false,"emsdk":false,'
-        '"node":true}]}\n')
+        '"kind":"original","name":"Own lane (beta, oracle)","os":"ubuntu-24.04","wasm":false,'
+        '"emsdk":false,"node":true}]}\n')
     # Each entry is read back as the lane it is, and runs in each of its directories.
     for entry in alpha:
         own = matrix.parsed_own_lane(json.dumps(entry))
         assert own_lane_entry_of(own) == entry, (own, entry)
         assert own.requests == [f'{directory}//http' for directory in entry['directories']]
-    # Every own lane has Node, the version the CI pins, whatever its target: an oracle runs npm
-    # and its original under node, and a driven test its driver, natively too (webcpp.drive).
-    assert all(entry['node'] for entry in own_lanes(root)), own_lanes(root)
-    # An own lane on emscripten shares the emscripten lane's setup: emsdk and Node.
+    # An own lane on emscripten shares the emscripten lane's setup, emsdk and Node, which runs its
+    # programs, whatever its kind; a driven test on native has Node for its driver, the version
+    # the CI pins rather than the image's.
     harness.add_library(root, 'gamma',
                         'import webcpp ;\n'
-                        'webcpp.targets emscripten ;\n'
+                        'webcpp.targets native emscripten ;\n'
+                        'webcpp.original node ;\n'
                         'webcpp.run plain : plain.cpp ;\n'
-                        'webcpp.lane browser : plain : emscripten ;\n',
-                        {'plain.cpp': 'int main() {}\n'})
-    gamma = {'library': 'gamma', 'lane': 'browser', 'directories': ['libs/gamma/test'],
-             'platform': 'emscripten', 'id': 'emscripten.gamma.browser',
-             'name': 'Own lane (gamma, browser, emscripten)', 'os': 'ubuntu-24.04', 'wasm': False,
-             'emsdk': True, 'node': True}
-    assert own_lanes(root) == [*alpha, beta, gamma]
-    assert own_lanes(root, '--library', 'gamma') == [gamma]
-    own = matrix.parsed_own_lane(json.dumps(gamma))
-    assert own_lane_entry_of(own) == gamma, (own, gamma)
+                        'webcpp.drive driven : plain.cpp : : drive.mjs ;\n'
+                        'webcpp.lane browser : plain : emscripten ;\n'
+                        'webcpp.lane driver : driven : native emscripten ;\n',
+                        {'plain.cpp': 'int main() {}\n', 'drive.mjs': '',
+                         'package.json': '{}\n', 'package-lock.json': '{}\n'})
+    gamma = [{'library': 'gamma', 'lane': 'browser', 'directories': ['libs/gamma/test'],
+              'platform': 'emscripten', 'id': 'emscripten.gamma.browser', 'kind': 'programs',
+              'name': 'Own lane (gamma, browser, emscripten)', 'os': 'ubuntu-24.04',
+              'wasm': False, 'emsdk': True, 'node': True},
+             {'library': 'gamma', 'lane': 'driver', 'directories': ['libs/gamma/test'],
+              'platform': 'emscripten', 'id': 'emscripten.gamma.driver', 'kind': 'original',
+              'name': 'Own lane (gamma, driver, emscripten)', 'os': 'ubuntu-24.04',
+              'wasm': False, 'emsdk': True, 'node': True},
+             {'library': 'gamma', 'lane': 'driver', 'directories': ['libs/gamma/test'],
+              'platform': 'native', 'id': 'native.gamma.driver', 'kind': 'original',
+              'name': 'Own lane (gamma, driver, native)', 'os': 'ubuntu-24.04', 'wasm': False,
+              'emsdk': False, 'node': True}]
+    assert own_lanes(root) == [*alpha, beta, *gamma]
+    assert own_lanes(root, '--library', 'gamma') == gamma
+    for entry in gamma:
+        own = matrix.parsed_own_lane(json.dumps(entry))
+        assert own_lane_entry_of(own) == entry, (own, entry)
+    # Node exactly where the original runs, or where the target's own lane has it.
+    assert [entry['id'] for entry in own_lanes(root) if not entry['node']] == [
+        'native.alpha.http', 'wasip2.alpha.http', 'wasip3.alpha.http'], own_lanes(root)
     # A target the job cannot set up fails the listing by name, rather than run natively; every
     # target has a lane today, so the case is made by leaving emscripten's out.
     original = matrix.OWN_LANE_BASES
@@ -364,6 +379,20 @@ def test_own_lanes_on_targets(root):
         matrix.OWN_LANE_BASES = original
 
 
+def oracle_library(root: Path, name: str) -> None:
+    """Adds to root the library name, whose oracle declares its twins and its lane oracle over
+    them: a lane of the kind original."""
+    harness.add_library(root, name, 'import webcpp ;\n', {})
+    oracle = root / 'libs' / name / 'test/oracle'
+    oracle.mkdir()
+    for lockfile in ('package.json', 'package-lock.json'):
+        (oracle / lockfile).write_text('{}\n')
+    (oracle / 'Jamfile').write_text('import webcpp ;\n'
+                                    'webcpp.original node ;\n'
+                                    'webcpp.twins ../../example : twins : .mjs ;\n'
+                                    'webcpp.lane oracle : twins ;\n')
+
+
 def own_lane_entry_of(own: matrix.OwnLane) -> dict:
     """The entry of the own-lanes matrix of own, as own-lanes prints it."""
     return json.loads(json.dumps(matrix.own_lane_entry(own)))
@@ -371,23 +400,28 @@ def own_lane_entry_of(own: matrix.OwnLane) -> dict:
 
 def test_an_own_lanes_command(root):
     config = root / 'config.jam'
-    oracle = matrix.parsed_own_lanes('beta oracle libs/beta/test/oracle')[0]
+    oracle = matrix.parsed_own_lanes('beta oracle libs/beta/test/oracle original')[0]
     # Without a target, as an oracle runs: Clang 18, from scratch, its exit status the verdict.
     assert matrix.own_lane_command(oracle, config, None, ['--build-dir=bin/x']) == [
         'b2', f'--user-config={config}', '-a', 'toolset=clang-18', '--build-dir=bin/x',
         'libs/beta/test/oracle//oracle']
     # On a target, as that target's lane runs: its toolset and options, and the XML the report
     # reads; in each directory that declares it there.
-    served = matrix.parsed_own_lanes('alpha http libs/alpha/test wasip2\n'
-                                     'alpha http libs/alpha/example wasip2')
+    served = matrix.parsed_own_lanes('alpha http libs/alpha/test wasip2 programs\n'
+                                     'alpha http libs/alpha/example wasip2 programs')
     assert len(served) == 1, served
+    # One lane, whose directories hold programs alone in one and the original in another, runs
+    # the original.
+    mixed = matrix.parsed_own_lanes('alpha http libs/alpha/test wasip2 programs\n'
+                                    'alpha http libs/alpha/example wasip2 original')
+    assert [lane.kind for lane in mixed] == ['original'], mixed
     xml = Path('bin/ci/wasip2.alpha.http.xml')
     assert matrix.own_lane_command(served[0], config, xml, []) == [
         'b2', f'--user-config={config}', '-a', '--dump-tests', f'--out-xml={xml}',
         'toolset=clang-wasip2', 'testing.launcher=wasmtime', 'libs/alpha/example//http',
         'libs/alpha/test//http']
     # On emscripten, as the emscripten lane runs: its toolset, and no launcher.
-    driven = matrix.parsed_own_lanes('alpha driver libs/alpha/test/driver emscripten')
+    driven = matrix.parsed_own_lanes('alpha driver libs/alpha/test/driver emscripten original')
     xml = Path('bin/ci/emscripten.alpha.driver.xml')
     assert matrix.own_lane_command(driven[0], config, xml, []) == [
         'b2', f'--user-config={config}', '-a', '--dump-tests', f'--out-xml={xml}',

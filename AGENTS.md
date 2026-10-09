@@ -272,7 +272,7 @@ when told: `b2 --user-config=.local/user-config.jam ...`.
 | `b2 toolset=emscripten libs/<name>/test libs/<name>/example` | the same for emscripten, whose programs b2's toolset runs with node itself: never with a `testing.launcher` (chapter 9) |
 | `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/` |
 | `b2 declared-targets -d0` | prints each `<library> <target>` pair the libraries declare: the CI's lanes |
-| `b2 declared-lanes -d0` | prints each `<library> <lane> <directory>` line of a library's own lanes, such as its oracle's, and `<library> <lane> <directory> <target>` once per target for a lane that names the targets it runs on (chapters 5 and 9) |
+| `b2 declared-lanes -d0` | prints each `<library> <lane> <directory> <kind>` line of a library's own lanes, such as its oracle's, and `<library> <lane> <directory> <target> <kind>` once per target for a lane that names the targets it runs on; the kind is `original` for a lane that runs the original's language, else `programs` (chapters 5 and 9) |
 | `b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test//<lane>` | an own lane on wasip2, such as wasi's served tests, `libs/wasi/test//http` and `libs/wasi/example//http` (chapter 9) |
 | `b2 -sWIT_BINDGEN=<path> -sWASI_WIT_P2=<dir> -sWASI_WIT_P3=<dir> -sWASMTIME=<path> ...` | any of these with the tools of a component where the defaults do not find them (above) |
 | `b2 libs/<name>/test/oracle//oracle` | a port's oracle lane: the original runs the cases and the twins, and the results are compared (chapter 5) |
@@ -1343,17 +1343,25 @@ them builds the documentation (chapter 8).
 **Own lanes.** A library may also declare lanes of its own with
 `webcpp.lane` (chapter 5). What a lane names leaves the library's ordinary
 lanes, which build only its test and example directories' other programs.
-`b2 declared-lanes -d0` lists them, one line each:
+`b2 declared-lanes -d0` lists them, one line each, which ends with the
+lane's kind: `original` when one of the targets it names runs the original's
+language, the twins, cases, `node-modules` or `update-expected` of an
+oracle's rules (chapter 5) or a driven test (`webcpp.drive`), whose CI job
+then installs Node, and `programs` when it runs only what its toolset builds,
+such as wasi's served components, whose job installs no Node of its own. A
+lane's kind is computed once every Jamfile is loaded, so a lane may name a
+target its Jamfile declares after it.
 
 - **An own lane that names no target,** such as xstate's oracle lane, which
   needs Node where a toolset lane does not, is the line `<library> <lane>
-  <directory>`, and runs as `b2 -a <directory>//<lane>`, whose exit status
-  is its verdict. It writes no XML, and is no column of the report.
+  <directory> <kind>`, and runs as `b2 -a <directory>//<lane>`, whose exit
+  status is its verdict. It writes no XML, and is no column of the report.
 - **An own lane that names targets** is the line `<library> <lane>
-  <directory> <target>` once per target, and runs on each as that target's
-  lane runs, from scratch, with `--dump-tests` and `--out-xml`, in every
-  directory of the library that declares a lane of that name on that target,
-  in one b2 run: its tests reach the report, in a column of its own (above).
+  <directory> <target> <kind>` once per target, and runs on each as that
+  target's lane runs, from scratch, with `--dump-tests` and `--out-xml`, in
+  every directory of the library that declares a lane of that name on that
+  target, in one b2 run: its tests reach the report, in a column of its own
+  (above).
   wasi's served tests and served examples, the components wasmtime serves
   (`webcpp.serve`, `webcpp.serve-script`), are its lanes `http`, in `test/`
   and in `example/`, on wasip2 and wasip3, run as one own lane on each:
@@ -1446,9 +1454,11 @@ jobs:
   directories}`, every directory that declares the lane there, for an own
   lane that names no target, and one per target for one that names targets,
   which adds `platform`, its target, and `id`, its name in the report; every
-  entry has `name`, its job's, the `os`, `wasm` and `emsdk` of the lane whose
-  setup it shares, the target's own, and the oracle's Clang 18 for native and
-  for none, and `node`, true for every own lane, which the job reads from it
+  entry has `kind`, the lines' (`original` when any of its directories' lanes
+  runs the original), `name`, its job's, the `os`, `wasm` and `emsdk` of the
+  lane whose setup it shares, the target's own, and the oracle's Clang 18 for
+  native and for none, and `node`, true for a lane of the kind `original` and
+  for one on emscripten, whose lane has Node, which the job reads from it
   alone.
   Last, `matrix.py declares emscripten [--library <name>]` prints `true`
   when any library of the superproject declares emscripten, whatever library
@@ -1494,11 +1504,13 @@ jobs:
     --dump-tests --out-xml=<id>.xml toolset=<toolset> [<options>]
     <directory>//<lane> ...`, and it uploads `<id>.xml` as a lane uploads its
     XML, the artifact `lane-<id>`.
-  - Every own lane has the CI's Node, its entry's `node` (`&node`): an
-    oracle runs npm and its original with it, and a driven test its driver,
-    natively too, and `b2 declared-lanes` does not say which an own lane
-    holds. Without it, a native one would run with the image's own Node,
-    another version.
+  - An own lane of the kind `original` has the CI's Node, its entry's
+    `node` (`&node`): an oracle runs npm and its original with it, and a
+    driven test its driver, natively too. Without it, a native one would run
+    with the image's own Node, another version. One on emscripten has it as
+    the emscripten lane does, which runs its programs with it; one of the
+    kind `programs` on any other target, such as wasi's served lanes, has
+    none.
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
   Intel macOS), `clang++-18`, Node, wit-bindgen and the WASI WIT (wasi's
   reference parses its bindings), `b2 -a libs/<library>/doc`, or for the

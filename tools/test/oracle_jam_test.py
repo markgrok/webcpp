@@ -27,8 +27,9 @@ ORACLE = f'{LIBRARY}/test/oracle'
 LANE = f'{ORACLE}//oracle'
 UPDATE = f'{ORACLE}//update-expected'
 
-# What a lane line of `b2 declared-lanes` says for the fixture.
-ORACLE_LANE = 'oracle_demo oracle libs/oracle_demo/test/oracle\n'
+# What a lane line of `b2 declared-lanes` says for the fixture: a lane of the kind original, since
+# it runs the original's cases and twins.
+ORACLE_LANE = 'oracle_demo oracle libs/oracle_demo/test/oracle original\n'
 
 PLAIN_SOURCE = 'int main() { return 0; }\n'
 
@@ -271,8 +272,8 @@ def test_declared_lanes_lists_the_oracle(root):
         '\n'
         'webcpp.example page.cpp ;\n'
         'webcpp.lane browser : page.output ;\n')
-    lanes = ('alpha browser libs/alpha/example/browser\n'
-             'alpha http libs/alpha/test\n' + ORACLE_LANE)
+    lanes = ('alpha browser libs/alpha/example/browser programs\n'
+             'alpha http libs/alpha/test programs\n' + ORACLE_LANE)
     result = harness.run_b2(root, '-d0', 'declared-lanes')
     harness.expect(result, True)
     assert result.stdout == lanes, result.stdout

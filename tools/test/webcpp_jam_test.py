@@ -14,13 +14,14 @@ of webcpp.headers-alone taking the headers its globs match, with requirements an
 own, and a header two calls take or a glob that matches none refused; a compile-diagnostic test
 passes only on the error it states, and is skipped on a toolset that is not clang;
 `b2 declared-targets` lists what each library declares; a lane of a library's own is listed once per
-target it runs on, which must be one its Jamfile declares, what it names leaves the ordinary lanes,
-a build of it for another target stops by name, and every served program runs in one on every target
-it is served on; the programs of a library are recorded by kind, a link-only program and a driven
-test among them; a Boost.Test suite is built and run natively only, its framework always with
-exceptions; Boost.JSON's definitions link on every target; and every program sees C++20 and
-exceptions, on every target. Each case builds a scratch superproject with the fixture library demo.
-Run with the names of some cases to run only those."""
+target it runs on, which must be one its Jamfile declares, with its kind, whether it runs the
+original's language; what it names leaves the ordinary lanes, a build of it for another target stops
+by name, and every served program runs in one on every target it is served on; the programs of a
+library are recorded by kind, a link-only program and a driven test among them; a Boost.Test suite
+is built and run natively only, its framework always with exceptions; Boost.JSON's definitions link
+on every target; and every program sees C++20 and exceptions, on every target. Each case builds a
+scratch superproject with the fixture library demo. Run with the names of some cases to run only
+those."""
 
 from __future__ import annotations
 
@@ -334,16 +335,56 @@ def test_a_wrong_declaration_is_refused(root):
 
 def test_a_lane_on_targets_is_listed_once_per_target(root):
     # A lane that names targets is one line of `b2 declared-lanes` per target, which the CI runs
-    # as an own lane for that target; a lane that names none keeps its line of three words.
+    # as an own lane for that target; a lane that names none has no target in its line. Each line
+    # ends with the lane's kind: programs, for lanes that run only what the toolset builds.
     jamfile = root / 'libs/demo/test/Jamfile'
     jamfile.write_text(jamfile.read_text()
                        + 'webcpp.lane served : pass parses_json : wasip3 wasip2 ;\n'
                        + 'webcpp.lane plain : fails ;\n')
     result = harness.run_b2(root, '-d0', 'declared-lanes')
     harness.expect(result, True)
-    assert result.stdout == ('demo plain libs/demo/test\n'
-                             'demo served libs/demo/test wasip2\n'
-                             'demo served libs/demo/test wasip3\n'), result.stdout
+    assert result.stdout == ('demo plain libs/demo/test programs\n'
+                             'demo served libs/demo/test wasip2 programs\n'
+                             'demo served libs/demo/test wasip3 programs\n'), result.stdout
+
+
+def test_a_lanes_kind_says_whether_it_runs_the_original(root):
+    # A lane that runs the original's language, a driven test's driver or an oracle's cases or
+    # twins, is of the kind original, which the CI gives Node; any other is of the kind programs.
+    # A lane may name a program before its rule declares it, and one that holds both kinds runs
+    # the original.
+    harness.add_library(root, 'driven',
+                        'import webcpp ;\n'
+                        '\n'
+                        'webcpp.original node ;\n'
+                        'webcpp.run plain : plain.cpp ;\n'
+                        'webcpp.lane early : later : native ;\n'
+                        'webcpp.drive later : plain.cpp : : drive.mjs ;\n'
+                        'webcpp.drive driven : plain.cpp : : drive.mjs ;\n'
+                        'webcpp.lane driver : driven : native ;\n'
+                        'webcpp.lane mixed : plain driven : native ;\n'
+                        'webcpp.lane simple : plain ;\n',
+                        {'plain.cpp': PLAIN_SOURCE, 'drive.mjs': '', 'package.json': '{}\n',
+                         'package-lock.json': '{}\n'})
+    oracle = root / 'libs/driven/test/oracle'
+    (oracle / 'cases').mkdir(parents=True)
+    for name in ('package.json', 'package-lock.json'):
+        (oracle / name).write_text('{}\n')
+    (oracle / 'Jamfile').write_text('import webcpp ;\n'
+                                    '\n'
+                                    'webcpp.original node ;\n'
+                                    'webcpp.twins ../../example : twins : .mjs ;\n'
+                                    'webcpp.cases c : c.mjs : cases : expected ;\n'
+                                    'webcpp.lane by_cases : cases-c ;\n'
+                                    'webcpp.lane by_twins : twins ;\n')
+    result = harness.run_b2(root, '-d0', 'declared-lanes')
+    harness.expect(result, True)
+    assert result.stdout == ('driven by_cases libs/driven/test/oracle original\n'
+                             'driven by_twins libs/driven/test/oracle original\n'
+                             'driven driver libs/driven/test native original\n'
+                             'driven early libs/driven/test native original\n'
+                             'driven mixed libs/driven/test native original\n'
+                             'driven simple libs/driven/test programs\n'), result.stdout
 
 
 def test_a_lane_runs_only_on_targets_its_jamfile_declares(root):
@@ -438,8 +479,8 @@ def test_every_served_program_runs_in_an_own_lane(root):
     served_library(root, 'webcpp.lane http : answers by_script : wasip2 wasip3 ;\n')
     result = harness.run_b2(root, '-d0', 'declared-lanes')
     harness.expect(result, True)
-    assert result.stdout == ('web http libs/web/test wasip2\n'
-                             'web http libs/web/test wasip3\n'), result.stdout
+    assert result.stdout == ('web http libs/web/test wasip2 programs\n'
+                             'web http libs/web/test wasip3 programs\n'), result.stdout
     jamfile = root / 'libs/web/test/Jamfile'
     text = jamfile.read_text()
     for lanes, message in (
@@ -937,6 +978,7 @@ CASES = [
     test_declared_targets_lists_pairs,
     test_a_wrong_declaration_is_refused,
     test_a_lane_on_targets_is_listed_once_per_target,
+    test_a_lanes_kind_says_whether_it_runs_the_original,
     test_a_lane_runs_only_on_targets_its_jamfile_declares,
     test_a_lanes_programs_leave_the_ordinary_lanes,
     test_a_lane_built_for_another_target_fails_by_name,

@@ -27,16 +27,19 @@ the library --library names, else of every library; empty, {"include":[]}, when 
 and a failure when --library names no library of libs/, as plan's does. An own lane is one a library
 declares with webcpp.lane, such as its oracle, or its served tests, and one job runs it, per target
 it runs on, in every directory D that declares it there: the entry {"library": L, "lane": N,
-"directories": [D, ...]}, with "name", what the CI shows for the job, Own lane (L, N) or Own lane
-(L, N, T), the "os", "wasm" and "emsdk" of the lane whose setup it shares, and "node", true for
-every own lane. One that names no target runs as `b2 -a toolset=clang-18 D//N ...`, whose exit
-status is its verdict: it writes no XML, so it is no column of the report. One that names targets is
-an entry per target T, which adds "platform": T and the "id" <T>.<L>.<N> (wasip2.wasi.http), and
-shares T's own lane, or the oracle's Clang 18 for native. It runs as that lane runs, with
---dump-tests and --out-xml, and its XML, <id>.xml, is a column of the report under its id, which
-tools/report/report.py checks against the toolset it was built with and the library whose tests it
-lists. A target the CI has no lane to set up an own lane on fails the listing by name: an own lane
-is never run natively in its place.
+"directories": [D, ...]}, with "kind", original when it runs the original's language in any of them
+(an oracle's twins or cases, a driven test's driver) and programs otherwise, as the line's last word
+says, "name", what the CI shows for the job, Own lane (L, N) or Own lane (L, N, T), the "os", "wasm"
+and "emsdk" of the lane whose setup it shares, and "node", true for a lane of the kind original,
+whose original runs with the CI's Node, and for one whose shared lane has Node, the emscripten
+lane's, which runs its programs; a served lane on wasip2 or wasip3 has none. One that names no
+target runs as `b2 -a toolset=clang-18 D//N ...`, whose exit status is its verdict: it writes no
+XML, so it is no column of the report. One that names targets is an entry per target T, which adds
+"platform": T and the "id" <T>.<L>.<N> (wasip2.wasi.http), and shares T's own lane, or the oracle's
+Clang 18 for native. It runs as that lane runs, with --dump-tests and --out-xml, and its XML,
+<id>.xml, is a column of the report under its id, which tools/report/report.py checks against the
+toolset it was built with and the library whose tests it lists. A target the CI has no lane to set
+up an own lane on fails the listing by name: an own lane is never run natively in its place.
 
 declares runs `b2 -d0 declared-targets` and prints true when some library of the superproject
 declares TARGET, else false: every library's, whatever --library names, which must be a library
@@ -346,10 +349,16 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
 
 
 # A line of `b2 declared-lanes`: a library, the name of one of its lanes, the directory of the
-# Jamfile that declares it, under the library's test or example directory, and the target it runs
-# on, when it names one. The job runs `b2 -a <directory>//<lane> ...` from these words, so each is
-# checked whole.
-OWN_LANE = re.compile(r'([a-z][a-z0-9_]*) ([A-Za-z0-9][A-Za-z0-9_.-]*) (libs/[^ ]+)(?: ([^ ]+))?')
+# Jamfile that declares it, under the library's test or example directory, the target it runs on,
+# when it names one, and its kind. The job runs `b2 -a <directory>//<lane> ...` from these words,
+# and sets up what the kind needs, so each is checked whole.
+OWN_LANE = re.compile(
+    r'([a-z][a-z0-9_]*) ([A-Za-z0-9][A-Za-z0-9_.-]*) (libs/[^ ]+)(?: ([^ ]+))? ([^ ]+)')
+
+# The kinds of an own lane, as tools/webcpp.jam's webcpp.lane computes them: original, when it
+# runs the original's language (an oracle's twins or cases, a driven test's driver), which the
+# CI's Node runs, and programs, when it runs only what its toolset builds.
+KINDS = ('original', 'programs')
 
 # The lane whose toolset, options and setup an own lane shares, by the target it runs on: the
 # target's own lane, and Clang 18's, the oracle's, for native and for an own lane that names no
@@ -369,6 +378,9 @@ class OwnLane:
     directories: tuple[str, ...]
     # The target it runs on, or None for one that names none.
     target: str | None = None
+    # One of KINDS: original when the lane runs the original's language in any of its
+    # directories.
+    kind: str = 'programs'
 
     @property
     def id(self) -> str:
@@ -390,14 +402,16 @@ class OwnLane:
 
 def parsed_own_lanes(text: str) -> list[OwnLane]:
     """The own lanes of the lines text holds, as `b2 declared-lanes` prints them, each line
-    checked: one per library, lane and target, with every directory that declares it there."""
+    checked: one per library, lane and target, with every directory that declares it there, of
+    the kind original when one of them runs the original."""
     grouped: dict[tuple[str, str, str | None], list[str]] = {}
+    kinds: dict[tuple[str, str, str | None], set[str]] = {}
     for line in text.splitlines():
         found = OWN_LANE.fullmatch(line)
         if found is None:
             raise Failure(f'b2 declared-lanes printed {line!r}, not "<library> <lane> '
-                          '<directory> [<target>]"', 2)
-        library, lane, directory, target = found.groups()
+                          '<directory> [<target>] <kind>"', 2)
+        library, lane, directory, target, kind = found.groups()
         under = re.fullmatch(rf'libs/{library}/(test|example)(/[A-Za-z0-9_.-]+)*', directory)
         if under is None or '/..' in directory or '/./' in f'{directory}/':
             raise Failure(f'b2 declared-lanes printed {line!r}, whose directory is not in '
@@ -405,10 +419,15 @@ def parsed_own_lanes(text: str) -> list[OwnLane]:
         if target is not None and target not in TARGETS:
             raise Failure(f'b2 declared-lanes printed {line!r}: {target} is not a target; the '
                           f'targets are {", ".join(TARGETS)}', 2)
+        if kind not in KINDS:
+            raise Failure(f'b2 declared-lanes printed {line!r}: {kind} is not a kind; the kinds '
+                          f'are {", ".join(KINDS)}', 2)
         directories = grouped.setdefault((library, lane, target), [])
         if directory not in directories:
             directories.append(directory)
-    return [OwnLane(library, lane, tuple(sorted(directories)), target)
+        kinds.setdefault((library, lane, target), set()).add(kind)
+    return [OwnLane(library, lane, tuple(sorted(directories)), target,
+                    'original' if 'original' in kinds[(library, lane, target)] else 'programs')
             for (library, lane, target), directories
             in sorted(grouped.items(), key=lambda item: (item[0][:2], item[0][2] or ''))]
 
@@ -424,17 +443,21 @@ def own_lane_base(target: str | None) -> Lane:
 
 def own_lane_entry(own: OwnLane) -> dict[str, object]:
     """The own lane as an entry of the own-lanes matrix: its library, its lane and its
-    directories; its target and its id when it names one; and, for every entry, the name of its
-    job and the image and the setup of the lane it shares, which the job reads from here alone."""
+    directories; its target and its id when it names one; and, for every entry, its kind, the name
+    of its job and the image and the setup of the lane it shares, which the job reads from here
+    alone."""
     base = own_lane_base(own.target)
     entry: dict[str, object] = {'library': own.library, 'lane': own.lane,
                                 'directories': list(own.directories)}
     if own.target is not None:
         entry.update(platform=own.target, id=own.id)
-    # Node for every own lane, whatever its target: an oracle runs npm and its original with it,
-    # and a driven test its driver, natively too, and declared-lanes says nothing of which an own
-    # lane holds. Without the CI's Node, one would run with the image's own, another version.
-    entry.update(name=own.name, os=base.os, wasm=base.wasm, emsdk=base.emsdk, node=True)
+    # Node where the lane shares it with its target's own lane, emscripten's, whose programs node
+    # runs, and for a lane of the kind original, natively too: an oracle runs npm and its original
+    # with it, and a driven test its driver. Without the CI's Node, one would run with the
+    # image's own, another version. A lane of programs alone, a served one, needs none.
+    node = base.node or own.kind == 'original'
+    entry.update(kind=own.kind, name=own.name, os=base.os, wasm=base.wasm, emsdk=base.emsdk,
+                 node=node)
     return entry
 
 
@@ -465,14 +488,15 @@ def parsed_own_lane(text: str) -> OwnLane:
         words = [entry['library'], entry['lane']]
         directories = entry['directories']
         target = [entry['platform']] if 'platform' in entry else []
+        kind = entry['kind']
         if not isinstance(directories, list) or not directories:
             raise TypeError('directories that are not a list of them')
-        if not all(isinstance(word, str) for word in (*words, *directories, *target)):
+        if not all(isinstance(word, str) for word in (*words, *directories, *target, kind)):
             raise TypeError('a word that is not a string')
     except (json.JSONDecodeError, KeyError, TypeError) as error:
         raise Failure(f'the own lane is not an entry of the matrix own-lanes writes: {error}',
                       2) from None
-    lanes = parsed_own_lanes('\n'.join(' '.join([*words, directory, *target])
+    lanes = parsed_own_lanes('\n'.join(' '.join([*words, directory, *target, kind])
                                        for directory in directories))
     if len(lanes) != 1:
         raise Failure(f'the own lane {text} is not one entry of the matrix own-lanes writes', 2)

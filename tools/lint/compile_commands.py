@@ -168,9 +168,9 @@ ALONE_OBJECT = re.compile(rf'^{BUILD_DIR}/(libs/.+?)/(alone-[^/]+)\.test/')
 # A line of `b2 declared-targets`: a library and a target its programs are built for.
 DECLARED = re.compile(rf'([a-z][a-z0-9_]*) ({"|".join(TARGETS)})')
 
-# A line of `b2 declared-lanes`: a library, one of its lanes, the directory that declares it and
-# the target it runs on, when it names one.
-LANE = re.compile(rf'[a-z][a-z0-9_]* (\S+) (libs/\S+)(?: ({"|".join(TARGETS)}))?')
+# A line of `b2 declared-lanes`: a library, one of its lanes, the directory that declares it, the
+# target it runs on, when it names one, and its kind, which the database does not read.
+LANE = re.compile(rf'[a-z][a-z0-9_]* (\S+) (libs/\S+)(?: ({"|".join(TARGETS)}))? \S+')
 
 
 class Failure(Exception):

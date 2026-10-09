@@ -559,19 +559,22 @@ local rule load-jamfiles ( directories * )
 }
 
 # webcpp.lane <name> : <b2-target> + : <target> * ; one of a library's own
-# lanes, such as its oracle's, or its served tests': the explicit alias
-# <name> over b2-targets, each a main target of this Jamfile, which the lane
-# makes explicit too, so that the library's ordinary lanes never build them.
-# A lane that names no target is recorded as "<library> <name> <directory>"
-# for lanes, and the CI runs it with Clang 18, its exit status its verdict; a
-# lane that names targets as one line "<library> <name> <directory>
-# <target>" per target, which the CI runs as that target's lane runs, and
-# reports; a build of it for another target stops, naming the toolset to
-# give. Each target is one of its Jamfile's webcpp.targets, which must
-# come before it (native when there are none). A lane-only program, served
-# or driven, is named by such a lane on every target it is built for, which
-# lanes checks. Only a Jamfile under the library's test or example
-# directory, which lanes loads, may declare one.
+# lanes, such as its oracle's, or its served tests': the explicit alias <name>
+# over b2-targets, each a main target of this Jamfile, which the lane makes
+# explicit too, so that the library's ordinary lanes never build them. A lane
+# that names no target is recorded as "<library> <name> <directory> <kind>" for
+# lanes, and the CI runs it with Clang 18, its exit status its verdict; a lane
+# that names targets as one line "<library> <name> <directory> <target> <kind>"
+# per target, which the CI runs as that target's lane runs, and reports; a build
+# of it for another target stops, naming the toolset to give. Its kind, which
+# lanes computes once every Jamfile is loaded, says what the CI sets up for it
+# beside its target's toolset: original when one of b2-targets runs the
+# original's language (the twins, cases, node-modules or update-expected of the
+# oracle's rules, or a driven test), else programs. Each target is one of its
+# Jamfile's webcpp.targets, which must come before it (native when there are
+# none). A lane-only program, served or driven, is named by such a lane on every
+# target it is built for, which lanes checks. Only a Jamfile under the library's
+# test or example directory, which lanes loads, may declare one.
 rule lane ( name : b2-targets + : targets * )
 {
     local found = [ where ] ;
@@ -604,9 +607,9 @@ rule lane ( name : b2-targets + : targets * )
                 "lanes; a lane names main targets of the Jamfile that declares it" ;
         }
     }
+    local key = $(found[3])/$(name) ;
     if $(targets)
     {
-        local key = $(found[3])/$(name) ;
         .lane-targets.$(key) = $(targets) ;
         .lane-shown.$(key) = "webcpp.lane $(name) in $(found[4])" ;
         alias $(name) : $(b2-targets) : <webcpp-lane>$(key) <conditional>@webcpp%lane-target ;
@@ -616,18 +619,38 @@ rule lane ( name : b2-targets + : targets * )
         alias $(name) : $(b2-targets) ;
     }
     $(found[1]).mark-target-as-explicit $(name) $(b2-targets) ;
-    if $(targets)
+    .lane-keys += $(key) ;
+    .lane-line.$(key) = "$(library[1]) $(name) $(found[3])" ;
+    .lane-directory.$(key) = $(found[3]) ;
+    .lane-programs.$(key) = $(b2-targets) ;
+    for local b2-target in $(b2-targets)
     {
-        .lanes += "$(library[1]) $(name) $(found[3]) "$(targets) ;
-        for local b2-target in $(b2-targets)
+        .laned.$(found[3])/$(b2-target) += $(targets) ;
+    }
+}
+
+# Records that the targets names of the Jamfile of found run the original's
+# language, which makes a lane that names one of the kind original.
+local rule runs-original ( found + : names + )
+{
+    for local name in $(names)
+    {
+        .runs-original.$(found[3])/$(name) = true ;
+    }
+}
+
+# The kind of the lane key, as lanes prints it: original when one of its
+# programs runs the original's language, else programs.
+local rule lane-kind ( key )
+{
+    for local program in $(.lane-programs.$(key))
+    {
+        if $(.runs-original.$(.lane-directory.$(key))/$(program))
         {
-            .laned.$(found[3])/$(b2-target) += $(targets) ;
+            return original ;
         }
     }
-    else
-    {
-        .lanes += "$(library[1]) $(name) $(found[3])" ;
-    }
+    return programs ;
 }
 
 # What a lane is built with on each target, as a message names it.
@@ -658,9 +681,9 @@ rule lane-target ( properties * )
     }
 }
 
-# The lines "<library> <name> <directory> [<target>]" of the lanes that the
-# Jamfiles under directories (absolute, in b2's form) declare, at any depth,
-# sorted. Every lane-only program there, served (webcpp.serve,
+# The lines "<library> <name> <directory> [<target>] <kind>" of the lanes
+# that the Jamfiles under directories (absolute, in b2's form) declare, at
+# any depth, sorted. Every lane-only program there, served (webcpp.serve,
 # webcpp.serve-script) or driven (webcpp.drive), must run in an own lane of
 # its Jamfile on every target it is built for, or the listing stops naming
 # it: the ordinary lanes leave such programs to their own lanes, so one that
@@ -682,7 +705,21 @@ rule lanes ( directories * )
                 "no own lane that names it runs on; name $(dropped:J= ) in one of its lanes" ;
         }
     }
-    return [ sequence.unique $(.lanes) ] ;
+    local lines ;
+    for local key in $(.lane-keys)
+    {
+        local kind = [ lane-kind $(key) ] ;
+        local targets = $(.lane-targets.$(key)) ;
+        if $(targets)
+        {
+            lines += "$(.lane-line.$(key)) "$(targets)" $(kind)" ;
+        }
+        else
+        {
+            lines += "$(.lane-line.$(key)) $(kind)" ;
+        }
+    }
+    return [ sequence.unique $(lines) ] ;
 }
 
 # Records the lane-only program <directory>/<name>, shown as shown, built on
@@ -757,21 +794,27 @@ rule index ( page )
 # (tools/oracle/oracle.jam). Each oracle rule is told where its Jamfile is.
 rule original ( words + )
 {
-    webcpp-oracle.original [ where ] : $(words) ;
+    local found = [ where ] ;
+    webcpp-oracle.original $(found) : $(words) ;
+    runs-original $(found) : node-modules update-expected ;
 }
 
 # The target twins, which runs every twin of examples on the original and
 # compares what it prints (tools/oracle/oracle.jam).
 rule twins ( examples : twins : suffix : extra * )
 {
-    webcpp-oracle.twins [ where ] : $(examples) : $(twins) : $(suffix) : $(extra) ;
+    local found = [ where ] ;
+    webcpp-oracle.twins $(found) : $(examples) : $(twins) : $(suffix) : $(extra) ;
+    runs-original $(found) : twins ;
 }
 
 # The target cases-<name>, which runs script on the original over cases and
 # compares what it writes with expected (tools/oracle/oracle.jam).
 rule cases ( name : script : cases : expected )
 {
-    webcpp-oracle.cases [ where ] : $(name) : $(script) : $(cases) : $(expected) ;
+    local found = [ where ] ;
+    webcpp-oracle.cases $(found) : $(name) : $(script) : $(cases) : $(expected) ;
+    runs-original $(found) : cases-$(name) ;
 }
 
 # The C bindings that wit-bindgen generates for the world of world-file,
@@ -832,6 +875,7 @@ rule drive ( name : sources + : requirements * : script : arguments * : targets 
     built-for ?= native ;
     local only = [ program drive : $(name) : $(targets) ] ;
     lane-only-program $(found) : $(name) : "webcpp.drive $(name)" : $(built-for) ;
+    runs-original $(found) : $(name) ;
     webcpp-drive.drive $(found) : $(name) : $(sources) : $(requirements) $(.handler)
         : $(script) : $(arguments) : $(original) : $(only) ;
 }

@@ -262,8 +262,10 @@ def test_a_hanging_drive_is_stopped_within_its_bound(root):
 def test_a_drive_outside_every_lane_is_refused(root):
     result = harness.run_b2(root, '-d0', 'declared-lanes')
     harness.expect(result, True)
-    assert result.stdout == ('browser_demo driver libs/browser_demo/test/driver emscripten\n'
-                             'browser_demo driver libs/browser_demo/test/driver native\n'), (
+    assert result.stdout == ('browser_demo driver libs/browser_demo/test/driver emscripten '
+                             'original\n'
+                             'browser_demo driver libs/browser_demo/test/driver native '
+                             'original\n'), (
         result.stdout)
     jamfile = root / 'libs/browser_demo/test/driver/Jamfile'
     text = jamfile.read_text()

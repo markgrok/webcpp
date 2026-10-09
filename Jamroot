@@ -448,13 +448,15 @@ rule declared-targets ( targets * : sources * : properties * )
 }
 notfile declared-targets : @declared-targets : : <webcpp-boost-check>off ;
 
-# `b2 declared-lanes` prints each line "<library> <lane> <directory>" that a
-# library's test or example Jamfiles declare with webcpp.lane, sorted: a
-# library's own lanes, such as its oracle's, which CI runs as
+# `b2 declared-lanes` prints each line "<library> <lane> <directory> <kind>"
+# that a library's test or example Jamfiles declare with webcpp.lane, sorted:
+# a library's own lanes, such as its oracle's, which CI runs as
 # `b2 -a <directory>//<lane>`. A lane that names the targets it runs on is a
-# line "<library> <lane> <directory> <target>" per target, which CI runs with
-# that target's toolset and reports as a lane. It reads only Jamfiles too,
-# and needs neither Boost nor Node.
+# line "<library> <lane> <directory> <target> <kind>" per target, which CI
+# runs with that target's toolset and reports as a lane. The kind, original
+# or programs, says whether the lane runs the original's language, for which
+# CI installs Node. It reads only Jamfiles too, and needs neither Boost nor
+# Node.
 rule declared-lanes ( targets * : sources * : properties * )
 {
     for local lane in [ webcpp.lanes [ library-directories ] ]

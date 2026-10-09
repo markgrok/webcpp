@@ -129,8 +129,9 @@ does not declare for a target is skipped there.
 
 A library may also run some of its programs in lanes of its own, which
 `test` and `example` leave out: the HTTP components wasmtime serves, for
-one. `b2 declared-lanes -d0` lists them, each with the target it runs on,
-and one runs as
+one. `b2 declared-lanes -d0` lists them, each with the target it runs on
+and its kind, `original` when it runs the original's language, which needs
+Node, else `programs`, and one runs as
 
     b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test//<lane>
 
