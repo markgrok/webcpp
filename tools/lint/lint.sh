@@ -353,14 +353,23 @@ else
 fi
 
 # 3c. A function that returns *this is a fluent interface unless it is an assignment operator.
-#     The nearest preceding signature decides.
+#     Inside the body of an assignment operator whose signature line opens it with {, up to the
+#     } at that line's indentation which closes it, a return of *this is the assignment's: its
+#     body's calls hold parentheses as a signature does. Elsewhere, the nearest preceding line
+#     with a parenthesis, the signature of a function written on one line, decides.
 rule 'returns *this'
 # The program is awk's, and its $ are awk's fields.
 # shellcheck disable=SC2016
 self_returns="$(on_files "${work_directory}/sources" awk '
+    function indent(line) { match(line, /^ */); return RLENGTH }
+    FNR == 1 { assigning = 0 }
+    assigning && /^ *}/ && indent($0) == opened { assigning = 0 }
     /\(/ { signature = $0 }
+    /operator[ ]*=[ ]*\(.*\{[ ]*$/ { assigning = 1; opened = indent($0) }
     /return \*this;/ {
-        if (signature !~ /operator[ ]*=/) { printf "%s:%d: %s\n", FILENAME, FNR, $0 }
+        if (!assigning && signature !~ /operator[ ]*=/) {
+            printf "%s:%d: %s\n", FILENAME, FNR, $0
+        }
     }' || true)"
 if [ -n "${self_returns}" ]; then
     printf '%s\n' "${self_returns}"

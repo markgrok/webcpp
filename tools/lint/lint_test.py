@@ -1058,15 +1058,31 @@ def test_fluent_chain(root):
 
 def test_returns_this(root):
     prepare(root)
+    # An assignment operator may return *this after a body that calls functions, whose lines
+    # hold parentheses as a signature does; a function after it that is no assignment operator
+    # may not, however long its body.
     path = 'libs/demo/test/builder.cpp'
     write(root, path, CPP + '\n'
           'struct builder {\n'
           '    builder& add() { return *this; }\n'
           '\n'
           '    builder& operator=(const builder&) { return *this; }\n'
+          '\n'
+          '    builder& operator=(builder&& other) noexcept {\n'
+          '        swap(other);\n'
+          '        return *this;  // moved\n'
+          '    }\n'
+          '\n'
+          '    builder& append() {\n'
+          '        swap(*this);\n'
+          '        return *this;  // appended\n'
+          '    }\n'
+          '\n'
+          '    void swap(builder& /*other*/) noexcept {}\n'
           '};\n')
-    expect_alone(lint(root), 'returns *this', [at(root, path, 'add()')],
-                 spared=(at(root, path, 'operator='),))
+    expect_alone(lint(root), 'returns *this',
+                 [at(root, path, 'add()'), at(root, path, '// appended')],
+                 spared=(at(root, path, 'operator=(const'), at(root, path, '// moved')))
 
 
 def test_em_dash(root):
