@@ -1,0 +1,79 @@
+// Copyright (c) 2026 WebCpp.org
+//
+// Distributed under the Boost Software License, Version 1.0. (See
+// accompanying file LICENSE_1_0.txt or copy at
+// https://www.boost.org/LICENSE_1_0.txt)
+
+[#webcpp-0-1-0]
+= webcpp 0.1.0
+
+In preparation: no tag names this version yet, and its libraries' entries
+are their changelogs' "Unreleased" sections.
+
+[#webcpp-0-1-0-new-libraries]
+== New Libraries
+
+* link:{library-pages}config/{library-page}[config]: webcpp's configuration,
+which every library includes first: the target, exceptions and the version,
+from R.
+* link:{library-pages}pratt/{library-page}[pratt]: a header-only
+Pratt-parsing engine for {cpp}20, with a decimal calculator built on it,
+from R.
+* link:{library-pages}wasi/{library-page}[wasi]: a header-only HTTP handler
+for {cpp}20 programs built as WebAssembly components, covering WASI 0.2 and
+WASI 0.3, from R.
+* link:{library-pages}xactor/{library-page}[xactor]: a header-only,
+deterministic actor system for {cpp}20, from R.
+* link:{library-pages}xstate/{library-page}[xstate]: a header-only port of
+XState's state machines and actors for {cpp}20, from R.
+
+[#webcpp-0-1-0-updated-libraries]
+== Updated Libraries
+
+None.
+
+[#webcpp-0-1-0-removed-libraries]
+== Removed Libraries
+
+None.
+
+[#webcpp-0-1-0-tools-and-build]
+== Tools and build
+
+* *Breaking change:* wasip2 programs build with exceptions, as wasip3 does;
+whether a program uses them is its developer's choice.
+* Added emscripten as a tested target (Emscripten 6.0.11 under Node):
+tests, link-only programs and driven tests, in CI and in own lanes.
+* Added the lint rule `bare-throw`: a library header raises only through
+`boost::throw_exception`.
+* Changed the lint to analyse every aggregate, test and example without
+exceptions too, so a library keeps compiling without them.
+* Changed CI to run one own-lane job per library, lane and target.
+* Fixed an own lane that served nothing or missed a target passing
+silently; it now fails by name.
+* Fixed `serve.py` leaving wasmtime running when it is killed.
+* Changed the lint's compilation database to include every program an own
+lane builds, served programs included.
+* Fixed the Node package installer leaving a stray link or a traceback
+when an install is killed or refused.
+* Added a kind to each own lane (`original` or `programs`); CI installs
+Node only for lanes that need it.
+* Added the names `target`, `has`, `no`, `lib`, `version` and `test`, alone
+or before `_`, to those no library may take.
+* Added the lint rule refusing an unescaped `+__X__+` in a Doc Comment's
+code span.
+* Added each version's release notes to the index page, newest first.
+
+[#webcpp-0-1-0-compilers-tested]
+== Compilers tested
+
+* GCC 14 (container, no network)
+* GCC 15
+* Clang 18 (libstdc{plus}{plus}, container, no network)
+* Clang 22 (libstdc{plus}{plus})
+* Apple Clang (macOS 15)
+* MSVC 14.3 (Visual Studio 2022)
+* MSVC 14.5 (Visual Studio 2026)
+* Emscripten 6.0.11 (node)
+* wasm32-wasip2 (wasi-sdk 34, wasmtime 47.0.3)
+* wasm32-wasip3 (wasi-sdk 34, wasmtime 47.0.3)

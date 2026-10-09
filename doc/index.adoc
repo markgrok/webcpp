@@ -55,3 +55,11 @@ https://github.com/webcpporg/webcpp/blob/main/README.md[README] lists the
 prerequisites and how to configure them, and
 https://github.com/webcpporg/webcpp/blob/main/AGENTS.md[AGENTS.md] is the
 rulebook for porting a library to webcpp.
+
+[#releases]
+== Releases
+
+The release notes of each version of webcpp, newest first: what came into
+the collection, what changed in each library, and what went out.
+
+include::releases/0.1.0.adoc[leveloffset=+2]
