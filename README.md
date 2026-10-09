@@ -246,8 +246,8 @@ from the root, such as `python3 tools/test/jamroot_test.py`:
 the oracle's rules, the check of generated files, the rules of a WebAssembly
 component and the documentation build, and `tools/<tool>/*_test.py` for the
 oracle, the lint, the report, the documentation, the example runner, the
-server of a component, the installer of the Node packages and the CI's
-scripts.
+server of a component, the driver of generated files, the installer of the
+Node packages and the CI's scripts.
 
 ## Contributing
 

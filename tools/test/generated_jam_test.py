@@ -7,13 +7,16 @@
 
 """Checks webcpp.generated (tools/generated/generated.jam): generated-<name> runs a library's Python
 generator in its Jamfile's directory into the build directory, and passes when every output equals
-its committed file, byte for byte, and fails naming each one that differs, is missing, or that the
-generator did not write; update-generated writes those of every generator of the Jamfile in place,
-and leaves every committed file as it was when any generator fails; an own lane names the check,
-which `b2 declared-lanes` lists and the ordinary lanes never build, nor update-generated; and a
-wrong declaration stops the build by name. Each case builds a
-scratch superproject with the fixture library demo, whose path holds a space. Run with the names of
-some cases to run only those."""
+its committed file, byte for byte, and fails naming each one that differs, with the command that
+writes it again, each one that is missing, and each one the generator did not write; it leaves the
+tree as it was, passing or failing. update-generated writes the outputs of every generator of the
+Jamfile in place, and leaves every committed file as it was when any generator fails. An own lane
+names the check, which `b2 declared-lanes` lists and the ordinary lanes never build, nor
+update-generated; and a wrong declaration, two generators that name one output among them, stops
+the build by name.
+
+Each case builds a scratch superproject with the fixture library demo, whose path holds a space.
+Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -66,6 +69,12 @@ def with_again(jamfile: str) -> str:
     return jamfile.replace('import webcpp ;\n', 'import webcpp ;\n' + AGAIN)
 
 
+def snapshot(directory: Path) -> dict[str, bytes]:
+    """Every file under directory, by its path relative to it, with its bytes."""
+    return {str(path.relative_to(directory)): path.read_bytes()
+            for path in sorted(directory.rglob('*')) if path.is_file()}
+
+
 def add_generator(root: Path, jamfile: str = JAMFILE) -> Path:
     """Adds the library gen, whose test Jamfile declares the generator words, with what it writes
     committed; returns its test directory."""
@@ -80,19 +89,24 @@ def add_generator(root: Path, jamfile: str = JAMFILE) -> Path:
 
 
 def test_matching_outputs_pass(root: Path) -> None:
-    add_generator(root)
+    test = add_generator(root)
+    before = snapshot(test)
     harness.expect(harness.run_b2(root, '-a', CHECK), True)
     harness.expect(harness.run_b2(root, '-a', LANE), True)
+    assert snapshot(test) == before, sorted(snapshot(test))
 
 
 def test_each_differing_output_fails_by_name(root: Path) -> None:
     test = add_generator(root)
     (test / 'generated/words.txt').write_text('forty-three\n')
     (test / 'generated/more/twice.txt').write_text('forty-two  forty-two\n')
+    before = snapshot(test)
     harness.expect(harness.run_b2(root, '-a', CHECK), False,
                    'generated/words.txt: contents differ',
                    'generated/more/twice.txt: contents differ',
-                   'update-generated writes it again')
+                   '`b2 libs/gen/test//update-generated` writes it again')
+    # The check writes nothing into the tree, not even when it fails.
+    assert snapshot(test) == before, sorted(snapshot(test))
 
 
 def test_a_missing_committed_output_fails(root: Path) -> None:
@@ -103,8 +117,14 @@ def test_a_missing_committed_output_fails(root: Path) -> None:
 
 
 def test_an_output_the_generator_does_not_write_fails(root: Path) -> None:
-    add_generator(root, JAMFILE.replace('forty-two', 'skip-second'))
-    harness.expect(harness.run_b2(root, '-a', CHECK), False, 'words/2/twice.txt: does not exist')
+    test = add_generator(root, JAMFILE.replace('forty-two', 'skip-second'))
+    before = snapshot(test)
+    result = harness.run_b2(root, '-a', CHECK)
+    harness.expect(result, False, 'generated: words: gen.py wrote no ',
+                   'twice.txt; it must write each output it is given')
+    # Its hint is not the one of an output that differs: update-generated would refuse it too.
+    assert 'twice.txt is not what' not in result.stdout, result.stdout[-4000:]
+    assert snapshot(test) == before, sorted(snapshot(test))
 
 
 def test_update_generated_writes_them_in_place(root: Path) -> None:
@@ -163,6 +183,9 @@ def test_a_wrong_declaration_is_refused(root: Path) -> None:
             (JAMFILE.replace('gen.py', 'missing.py'), 'libs/gen/test/missing.py does not exist'),
             (JAMFILE + 'webcpp.generated words : gen.py : x : generated/other.txt ;\n',
              'webcpp.generated words is declared twice in libs/gen/test/Jamfile'),
+            (JAMFILE + 'webcpp.generated other : gen.py : x : ./generated/words.txt ;\n',
+             'webcpp.generated other in libs/gen/test/Jamfile names ./generated/words.txt, which'
+             ' webcpp.generated words writes'),
             (JAMFILE.replace('generated/more/twice.txt', 'generated/words.txt'),
              'generated/words.txt twice')):
         (test / 'Jamfile').write_text(jamfile)

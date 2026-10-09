@@ -7,9 +7,9 @@
 
 """Checks tools/oracle/compare.py: two identical trees pass; a differing byte, a file in one tree
 only, a file against a directory, an unreadable file and a tree that cannot be listed each fail,
-naming the path; with --files, two identical files pass, and a differing byte, a missing file and a
-directory each fail, naming the path; a wrong number of arguments is a usage error. Run with the
-names of some cases to run only those."""
+naming the path; with --files, two identical files pass, and a differing byte, a missing file, a
+directory on either side and an unreadable file each fail, naming the path; a wrong number of
+arguments is a usage error. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -130,6 +130,24 @@ def test_a_directory_is_not_a_file(root: Path) -> None:
     (root / 'directory').mkdir()
     expect(compare('--files', root / 'left.txt', root / 'directory'), 1,
            'a file here, a directory in')
+    expect(compare('--files', root / 'directory', root / 'left.txt'), 1,
+           f'compare: {root / "directory"}: a directory here, a file in {root / "left.txt"}')
+
+
+def test_an_unreadable_file_fails_with_files(root: Path) -> None:
+    write(root / 'left.txt', b'here\n')
+    write(root / 'right.txt', b'here\n')
+    unreadable = root / 'right.txt'
+    unreadable.chmod(0)
+    try:
+        if os.access(unreadable, os.R_OK):
+            # Whoever can read any file (root) cannot see this case.
+            print('test_an_unreadable_file_fails_with_files: skipped, every file is readable here')
+            return
+        expect(compare('--files', root / 'left.txt', unreadable), 1,
+               f'compare: {root / "left.txt"}: cannot be read here or in {unreadable}')
+    finally:
+        unreadable.chmod(0o644)
 
 
 def test_a_usage_error_exits_2(root: Path) -> None:
@@ -150,6 +168,7 @@ CASES: list[Callable[[Path], None]] = [
     test_differing_files_fail,
     test_a_missing_file_fails,
     test_a_directory_is_not_a_file,
+    test_an_unreadable_file_fails_with_files,
     test_a_usage_error_exits_2,
 ]
 

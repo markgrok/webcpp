@@ -15,11 +15,14 @@
 # given in its place. The explicit target generated-<name> has it write into
 # the Jamfile's build directory and compares each output, byte for byte, with
 # the committed file (tools/oracle/compare.py --files), naming every one that
-# differs, is missing or was not written. The explicit target
+# differs, with the command that writes it again, is missing or was not
+# written; it writes nothing into the tree. The explicit target
 # update-generated, declared once per Jamfile with its first
-# webcpp.generated, runs every generator of the Jamfile the same way and,
-# once all have succeeded, copies their outputs over the committed files:
-# tools/generated/generated.py does both. Paths are relative to the Jamfile.
+# webcpp.generated, runs every generator of the Jamfile the same way, in a
+# build directory apart from the check's, and, once all have succeeded,
+# copies their outputs over the committed files: tools/generated/generated.py
+# does both. Paths are relative to the Jamfile, and no output is named twice,
+# by one generator or by two of the Jamfile.
 # A lane names generated-<name> (webcpp.lane), and the ordinary lanes never
 # build it: a generator may need the network. Neither target compiles
 # anything, so they leave the Jamroot's check of Boost out.
@@ -76,9 +79,19 @@ rule generated ( found + : name : script : arguments * : outputs + )
         {
             errors.user-error "webcpp.generated $(name) in $(found[4]) names $(output) twice" ;
         }
+        # update-generated would stage both over the one committed file.
+        for local other in $(.names.$(key))
+        {
+            if $(native) in $(.committed.$(key).$(other))
+            {
+                errors.user-error "webcpp.generated $(name) in $(found[4]) names $(output),"
+                    "which webcpp.generated $(other) writes: an output has one generator" ;
+            }
+        }
         committed += $(native) ;
     }
     .names.$(key) += $(name) ;
+    .committed.$(key).$(name) = $(committed) ;
     # The words of the driver's step: the name, the directory the script
     # runs in, the script, the arguments and the outputs, each list after
     # its count.
@@ -106,12 +119,13 @@ rule check ( targets * : sources * : properties * )
     PYTHON on $(targets) = $(.python) ;
     DRIVER on $(targets) = $(.driver) ;
     BUILD on $(targets) = $(.build.$(key)) ;
+    WRITER on $(targets) = $(key)//update-generated ;
     STEPS on $(targets) = $(.step.$(key).$(name)) ;
 }
 
 actions check
 {
-    "$(PYTHON)" "$(DRIVER)" check "$(BUILD)" "$(STEPS)"
+    "$(PYTHON)" "$(DRIVER)" check "$(BUILD)" "$(WRITER)" "$(STEPS)"
 }
 
 # update-generated runs every generator its Jamfile declares by the time it
@@ -127,10 +141,11 @@ rule update ( targets * : sources * : properties * )
     PYTHON on $(targets) = $(.python) ;
     DRIVER on $(targets) = $(.driver) ;
     BUILD on $(targets) = $(.build.$(key)) ;
+    WRITER on $(targets) = $(key)//update-generated ;
     STEPS on $(targets) = $(steps) ;
 }
 
 actions update
 {
-    "$(PYTHON)" "$(DRIVER)" update "$(BUILD)" "$(STEPS)"
+    "$(PYTHON)" "$(DRIVER)" update "$(BUILD)" "$(WRITER)" "$(STEPS)"
 }
