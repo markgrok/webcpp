@@ -25,7 +25,9 @@ macOS on x86-64 and arm64 before it downloads anything; its configure step fails
 versions, on an emcc that is not Emscripten 6.0.11, installs the node wrapper, which refuses b2's
 probe of --experimental-wasm-threads without a word, gives the jobs EM_CACHE by its resolved path,
 outside the emsdk, and warms that cache, so that no b2 meets Emscripten's sanity check; and its
-libraries step builds the system libraries the lanes link into that cache. Nothing is fetched
+libraries step builds the system libraries the lanes link into that cache, or, for a job that
+only parses (the input libraries: 'false', under the same key), the sysroot alone, a cache the
+action never saves. Nothing is fetched
 from the network: the downloads are file:// URLs, git is a stand-in, and install.sh runs against
 a download.sh that only says it was called, or that hands it a stand-in archive. Run with the
 names of some cases to run only those."""
@@ -35,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -684,6 +687,55 @@ def test_emsdk_builds_the_system_libraries_into_the_cache(scratch: Path) -> None
     assert built == [f'{cache} build {" ".join(SYSTEM_LIBRARIES)}'], built
 
 
+def test_emsdk_for_a_job_that_only_parses(scratch: Path) -> None:
+    # A job that parses Emscripten's headers and links nothing, the docs and the lint, gives the
+    # input libraries: 'false': the key is the same, so it restores the cache the lanes save,
+    # its system libraries built; on a miss it writes the headers and the sysroot alone, with
+    # embuilder build sysroot, and never saves that cache, which the lanes would restore without
+    # their libraries.
+    script, runner = emsdk_tree(scratch, 'Linux', 'X64')
+    keys = []
+    for libraries in ('true', 'false'):
+        (scratch / 'github-output').unlink(missing_ok=True)
+        result = emsdk_step(scratch, script, 'key', runner, LIBRARIES=libraries)
+        assert result.returncode == 0, (result.returncode, result.stderr)
+        written = dict(line.split('=', 1)
+                       for line in (scratch / 'github-output').read_text().splitlines())
+        assert written['libraries'] == libraries, written
+        keys.append(written['key'])
+    assert keys[0] == keys[1], keys
+    result = emsdk_step(scratch, script, 'key', runner, LIBRARIES='some')
+    assert result.returncode == 2, (result.returncode, result.stderr)
+    assert "install.sh: the input libraries is 'true' or 'false', not 'some'" in result.stderr, (
+        result.stderr)
+    for step in ('install', 'configure'):
+        result = emsdk_step(scratch, script, step, runner)
+        assert result.returncode == 0, (step, result.returncode, result.stderr)
+    result = emsdk_step(scratch, script, 'libraries', runner, LIBRARIES='false')
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    cache = scratch.resolve() / '.local/emscripten-cache'
+    built = (scratch / '.local/emsdk/embuilder.log').read_text().splitlines()
+    assert built == [f'{cache} build sysroot'], built
+    # The action passes the input to both steps, and saves the cache only when the libraries
+    # were built.
+    action = (EMSDK.parent / 'action.yml').read_text()
+    steps = {step.split('\n', 1)[0]: step for step in action.split('    - name: ')[1:]}
+    assert "LIBRARIES: ${{ inputs.libraries }}" in steps['Cache key'], steps['Cache key']
+    assert "steps.key.outputs.libraries == 'true'" in steps['Save emsdk'], steps['Save emsdk']
+    assert "LIBRARIES: ${{ inputs.libraries }}" in steps["Build Emscripten's system libraries"]
+    assert re.search(r"^  libraries:\n(    .*\n)*    default: 'true'$", action, re.MULTILINE), (
+        action)
+
+
+def test_the_jamroot_pins_the_action_s_version(_: Path) -> None:
+    # The Jamroot refuses an emsdk of another version than the one the action installs, for a
+    # reference's Emscripten headers: both name one version.
+    pinned = re.search(r'^version=(\S+)$', EMSDK.read_text(), re.MULTILINE)
+    jamroot = re.search(r'^\.emscripten-version = (\S+) ;$',
+                        (CI.parents[1] / 'Jamroot').read_text(), re.MULTILINE)
+    assert pinned and jamroot and pinned.group(1) == jamroot.group(1), (pinned, jamroot)
+
+
 def test_emsdk_configure_fails_naming_both_versions(scratch: Path) -> None:
     script, runner = emsdk_tree(scratch, 'Linux', 'X64')
     result = emsdk_step(scratch, script, 'install', runner)
@@ -740,6 +792,8 @@ CASES: list[Callable[[Path], None]] = [
     test_emsdk_fails_on_a_release_without_its_node_modules,
     test_emsdk_configure_installs_the_wrapper_and_warms_the_cache,
     test_emsdk_builds_the_system_libraries_into_the_cache,
+    test_emsdk_for_a_job_that_only_parses,
+    test_the_jamroot_pins_the_action_s_version,
     test_emsdk_configure_fails_naming_both_versions,
     test_emsdk_fails_on_a_download_it_does_not_pin,
     test_emsdk_refuses_a_runner_it_pins_nothing_for,

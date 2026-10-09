@@ -10,7 +10,17 @@ description: >-
   archive it installs checked against its SHA-256, cached with Emscripten's cache, its system
   libraries built, per version and runner; checks that emcc is 6.0.11, installs the node wrapper
   tools/ci/emsdk.jam names, and gives the later steps EM_CACHE, .local/emscripten-cache by its
-  resolved path, warmed. On Linux and macOS.
+  resolved path, warmed. On Linux and macOS. A job that only parses Emscripten's headers gives
+  libraries 'false'.
+
+inputs:
+  libraries:
+    description: >-
+      Whether to build Emscripten's system libraries into the cache and save it, 'true' or
+      'false'. A job that links nothing, the docs and the lint, gives 'false': it restores the
+      lanes' cache under the same key, and on a miss writes the sysroot alone and saves nothing.
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -18,6 +28,8 @@ runs:
     - name: Cache key
       id: key
       shell: bash
+      env:
+        LIBRARIES: ${{ inputs.libraries }}
       run: bash tools/ci/actions/emsdk/install.sh key
 
     - name: Restore emsdk
@@ -39,14 +51,17 @@ runs:
       shell: bash
       run: bash tools/ci/actions/emsdk/install.sh configure
 
-    # Into the cache that is saved, so that every job restores them built.
+    # Into the cache that is saved, so that every job restores them built; the sysroot alone for
+    # a job that only parses, whose cache is not saved.
     - name: Build Emscripten's system libraries
       if: steps.restore.outputs.cache-hit != 'true'
       shell: bash
+      env:
+        LIBRARIES: ${{ inputs.libraries }}
       run: bash tools/ci/actions/emsdk/install.sh libraries
 
     - name: Save emsdk
-      if: steps.restore.outputs.cache-hit != 'true'
+      if: steps.restore.outputs.cache-hit != 'true' && steps.key.outputs.libraries == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |

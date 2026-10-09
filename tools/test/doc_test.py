@@ -24,9 +24,11 @@ Comments of the header's wasip3 branch, which that reference does not parse, are
 the other requirements the doc Jamfile gives, and an undocumented function, a detail symbol
 without a brief and an undocumented macro there each fail it, the first the page too; the
 reference of browser_demo parses natively its header that builds only on emscripten, with
-Emscripten's headers that /webcpp//emscripten-headers finds (-sEMSDK, else .local/emsdk, else
-the build stops naming both), and its header that builds only against a dependency, and fails on
-an undocumented function of either; and MrDocs and clang++ given at paths that hold a space are
+Emscripten's headers that /webcpp//emscripten-headers finds (-sWEBCPP_EMSDK on the command line,
+never the shell's EMSDK, else .local/emsdk, else the build stops naming both; an emsdk of
+another version is refused), after every directory of the host's, so that none shadows a header
+the host has, and its header that builds only against a dependency, and fails on an undocumented
+function of either; and MrDocs and clang++ given at paths that hold a space are
 found; and a page shows a tagged region of a file the superproject's git tracks, at
 {webcpp-root}, and fails on one it does not track.
 
@@ -697,23 +699,65 @@ def test_reference_reads_headers_of_one_target(root):
                        f'{at(root, header, "int undocumented(")}:',
                        'undocumented: function is undocumented')
         (root / header).write_text(text)
-    # -sEMSDK names another emsdk, which must hold Emscripten's headers; without it, and without
-    # .local/emsdk, the build stops, naming both places. b2 reads the environment's EMSDK as it
-    # reads -sEMSDK, so the shell's is not passed on.
+    # -sWEBCPP_EMSDK names another emsdk, which must hold Emscripten's headers and be the
+    # version webcpp pins; without it, and without .local/emsdk, the build stops, naming both
+    # places. The shell's EMSDK, which emsdk_env.sh exports, and a WEBCPP_EMSDK of the
+    # environment, change nothing: the emsdk is .local/emsdk unless the command line says.
     emsdk = (root / '.local/emsdk').resolve()
-    unset = {'EMSDK': None}
-    harness.expect(harness.run_b2(root, f'-sEMSDK={emsdk}', 'libs/browser_demo/doc//reference',
-                                  env_extra=unset), True)
-    (root / '.local/emsdk').unlink()
+    harness.expect(harness.run_b2(root, f'-sWEBCPP_EMSDK={emsdk}',
+                                  'libs/browser_demo/doc//reference'), True)
+    database = root / 'bin/libs/browser_demo/doc/compile_commands.json'
     local = f'{root.resolve()}/.local/emsdk'
-    for options, named in (((), 'no -sEMSDK=<dir> was given'),
-                           (('-sEMSDK=/nonexistent',), '-sEMSDK=/nonexistent holds none')):
-        harness.expect(harness.run_b2(root, *options, 'libs/browser_demo/doc//reference',
-                                      env_extra=unset), False,
-                       "Emscripten's headers", named, local, '-sEMSDK=<dir>',
+    for variable in ('EMSDK', 'WEBCPP_EMSDK'):
+        harness.expect(harness.run_b2(root, 'libs/browser_demo/doc//reference',
+                                      env_extra={variable: '/nonexistent'}), True)
+        assert f'{local}/upstream/emscripten/system/include' in database.read_text(), (
+            variable, database.read_text())
+    # An emsdk of another version is refused, naming its version, the pinned one and the file.
+    other = fake_emsdk(root, '6.0.10')
+    version = other / 'upstream/emscripten/emscripten-version.txt'
+    harness.expect(harness.run_b2(root, f'-sWEBCPP_EMSDK={other}',
+                                  'libs/browser_demo/doc//reference'), False,
+                   f'{version} names Emscripten 6.0.10', 'webcpp pins 6.0.11')
+    (root / '.local/emsdk').unlink()
+    for options, named in (((), 'no -sWEBCPP_EMSDK=<dir> was given'),
+                           (('-sWEBCPP_EMSDK=/nonexistent',),
+                            '-sWEBCPP_EMSDK=/nonexistent holds none')):
+        harness.expect(harness.run_b2(root, *options, 'libs/browser_demo/doc//reference'), False,
+                       "Emscripten's headers", named, local, '-sWEBCPP_EMSDK=<dir>',
                        'upstream/emscripten/system/include')
     # A library whose reference does not ask for them needs no emsdk.
     harness.expect(harness.run_b2(root, 'libs/demo/doc//reference'), True)
+
+
+def fake_emsdk(root: Path, version: str = '6.0.11', shadowing: str = '') -> Path:
+    """An emsdk of root's own whose upstream/emscripten/system/include holds every entry of this
+    checkout's, by a link, and whose emscripten-version.txt names version; with shadowing, a
+    header of that name too, which the host has, that stops any parse that reads it."""
+    real = harness.ROOT / '.local/emsdk/upstream/emscripten'
+    emsdk = root / f'other emsdk {version}'
+    include = emsdk / 'upstream/emscripten/system/include'
+    include.mkdir(parents=True)
+    for entry in (real / 'system/include').iterdir():
+        (include / entry.name).symlink_to(entry.resolve())
+    (emsdk / 'upstream/emscripten/emscripten-version.txt').write_text(f'"{version}"\n')
+    if shadowing:
+        (include / shadowing).write_text(f'#error "the emsdk\'s {shadowing} shadows the host\'s"\n')
+    return emsdk
+
+
+def test_emscripten_headers_never_shadow_the_host_s(root):
+    # Emscripten's system/include holds headers a host has too (uuid/uuid.h, GL/, X11/): the
+    # reference reads it after every directory of the host's, -idirafter, so that a header the
+    # host has is the host's. An emsdk that ships its own stdint.h, which every header of the
+    # fixture reaches through the standard library, stops no parse.
+    prepare(root)
+    add_browser_demo(root)
+    emsdk = fake_emsdk(root, shadowing='stdint.h')
+    harness.expect(harness.run_b2(root, f'-sWEBCPP_EMSDK={emsdk}',
+                                  'libs/browser_demo/doc//reference'), True)
+    database = (root / 'bin/libs/browser_demo/doc/compile_commands.json').read_text()
+    assert '"-idirafter",' in database and 'system/include' in database, database
 
 
 def test_tools_given_at_paths_with_spaces(root):
@@ -881,6 +925,7 @@ CASES = [
     test_reference_reads_a_header_built_only_for_wasi,
     test_reference_checks_each_branch_of_a_header,
     test_reference_reads_headers_of_one_target,
+    test_emscripten_headers_never_shadow_the_host_s,
     test_tools_given_at_paths_with_spaces,
     test_page_outside_git,
     test_counts_warn_and_fail_through_the_build,

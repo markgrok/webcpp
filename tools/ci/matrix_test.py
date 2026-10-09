@@ -16,7 +16,9 @@ its wasi-sdk directory one word of Jam, and the emscripten lane by the lines of
 tools/ci/emsdk.jam, its emsdk directory and its node one word of Jam each; a lane runs the lane
 command and writes its XML, emscripten's under node, and fails when b2 cannot build; an own lane
 runs as the lane it shares does, and writes its XML under its own name; the report merges the
-lanes and the own lanes on a target and fails, by name, a planned lane that wrote nothing. Each
+lanes and the own lanes on a target and fails, by name, a planned lane that wrote nothing;
+`declares emscripten` says whether any library of the superproject declares emscripten, which
+the docs and lint jobs install emsdk on, without its system libraries. Each
 case runs the scratch superproject's own copy of matrix.py, with the fixture library demo, and
 browser_demo where it says so. Run with the names of some cases to run only those."""
 
@@ -139,6 +141,54 @@ def test_plan_of_a_library_on_emscripten(root):
     assert by_id['emscripten']['projects'] == projects, by_id['emscripten']
     assert by_id['wasip2']['projects'] == ['libs/demo/test', 'libs/demo/example'], by_id
     assert not by_id['wasip2']['emsdk'], by_id['wasip2']
+
+
+def test_whether_a_library_declares_emscripten(root):
+    # The docs and lint jobs install emsdk only when some library of the superproject declares
+    # emscripten, every library's, whatever library the CI runs for: the lint analyses every
+    # library, and a page builds the page of each library it links, with its reference.
+    boost_only(root)
+    for arguments in ((), ('--library', 'demo')):
+        result = run(root, 'declares', 'emscripten', *arguments)
+        assert (result.returncode, result.stdout) == (0, 'false\n'), (result.returncode,
+                                                                   result.stdout, result.stderr)
+    assert run(root, 'declares', 'wasip2').stdout == 'true\n'
+    shutil.copytree(harness.FIXTURES / 'browser_demo', root / 'libs/browser_demo',
+                    ignore=harness.built)
+    for arguments in ((), ('--library', 'demo'), ('--library', 'browser_demo')):
+        result = run(root, 'declares', 'emscripten', *arguments)
+        assert (result.returncode, result.stdout) == (0, 'true\n'), (result.returncode,
+                                                                  result.stdout, result.stderr)
+    result = run(root, 'declares', 'wasip9')
+    assert result.returncode == 2 and 'wasip9' in result.stderr, (result.returncode,
+                                                                  result.stderr)
+    result = run(root, 'declares', 'emscripten', '--library', 'nothing')
+    assert result.returncode == 2, (result.returncode, result.stderr)
+    assert 'libs/nothing declares no target, or is no library' in result.stderr, result.stderr
+
+
+def test_the_docs_and_lint_jobs_install_emsdk_when_a_library_declares_emscripten(_):
+    # The plan job writes has-emscripten, from matrix.py declares emscripten; the docs job and
+    # the lint job need it, install emsdk without its system libraries, which they never link,
+    # only when it is true, and the lint registers the emscripten toolset only then.
+    workflow = (harness.ROOT / '.github/workflows/library.yml').read_text()
+    jobs = {match.group(1): match.group(2) for match in re.finditer(
+        r'^  ([a-z-]+):\n(.*?)(?=^  [a-z-]+:\n|\Z)', workflow[workflow.index('\njobs:\n'):],
+        re.MULTILINE | re.DOTALL)}
+    plan = jobs['plan']
+    assert 'has-emscripten: ${{ steps.plan.outputs.has-emscripten }}' in plan, plan
+    assert 'python3 tools/ci/matrix.py declares emscripten' in plan, plan
+    for name in ('docs', 'lint'):
+        job = jobs[name]
+        assert re.search(r'^    needs: plan$', job, re.MULTILINE), (name, job)
+        steps = re.findall(r'^      - (?:(?!^      - ).)*', job, re.MULTILINE | re.DOTALL)
+        emsdk = [step for step in steps if 'uses: ./tools/ci/actions/emsdk' in step]
+        assert len(emsdk) == 1, (name, emsdk)
+        assert "if: needs.plan.outputs.has-emscripten == 'true'" in emsdk[0], (name, emsdk)
+        assert "libraries: 'false'" in emsdk[0], (name, emsdk)
+    lint = jobs['lint']
+    assert 'HAS_EMSCRIPTEN: ${{ needs.plan.outputs.has-emscripten }}' in lint, lint
+    assert 'python3 tools/ci/matrix.py register clang-18 wasip2 wasip3 emscripten' not in lint
 
 
 def test_a_target_without_a_lane_fails(_):
@@ -750,6 +800,8 @@ CASES = [
     test_plan_with_no_toolset_configured,
     test_plan_of_every_library,
     test_plan_of_a_library_on_emscripten,
+    test_whether_a_library_declares_emscripten,
+    test_the_docs_and_lint_jobs_install_emsdk_when_a_library_declares_emscripten,
     test_a_target_without_a_lane_fails,
     test_an_unknown_library_fails,
     test_own_lanes_of_every_library_and_of_one,

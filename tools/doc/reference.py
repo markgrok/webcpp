@@ -9,18 +9,21 @@
 
 Usage: reference.py --library <name> --root <superproject> --output <reference.adoc>
     --mrdocs <mrdocs> --clang <clang++> --std <standard> [--include <dir>]...
-    [--define <macro>]...
+    [--include-after <dir>]... [--define <macro>]...
 
 The target webcpp.reference declares runs it, from the directory b2 runs in, with the include
 directories and the defines of the library's target and of the requirements its doc Jamfile
 gives (the native backend's dependencies, Emscripten's own headers for a header that builds only
 on emscripten, the bindings of a WASI world), and the language standard of the build: one native
-parse of every public header. Beside the output it writes:
+parse of every public header. A directory given with --include-after is searched after every one
+of the host's (-idirafter): Emscripten's own headers hold some a host has too (uuid/uuid.h, GL/,
+X11/), which must stay the host's. Beside the output it writes:
 
 - aggregate.cpp, the library's aggregate translation unit, which tools/lint/compile_commands.py
   writes for the lint too: an include of every public header;
 - compile_commands.json, that translation unit's one command, whose source root is
-  ${MRDOCS_SOURCE_ROOT}, libs/<name>, and whose other include directories are system ones;
+  ${MRDOCS_SOURCE_ROOT}, libs/<name>, and whose other include directories are system ones, those
+  of --include-after searched last;
 - mrdocs.yml, tools/doc/mrdocs.yml.in filled in for the library, with the keys of
   libs/<name>/doc/mrdocs.yml, when there is one, added: only keys of how the reference is
   presented, PRESENTATION below.
@@ -309,6 +312,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument('--clang', required=True)
     parser.add_argument('--std', required=True)
     parser.add_argument('--include', action='append', default=[])
+    parser.add_argument('--include-after', action='append', default=[])
     parser.add_argument('--define', action='append', default=[])
     options = parser.parse_args(argv)
     library: str = options.library
@@ -350,6 +354,8 @@ def reference(options: argparse.Namespace) -> int:
             others.append(absolute)
     flags = [f'-std=c++{options.std}', *(f'-D{macro}' for macro in options.define)]
     systems = [word for directory in others for word in ('-isystem', str(directory))]
+    systems += [word for directory in options.include_after
+                for word in ('-idirafter', os.path.abspath(directory))]
     database = work / 'compile_commands.json'
     database.write_text(json.dumps([{
         'directory': '${MRDOCS_SOURCE_ROOT}',

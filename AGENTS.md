@@ -154,11 +154,12 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
 - for the documentation: Node, MrDocs 2026.9.29 and clang++, and wit-bindgen
   and the WIT for a reference that parses a component's bindings (wasi's),
   and emsdk's headers for a reference that parses a header that builds only
-  on emscripten (`-sEMSDK=<dir>`, else `.local/emsdk`, chapter 7);
+  on emscripten (`-sWEBCPP_EMSDK=<dir>`, else `.local/emsdk`, chapter 7);
 - for a library's oracle lane: Node and npm, with Boost and a C++ toolset;
 - for the lint: wasi-sdk 34's clang-format, clang-tidy and clang++, Node,
-  the wasip2, wasip3 and emscripten toolsets, and wit-bindgen and the WIT,
-  since it reads what those toolsets compile;
+  the wasip2 and wasip3 toolsets, the emscripten toolset when a library
+  declares emscripten, and wit-bindgen and the WIT, since it reads what those
+  toolsets compile;
 - for emscripten: Emscripten 6.0.11, from emsdk, and Node, which runs its
   programs; the tests of the build need it too;
 - later: OpenSSL for trystero natively.
@@ -224,7 +225,11 @@ actions install them too (chapter 9). A tool the build looks up itself is
 taken from the path its `-s` option gives, else from `.local/`, else from
 `PATH`: MrDocs (`-sMRDOCS`), wit-bindgen and the WIT (above); wasi-sdk is
 where the `using clang` lines of `user-config.jam` name it, and, for a
-script's component, `-sWASI_SDK` (above).
+script's component, `-sWASI_SDK` (above). The emsdk is where the `using
+emscripten` line of `user-config.jam` names its `em++`, for the emscripten
+toolset, and, for a reference's Emscripten headers,
+`-sWEBCPP_EMSDK=<dir>` on b2's command line, else `.local/emsdk` (chapter 7):
+not a `modules.poke` of `user-config.jam`, nor the environment's `EMSDK`.
 `tools/lint/compile_commands.py` runs b2 with `.local/user-config.jam`, else
 with the file `$WEBCPP_USER_CONFIG` names, else with b2's own search. The
 tests of the build and of the tools read `.local/user-config.jam`, else the
@@ -739,15 +744,23 @@ single page, from the library's Doc Comments. `webcpp.reference <name> ;` in
   macro of one version; a library whose headers no single target builds
   gives the target of its native backend, which brings that backend's
   dependencies, and, for the headers that build only on emscripten,
-  `/webcpp//emscripten-headers`, whose usage requirements put Emscripten's own
-  headers, `<emsdk>/upstream/emscripten/system/include`, on the include path:
+  `/webcpp//emscripten-headers`, whose usage requirements give Emscripten's
+  own headers, `<emsdk>/upstream/emscripten/system/include`, as a directory
+  searched after every one of the host's (`<webcpp-include-after>`, which
+  `reference.py` passes with `-idirafter`): it also holds headers a host has
+  (`uuid/uuid.h`, `GL/`, `X11/`), which stay the host's. As in
   `webcpp.reference browser_demo : <library>/webcpp/browser_demo//native
-  <library>/webcpp//emscripten-headers ;`. The emsdk is looked up as MrDocs
-  is, `-sEMSDK=<dir>`, else `.local/emsdk`, and a build that uses the target
-  stops, naming both places, when the headers are not there. The reference
-  is one native parse of every public header: MrDocs does not parse an
-  emscripten command on macOS, and host clang reads `<emscripten/val.h>`. A
-  header the reference cannot parse fails it, naming the header;
+  <library>/webcpp//emscripten-headers ;`. The emsdk is
+  `-sWEBCPP_EMSDK=<dir>`, read from b2's command line alone, else
+  `.local/emsdk`, never the environment's `EMSDK`, which `emsdk_env.sh`
+  exports and b2 would read as `-sEMSDK`; its
+  `upstream/emscripten/emscripten-version.txt` must name 6.0.11, the version
+  the emsdk action pins. A build that uses the target stops, naming both
+  places, when the headers are not there, and naming both versions on
+  another. The reference is one native parse of every public header: MrDocs
+  does not parse an emscripten command on macOS, and host clang reads
+  `<emscripten/val.h>`. A header the reference cannot parse fails it, naming
+  the header;
 - headers that branch by that macro have each branch's Doc Comments checked:
   `webcpp.reference <name> : <requirements> * : <also-checked> * ;` gives
   the other version's requirements, with which `reference.py` runs again,
@@ -1437,6 +1450,12 @@ jobs:
   setup it shares, the target's own, and the oracle's Clang 18 for native and
   for none, and `node`, true for every own lane, which the job reads from it
   alone.
+  Last, `matrix.py declares emscripten [--library <name>]` prints `true`
+  when any library of the superproject declares emscripten, whatever library
+  the CI runs for, else `false`: the plan's output `has-emscripten`, on
+  which the docs and lint jobs install emsdk (the lint analyses every
+  library, and a page builds the page of each library it links, with its
+  reference).
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
@@ -1484,15 +1503,19 @@ jobs:
   Intel macOS), `clang++-18`, Node, wit-bindgen and the WASI WIT (wasi's
   reference parses its bindings), `b2 -a libs/<library>/doc`, or for the
   superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's,
-  and emsdk, in `.local/emsdk`, whose headers `/webcpp//emscripten-headers`
-  gives a reference that parses a header built for emscripten alone.
+  and, when the plan's `has-emscripten` is `true`, emsdk in `.local/emsdk`,
+  without its system libraries (`libraries: 'false'`), whose headers
+  `/webcpp//emscripten-headers` gives a reference that parses a header built
+  for emscripten alone.
 - **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
   with wasi-sdk's clang-format and clang-tidy, Node, Clang 18 as b2's default
-  toolset and the wasip2, wasip3 and emscripten toolsets after it
-  (`matrix.py register clang-18 wasip2 wasip3 emscripten`), wit-bindgen and
-  the WASI WIT, which the WASI dry runs of the compilation database need,
-  emsdk, whose `em++` the emscripten dry run names and whose cache holds the
-  sysroot an emscripten command is analysed with, and the full history
+  toolset and the wasip2 and wasip3 toolsets after it (`matrix.py register
+  clang-18 wasip2 wasip3`), wit-bindgen and the WASI WIT, which the WASI dry
+  runs of the compilation database need; when the plan's `has-emscripten`
+  is `true`, the emscripten toolset after them and emsdk, without its system
+  libraries (`libraries: 'false'`), whose `em++` the emscripten dry run
+  names and whose cache holds the sysroot an emscripten command is analysed
+  with; and the full history
   (`fetch-depth: 0`) of the superproject and of the library, since the
   banned-word rule reads every commit.
 - **tools,** for the superproject only: every `tools/**/*_test.py`, with
@@ -1580,6 +1603,11 @@ wrapper each quoted as one word of Jam.
   the default stubs. A variant not listed is still built when a link needs
   it. The emsdk and that cache are cached together, keyed on the version, the
   runner and the action's files, so a change to the list builds a new entry.
+  A job that only parses Emscripten's headers, the docs and the lint, gives
+  the input `libraries: 'false'`: under the same key it restores the cache
+  the lanes save, its libraries built, and on a miss it writes the sysroot
+  alone (`embuilder build sysroot`) and saves nothing, since a lane that
+  restored that cache would build every library again.
   A warmed cache, rather than
   `EMCC_SKIP_SANITY_CHECK=1` as the tests of the build set: the check still
   runs, once, and again when the version or the emsdk's directory changes.

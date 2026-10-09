@@ -39,16 +39,19 @@
 #               xactor, has no such job.
 #   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64,
 #               wit-bindgen and the WASI WIT, for a reference that parses a component's
-#               bindings, and emsdk, for one that parses a header built for emscripten alone; the
-#               index is built with -sWEBCPP_INDEX=site, its links where the site serves each page
-#               (libs/<name>/), and the pages are the artifact ci.yml publishes.
+#               bindings, and, when a library declares emscripten (the plan's has-emscripten),
+#               emsdk without its system libraries, for one that parses a header built for
+#               emscripten alone; the index is built with -sWEBCPP_INDEX=site, its links where
+#               the site serves each page (libs/<name>/), and the pages are the artifact ci.yml
+#               publishes.
 #   tools       for the superproject only: every tools/**/*_test.py, the tests of the build,
 #               the oracle, the lint, the report, the documentation, the components and the
 #               CI's own scripts, with every tool a lane, the docs or the lint uses.
 #   lint        tools/lint/lint.sh in four shards, each analysing a quarter of the files with
 #               clang-tidy and running every other rule; with the full history, which the
-#               banned-word rule reads, and the toolsets and tools of the WASI and emscripten
-#               lanes, whose commands it analyses.
+#               banned-word rule reads, and the toolsets and tools of the WASI lanes, whose
+#               commands it analyses, and of the emscripten lane, without its system libraries,
+#               when a library declares emscripten.
 #   actionlint  every workflow of the superproject and of the libraries.
 #   report      merges the XML of every lane and every own lane on a target with
 #               tools/report/report.py into the test matrix. Its exit status is the verdict, and it
@@ -87,6 +90,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       own-lanes: ${{ steps.plan.outputs.own-lanes }}
       has-own-lanes: ${{ steps.plan.outputs.has-own-lanes }}
+      has-emscripten: ${{ steps.plan.outputs.has-emscripten }}
     steps:
       # The superproject is the caller's commit when it calls this workflow itself, and main
       # when a library does, the branch this workflow is called at.
@@ -147,6 +151,9 @@ jobs:
           else
             echo "has-own-lanes=true" >> "$GITHUB_OUTPUT"
           fi
+          # Whether any library declares emscripten, whose headers the docs and the lint read.
+          has_emscripten="$(python3 tools/ci/matrix.py declares emscripten "${arguments[@]}")"
+          echo "has-emscripten=$has_emscripten" >> "$GITHUB_OUTPUT"
 
   lanes:
     name: ${{ matrix.name }}
@@ -266,6 +273,7 @@ jobs:
 
   docs:
     name: Documentation
+    needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
@@ -286,9 +294,13 @@ jobs:
 
       - uses: ./tools/ci/actions/wasi-wit
 
-      # Emscripten's own headers, which /webcpp//emscripten-headers puts on the include path of
-      # a reference that parses a header built for emscripten alone, from .local/emsdk.
-      - uses: ./tools/ci/actions/emsdk
+      # Emscripten's own headers, which /webcpp//emscripten-headers gives a reference that
+      # parses a header built for emscripten alone, from .local/emsdk, when a library declares
+      # emscripten; without the system libraries, which no page links.
+      - if: needs.plan.outputs.has-emscripten == 'true'
+        uses: ./tools/ci/actions/emsdk
+        with:
+          libraries: 'false'
 
       # clang++ reads the headers for tools/doc/doc_comments.py; the Boost check compiles with
       # the same Clang. The index links each library's page where the site serves it.
@@ -332,6 +344,7 @@ jobs:
 
   lint:
     name: Lint (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -375,7 +388,13 @@ jobs:
 
       - uses: ./tools/ci/actions/node
 
-      - uses: ./tools/ci/actions/emsdk
+      # emsdk when a library declares emscripten, whose em++ the emscripten dry run names and
+      # whose cache holds the sysroot an emscripten command is analysed with; without the
+      # system libraries, which the lint never links.
+      - if: needs.plan.outputs.has-emscripten == 'true'
+        uses: ./tools/ci/actions/emsdk
+        with:
+          libraries: 'false'
 
       # The compilation database is what b2 compiles with its default toolset, the first that
       # user-config.jam registers, Clang 18, and, for what only a WASI target or emscripten
@@ -385,8 +404,13 @@ jobs:
       - name: Lint
         env:
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+          HAS_EMSCRIPTEN: ${{ needs.plan.outputs.has-emscripten }}
         run: |
-          python3 tools/ci/matrix.py register clang-18 wasip2 wasip3 emscripten
+          toolsets=(clang-18 wasip2 wasip3)
+          if [ "$HAS_EMSCRIPTEN" = true ]; then
+            toolsets+=(emscripten)
+          fi
+          python3 tools/ci/matrix.py register "${toolsets[@]}"
           tools/lint/lint.sh --clang-format .local/wasi-sdk/bin/clang-format \
             --clang-tidy .local/wasi-sdk/bin/clang-tidy --shard "$SHARD"
 

@@ -312,43 +312,75 @@ path-constant WEBCPP_ROOT : . ;
 # of a header that builds only on emscripten: a library's reference reads
 # every public header natively (tools/doc/doc.jam), and puts
 # <library>/webcpp//emscripten-headers in its requirements when one of them
-# builds only there. Its usage requirements put
-# <emsdk>/upstream/emscripten/system/include on the include path, the emsdk
-# looked up as MrDocs is: -sEMSDK=<dir>, else .local/emsdk. When the headers
-# are not there, the build stops, naming both places, only when a target uses
-# it.
+# builds only there. Its usage requirements give the reference
+# <emsdk>/upstream/emscripten/system/include as a directory searched after
+# every one of the host's (<webcpp-include-after>, which reference.py passes
+# with -idirafter), so that the headers it also holds, uuid/uuid.h, GL/ and
+# X11/ among them, never shadow the host's. The emsdk is -sWEBCPP_EMSDK=<dir>
+# on the command line, else .local/emsdk: never the environment's EMSDK,
+# which emsdk_env.sh exports and b2 would read as -sEMSDK. It must be
+# Emscripten 6.0.11, the version tools/ci/actions/emsdk/install.sh pins, as
+# its upstream/emscripten/emscripten-version.txt says. When the headers are
+# not there, or the version is another, the build stops, naming why, only
+# when a target uses it.
+.emscripten-version = 6.0.11 ;
 .emsdk-local = [ path.join [ path.root [ path.make $(WEBCPP_ROOT) ] [ path.pwd ] ]
     .local/emsdk ] ;
-.emsdk-given = [ modules.peek : EMSDK ] ;
-# b2 splits the value of -s at its spaces, which a path may hold.
-.emsdk-given = $(.emsdk-given:J=" ") ;
+.emsdk-given = [ MATCH "^-sWEBCPP_EMSDK=(.+)$" : [ modules.peek : ARGV ] ] ;
 .emsdk = $(.emsdk-local) ;
 if $(.emsdk-given)
 {
+    .emsdk-given = $(.emsdk-given[-1]) ;
     .emsdk = [ path.root [ path.make $(.emsdk-given) ] [ path.pwd ] ] ;
 }
 .emscripten-include = $(.emsdk)/upstream/emscripten/system/include ;
 
+# The text of the emsdk's emscripten-version.txt, "6.0.11" with its quotes,
+# or nothing when it has none.
+local rule emscripten-version-text ( )
+{
+    local file = [ path.native $(.emsdk)/upstream/emscripten/emscripten-version.txt ] ;
+    if ! [ path.exists $(file) ]
+    {
+        return ;
+    }
+    if [ os.name ] = NT
+    {
+        return [ SHELL "type \"$(file)\"" : strip-eol ] ;
+    }
+    return [ SHELL "cat \"$(file)\"" : strip-eol ] ;
+}
+
 rule emscripten-headers-found ( properties * )
 {
+    local linked = [ path.native $(.emsdk-local) ] ;
     if ! [ path.exists $(.emscripten-include)/emscripten/emscripten.h ]
     {
-        local linked = [ path.native $(.emsdk-local) ] ;
-        local looked = "no -sEMSDK=<dir> was given, and $(linked) holds none" ;
+        local looked = "no -sWEBCPP_EMSDK=<dir> was given, and $(linked) holds none" ;
         if $(.emsdk-given)
         {
-            looked = "-sEMSDK=$(.emsdk-given) holds none" ;
+            looked = "-sWEBCPP_EMSDK=$(.emsdk-given) holds none" ;
         }
         errors.user-error "Emscripten's headers, which /webcpp//emscripten-headers"
-            "puts on the include path for a native parse of a header that builds only"
-            "on emscripten, were not found in upstream/emscripten/system/include of the"
-            "emsdk: $(looked). Give the emsdk's directory with -sEMSDK=<dir>, or link"
-            "it at $(linked)." ;
+            "gives a native parse of a header that builds only on emscripten, were not"
+            "found in upstream/emscripten/system/include of the emsdk: $(looked). Give"
+            "the emsdk's directory with -sWEBCPP_EMSDK=<dir>, or link it at $(linked)." ;
+    }
+    local text = [ emscripten-version-text ] ;
+    local version = [ MATCH "^\"?([^\"]*)\"?$" : $(text) ] ;
+    if $(version) != $(.emscripten-version)
+    {
+        local file = [ path.native $(.emsdk)/upstream/emscripten/emscripten-version.txt ] ;
+        version ?= "no version" ;
+        errors.user-error "$(file) names Emscripten $(version), and webcpp pins"
+            "$(.emscripten-version) (tools/ci/actions/emsdk/install.sh): install"
+            "emsdk $(.emscripten-version), and link it at $(linked) or give it with"
+            "-sWEBCPP_EMSDK=<dir>." ;
     }
 }
 
 alias emscripten-headers : : <conditional>@emscripten-headers-found
-  : : <include>$(.emscripten-include) ;
+  : : <webcpp-include-after>$(.emscripten-include) ;
 
 # The documentation toolchain's own targets, tools/doc/Jamfile.
 use-project /webcpp/doc-tools : tools/doc ;

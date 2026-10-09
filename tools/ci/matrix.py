@@ -9,6 +9,7 @@
 
 Usage: matrix.py plan [--library NAME] [--user-config FILE]
        matrix.py own-lanes [--library NAME] [--user-config FILE]
+       matrix.py declares TARGET [--library NAME] [--user-config FILE]
        matrix.py lane LANE [--user-config FILE] [--out-dir DIR] [-- B2-ARGUMENT ...]
        matrix.py own-lane OWN-LANE [--user-config FILE] [--out-dir DIR] [-- B2-ARGUMENT ...]
        matrix.py register ID [ID ...] [--user-config FILE]
@@ -36,6 +37,12 @@ shares T's own lane, or the oracle's Clang 18 for native. It runs as that lane r
 tools/report/report.py checks against the toolset it was built with and the library whose tests it
 lists. A target the CI has no lane to set up an own lane on fails the listing by name: an own lane
 is never run natively in its place.
+
+declares runs `b2 -d0 declared-targets` and prints true when some library of the superproject
+declares TARGET, else false: every library's, whatever --library names, which must be a library
+of libs/ as plan's must. The plan job writes it for emscripten as has-emscripten, on which the
+docs and lint jobs install emsdk: the lint analyses every library, and a page builds the page of
+each library it links, with its reference.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -296,6 +303,17 @@ def declared(user_config: Path) -> list[tuple[str, str]]:
             raise Failure(f'b2 declared-targets printed {line!r}, not "<library> <target>"')
         pairs.append((words[0], words[1]))
     return pairs
+
+
+def declares(pairs: list[tuple[str, str]], target: str, library: str | None) -> bool:
+    """Whether some library of the pairs (library, target) declares target, whatever library,
+    which must declare a target, names."""
+    if target not in TARGETS:
+        raise Failure(f'{target} is no target the CI knows: {", ".join(TARGETS)}', 2)
+    if library is not None and library not in {name for name, _ in pairs}:
+        raise Failure(f'libs/{library} declares no target, or is no library of libs/ '
+                      '(a directory with a build.jam)', 2)
+    return any(declared == target for _, declared in pairs)
 
 
 def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
@@ -674,6 +692,12 @@ def main(arguments: list[str]) -> int:
     owning.add_argument('--library', help='list the own lanes of this library alone')
     owning.add_argument('--user-config', type=Path, default=default_config)
 
+    declaring = commands.add_parser(
+        'declares', help='print true when some library declares the target, else false')
+    declaring.add_argument('target', metavar='TARGET', help='a target: emscripten, wasip2')
+    declaring.add_argument('--library', help='the library the CI runs for, which must exist')
+    declaring.add_argument('--user-config', type=Path, default=default_config)
+
     running = commands.add_parser(
         'lane', help='run one lane of the matrix',
         epilog='After --, more arguments for b2, such as --build-dir=bin/lane-gcc-15.')
@@ -712,6 +736,11 @@ def main(arguments: list[str]) -> int:
     try:
         if options.command == 'plan':
             print(matrix(plan(declared(options.user_config.resolve()), options.library)))
+            return 0
+        if options.command == 'declares':
+            found = declares(declared(options.user_config.resolve()), options.target,
+                             options.library)
+            print('true' if found else 'false')
             return 0
         if options.command == 'own-lanes':
             listed = [own_lane_entry(own)

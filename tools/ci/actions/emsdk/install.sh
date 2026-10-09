@@ -13,7 +13,8 @@
 # RUNNER_TEMP, GITHUB_WORKSPACE, GITHUB_OUTPUT, GITHUB_ENV):
 #
 #   install.sh key        writes the cache key, the version, the runner and this action's files,
-#                         to GITHUB_OUTPUT;
+#                         to GITHUB_OUTPUT, and libraries, the action's input of that name
+#                         (LIBRARIES), which says whether the cache is saved;
 #   install.sh install    fetches the emsdk repository at the commit of its tag 6.0.11 with git,
 #                         and downloads every archive `emsdk install 6.0.11` installs from, each
 #                         checked against the SHA-256 pinned here, then runs `emsdk install` and
@@ -21,7 +22,7 @@
 #   install.sh configure  checks that .local/emsdk's emcc is Emscripten 6.0.11, installs the node
 #                         wrapper, gives the job's later steps EM_CACHE, and warms that cache;
 #   install.sh libraries  builds into that cache the system libraries the lanes link, before the
-#                         action saves it.
+#                         action saves it; with LIBRARIES=false, the sysroot alone, its headers.
 #
 # The commit is the pin: git fetches it by its hash, and the install fails unless HEAD is that
 # commit. emsdk downloads its archives without checking them, so each is downloaded here first,
@@ -48,7 +49,10 @@
 # Emscripten builds a system library the first time a link needs it, into the cache, which costs
 # a lane its first links and races when two links need the same one. libraries builds them with
 # embuilder before the cache is saved, so that the cache every job restores holds them; one not
-# listed is still built when a link needs it.
+# listed is still built when a link needs it. A job that only parses Emscripten's headers, the
+# docs and the lint, gives the input libraries: 'false': under the same key it restores the
+# lanes' cache, and on a miss it writes the sysroot alone, which an analysis reads, and saves
+# nothing, since a lane that restored that cache would build every library again.
 set -euo pipefail
 
 version=6.0.11
@@ -141,14 +145,27 @@ digest() {
     fi
 }
 
+# The action's input libraries, true unless it says false, and nothing else.
+libraries_wanted() {
+    local wanted="${LIBRARIES:-true}"
+    if [ "${wanted}" != true ] && [ "${wanted}" != false ]; then
+        printf "install.sh: the input libraries is 'true' or 'false', not '%s'\n" "${wanted}" >&2
+        exit 2
+    fi
+    printf '%s\n' "${wanted}"
+}
+
 key() {
     pinned > /dev/null
+    local wanted
+    wanted="$(libraries_wanted)"
     # A change to how the emsdk is installed or configured installs it again.
     local files
     files="$(digest "${here}/action.yml" "${here}/install.sh" "${here}/node.sh" \
         "${here}/../../download.sh")"
     printf 'key=emsdk-%s-%s-%s-%s-%s\n' "${version}" "${RUNNER_OS}" "${RUNNER_ARCH}" \
         "${ImageOS:-image}" "${files:0:16}" >> "${GITHUB_OUTPUT}"
+    printf 'libraries=%s\n' "${wanted}" >> "${GITHUB_OUTPUT}"
 }
 
 # Fails the install, naming why, and leaves no emsdk to be cached.
@@ -237,7 +254,13 @@ configure() {
 
 libraries() {
     pinned > /dev/null
+    local wanted
+    wanted="$(libraries_wanted)"
     use_cache
+    if [ "${wanted}" = false ]; then
+        .local/emsdk/upstream/emscripten/embuilder build sysroot
+        return
+    fi
     .local/emsdk/upstream/emscripten/embuilder build "${libraries[@]}"
 }
 
