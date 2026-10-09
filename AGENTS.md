@@ -67,6 +67,7 @@ for web developers and for AI developers (chapter 13).
 
 | Library | What it is | Targets | State |
 | --- | --- | --- | --- |
+| config | webcpp's configuration, which every library includes first: the target, exceptions and webcpp's version, as Boost.Config is Boost's; webcpp's own | native, wasip2, wasip3, emscripten | a local repository at `libs/config`, until `webcpporg/config` exists |
 | xactor | a deterministic actor system, webcpp's own | native, wasip2, wasip3 (`xactor_asio` native only) | a submodule at `libs/xactor`; the model for every port |
 | xstate | a port of XState 5.33.2's state machines and actors; depends on xactor and Boost.JSON | native, wasip2, wasip3; its oracle lane | a submodule at `libs/xstate`; the first user of the shared oracle (chapter 5) |
 | pratt | a Pratt parser engine, generic through concepts, with a calculator built on it, webcpp's own | native, emscripten, wasip2, wasip3 | a submodule at `libs/pratt`; born with the allocation rule (chapter 6) |
@@ -93,6 +94,7 @@ webcpp/
                       own licence, and the Jamfile that declares it as
                       /webcpp/third_party//<target> (chapter 2)
   doc/                the index page (index.adoc, Jamfile)
+    releases/         each version's release notes, which the index page shows
   site/               the site, a repository of its own, webcpporg/webcpporg.github.io, a
                       submodule here: its pages, components, tools and tests (chapter 9)
   tools/
@@ -139,6 +141,8 @@ webcpp/
     site/             site.jam, the rules of b2 site and b2 site-serve, catalogue.py (the
                       site's libraries.json), redirect.py (the old address's two pages) and
                       their tests (chapter 9)
+    release/          changelog.py, the form of a changelog, which the lint checks; release.py,
+                      the release tooling; template.adoc; scratch.py and their tests
   .github/            workflows/library.yml, workflows/ci.yml, actionlint.yaml (chapter 9)
   .local/             machine-local, git-ignored (below)
   bin/                b2's build directory, git-ignored
@@ -161,6 +165,7 @@ libs/<name>/
                              program's .requests (chapter 9)
   doc/                       Jamfile, the page (<name>.adoc and its sections), mrdocs.yml,
                              and counts.py when the page counts what only it holds (chapter 8)
+  doc/changelog.adoc         its changelog, the page's last appendix
   meta/libraries.json        Boost's fields, plus "port-of"
   meta/include-boundaries.json
                              the include boundaries the lint checks, when it has any (chapter 6)
@@ -382,6 +387,9 @@ told: `b2 --user-config=.local/user-config.jam ...`.
 | `python3 tools/<dir>/<name>_test.py` | a test of the build or of a tool (chapter 10) |
 | `python3 tools/ci/matrix.py plan`, `own-lanes`, `lane`, `own-lane`, `register`, `report` | the CI's lanes and own lanes, run the way the CI runs them (chapter 9) |
 | `b2 site`, `b2 site-serve` | the whole site, the site's pages with every library's page and the report, into `bin/site/`, every link checked (`tools/site/site.jam`, `tools/ci/assemble.py`); `site-serve` then serves it on http://127.0.0.1:8765/; `-sWEBCPP_SITE=release -sWEBCPP_SITE_VERSION=<version>` builds the release channel (chapter 9) |
+| `b2 check-release` | what a tag needs: every library's change has a line, the release notes are complete, and the version agrees everywhere (chapter 11) |
+| `b2 whats-new` | writes the skeleton of a version's "What's new", from its release notes (chapter 11) |
+| `b2 dist` | writes the version's reproducible archive and its checksum (chapter 11) |
 
 ## 2. Choosing and registering a port
 
@@ -401,7 +409,9 @@ told: `b2 --user-config=.local/user-config.jam ...`.
   like xactor and pratt, has no `LICENSE-<ORIGIN>.txt`.
 - **The name.** `[a-z][a-z0-9_]*`, the name of the original where it has one
   (xstate, trystero). `index` is reserved, in any case: the index page is the
-  doc build's page `index`, and the report refuses a library of that name.
+  doc build's page `index`, and the report refuses a library of that name,
+  nor `target`, `has`, `no`, `lib` or `version`, which config's macros take
+  (`WEBCPP_TARGET_*`, `WEBCPP_HAS_EXCEPTIONS`, ...): the index refuses each.
 
 ### The checklist of a new library
 
@@ -507,7 +517,8 @@ owner's:
 6. **The files of the repository:** `LICENSE_1_0.txt`, `README.md` (what the
    library is, how to build and test it inside the superproject, where its
    page is published, its licence), `AGENTS.md` (only what is specific to it,
-   with a link to this file as `../../AGENTS.md`), `.gitattributes`, and a
+   with a link to this file as `../../AGENTS.md`), `doc/changelog.adoc` (its
+   changelog, the page's last appendix, chapter 11), `.gitattributes`, and a
    `.gitignore` that holds at least `doc/html/`, and for a library with an
    oracle `node_modules`, the link to the installed packages, which a pattern
    with a slash would miss, and `.node-modules/`, where `tools/node/install.py`
@@ -527,8 +538,9 @@ owner's:
 
 8. **The index page.** It lists every library of `libs/` from its
    `meta/libraries.json`, so the entry exists once the file does, and `b2 doc`
-   shows it in `doc/html/index.html`, linked to the library's page. A library
-   without a page fails the index.
+   shows it in `doc/html/index.html`, linked to the library's page, and its
+   line under New Libraries in the release notes of the version in
+   preparation. A library without a page fails the index.
 9. **`LICENSE-<ORIGIN>.txt`**, where the port derives from the original's
    code (above).
 
@@ -563,6 +575,11 @@ update --init third_party/libs/<name>`; a build that needs none never looks.
 | b2 target | `/webcpp/<name>//<name>` | `/webcpp/xactor//xactor` |
 | error category | `webcpp.<name>` | `webcpp.xactor` |
 | identifiers | `snake_case`, Boost's convention; `.clang-tidy` enforces it | |
+
+config is the one exception: it holds the collection's macros, `WEBCPP_*`, as
+Boost.Config holds `BOOST_*`, in `<webcpp/config.hpp>` and
+`<webcpp/version.hpp>`, whose include guards are `WEBCPP_CONFIG_HPP` and
+`WEBCPP_VERSION_HPP`, and declares no namespace.
 
 A convenience header may leave out a public header that brings an optional
 heavy dependency, which a user of the rest should not pay for, and names in
@@ -942,6 +959,7 @@ with `lint: failed: <rule>` for each rule that failed.
 | Jam comment width | a comment line of a Jam file (`.jam`, `Jamroot`, `Jamfile`) over 80 columns, the width Jam comments are wrapped at |
 | include boundaries | an `#include` that crosses a boundary the library declares in its `meta/include-boundaries.json` (below), at its line, with the boundary's reason; and a malformed file, or a glob that matches no file of the library |
 | bare throw | a `throw` expression in a library's public header (`libs/*/include/**`), outside comments and literals, at its line: inside `#ifndef WEBCPP_<NAME>_NO_EXCEPTIONS` too, in a template that nothing instantiates, which clang-tidy's analysis without exceptions does not see, and as a rethrow, `throw;`; `boost::throw_exception` is the one way to raise, `std::rethrow_exception` the one way to rethrow (above) |
+| changelog form | a library's changelog or a version's release notes out of chapter 11's form: a section or a region missing or out of order, a line that starts with no verb of the list, a cross-reference, more than ten lines for a library and a version, text outside a bullet |
 
 A source b2 expects not to compile (`webcpp.compile-fail`), and one that
 must stop with the error it states (`webcpp.compile-diagnostic`), are left
@@ -1059,7 +1077,8 @@ single page, from the library's Doc Comments. `webcpp.reference <name> ;` in
   `auto-function-metadata: false`, `auto-relates: false`, every `warn-*` on,
   the symbols of `webcpp::<name>::**`, `detail` namespaces as
   implementation-defined, the macros `WEBCPP_<NAME>_*` except the include
-  guards, `base-url: https://github.com/webcpporg/<name>/blob/main/` and
+  guards, every `WEBCPP_*` for config,
+  `base-url: https://github.com/webcpporg/<name>/blob/main/` and
   `inherit-base-members: never` (below);
 - `tools/doc/doc_comments.py` then checks with clang++ what MrDocs does not
   (below);
@@ -1246,7 +1265,8 @@ and an identifier breaks only between its parts.
   and where the test matrix is (https://webcpporg.github.io/report/);
 - **the reference,** `include::{reference}[leveloffset=+1]`, under a section
   `[#reference]`;
-- **the appendix "Differences"** for a port (chapter 4).
+- **the appendix "Differences"** for a port (chapter 4);
+- **the appendix Changelog,** `include::changelog.adoc[]`, last (chapter 11).
 
 **Every listing is a compiled example, and every shown output comes from a
 `.expected` file.** A listing includes a region of an example, marked in the
@@ -1313,7 +1333,9 @@ build:
   an untracked file, a link git does not track, a missing file, a whole file
   and lines chosen by number, which drift, each fail, and so does a library
   directory with no git of its own; an attribute the page sets to either
-  root is that root, checked the same way;
+  root is that root, checked the same way. Under `libs/<library>/`,
+  `{webcpp-root}` names a file the library's own git tracks, as the release
+  notes include a library's changelog;
 - every `(doc: #anchor)` and `index.html#anchor` of the library's files
   names an anchor the page defines, and every `@see "<title>"` a section;
 - every `(doc: <library>#<anchor>)` of the library's files, and every link
@@ -1403,6 +1425,10 @@ value stops the build.
 **One doc build at a time.** A doc build writes `doc/html/` and
 `libs/<name>/doc/html/` inside the tree, so two concurrent doc builds would
 write the same files.
+
+The index also shows each version's release notes, `doc/releases/`, newest
+first (chapter 11). The notes name a library only once it is a submodule,
+since the site's link check refuses a page that is not there.
 
 ## 9. Tests, lanes, the report, the site and CI
 
@@ -2327,9 +2353,10 @@ superproject's new `main`. `main` is the only branch.
     `tools/oracle/twins_test.py`, `tools/oracle/compare_test.py`,
     `tools/example/run_example_test.py`, `tools/component/serve_test.py`,
     `tools/drive/drive_test.py`, `tools/node/install_test.py`,
-    `tools/ci/matrix_test.py`, `tools/ci/assemble_test.py` and
-    `tools/ci/actions_test.py`: every `tools/**/*_test.py`, as the CI runs
-    them, each as `python3 <path>`. They
+    `tools/ci/matrix_test.py`, `tools/ci/assemble_test.py`,
+    `tools/ci/actions_test.py`, `tools/release/changelog_test.py` and
+    `tools/release/release_test.py`: every `tools/**/*_test.py`, as the CI
+    runs them, each as `python3 <path>`. They
     build in scratch copies under `$TMPDIR`, whose path holds a space, so they
     run beside a build of the tree;
   - CI green, the library's and the superproject's.
@@ -2416,6 +2443,80 @@ superproject's new `main`. `main` is the only branch.
   contributor proposes a change by a pull request from a fork
   (CONTRIBUTING.md).
 
+### The changelog
+
+- **Every change a user can see adds its line, in the same commit.** A
+  library's goes in its `doc/changelog.adoc`, under "Unreleased"; one of the
+  superproject's tools or build in the release notes of the version in
+  preparation, `doc/releases/<version>.adoc`, under "Tools and build", which
+  lists what changes for whoever builds, lints or tests with it: its b2
+  rules and targets, the lint's rules, the CI's lanes. Agents write them:
+  for webcpp, this replaces the rule of never editing a changelog.
+- **A line** is one bullet: `* `, a past-tense verb (Added, Changed,
+  Deprecated, Fixed, Improved, Removed or Updated), then one sentence of
+  about ten words, what a user sees rather than how it was done; it may wrap
+  onto the next lines. A breaking change starts with `*Breaking change:*`
+  and says what the user must change; a deprecation names what replaces it;
+  a fixed bug names the symptom, with its issue or pull request when there
+  is one, `https://github.com/webcpporg/<library>/issues/<n>[#<n>]`. A line
+  holds no cross-reference, `<<...>>`: the index page shows it too, where the
+  library's anchors are not.
+- **At most ten lines per library and version,** the most important first;
+  a version's documentation work is one line. A library's change that no
+  user sees (a test, its CI, a refactoring) gets none.
+- **The file.** `[appendix]`, `[#<library>-changelog]`, `== Changelog`, a
+  paragraph, then `=== Unreleased` and each released version,
+  `=== webcpp <version>`, newest first, each with its anchor
+  (`[#<library>-changelog-unreleased]`, `[#<library>-changelog-0-1-0]`) and
+  its lines between `// tag::unreleased[]` (`// tag::<version>[]`) and its
+  `end::`. A released section is never rewritten: a correction is a line of
+  the next version. The lint's rule `changelog form` checks every changelog
+  and release notes on every run (`tools/release/changelog.py`).
+- **The release notes,** `doc/releases/<version>.adoc`, hold what belongs to
+  the collection, in Boost's sections: New Libraries (one line each, what it
+  is, "from <authors>"), Updated Libraries (each library a section that
+  includes its changelog's region, alphabetical), Removed Libraries (what
+  went out, and what replaces it), Tools and build, Compilers tested (the
+  CI's lanes). The index page includes each, newest first. While a version
+  is in preparation its notes open with the paragraph "In preparation: ..."
+  and include each library's `tag=unreleased`.
+
+### Releases
+
+webcpp has one version, `WEBCPP_VERSION` in `<webcpp/version.hpp>`
+(`libs/config`), the one place it is written: 0.1.0 is 100,
+`WEBCPP_LIB_VERSION` `"0_1"`. The Jamroot reads it for the release
+targets, which run only when named:
+
+| Command | What it does |
+| --- | --- |
+| `b2 check-release` | fails, naming each fault, when a library changed since the last tag (under `include/`, `build.jam`, `wit/`, `meta/libraries.json`, `README.md`, `example/`, `doc/` or `LICENSE*`) has no line, when the notes miss a library, when a new or removed submodule is not under New or Removed Libraries, when the version disagrees anywhere, when a line or a file breaks the form above, or when the What's new's highlights break theirs |
+| `b2 whats-new` | writes `doc/releases/<version>.whats-new.md`, the skeleton of the GitHub Release's body, in Boost's form: at most five highlights, a bold category and at most 20 words each; never over a file that exists |
+| `b2 dist` | builds every page, then `bin/dist/webcpp-<version>.tar.gz`, reproducible (sources at the recorded commits, built pages, no dot files), and its `sha256sum` file `.tar.gz.txt` |
+
+Nothing is released until the owner asks. Then:
+
+1. In every library whose "Unreleased" holds lines, it becomes
+   `=== webcpp <version>`, with its anchor and region, under a new empty
+   "Unreleased"; the notes lose their paragraph "In preparation: ..." and
+   include `tag=<version>`; each repository commits, and the superproject
+   records each library's commit.
+2. `b2 check-release` passes.
+3. `b2 whats-new`; an agent writes the highlights from the notes, and the
+   owner approves them before the tag.
+4. `b2 -a dist`.
+5. The tag `webcpp-<version>` goes on the superproject and on every library
+   at the commit the superproject records. Whether it is signed is the
+   owner's decision then.
+6. The GitHub Release `webcpp-<version>` carries the archive, its checksum
+   file and the "What's new" as its body:
+   `gh release create webcpp-<version> bin/dist/webcpp-<version>.tar.gz
+   bin/dist/webcpp-<version>.tar.gz.txt --title "webcpp <version>"
+   --notes-file doc/releases/<version>.whats-new.md`.
+7. Right after, `version.hpp` names the next version, whose notes are
+   opened from `tools/release/template.adoc` (`sed -e 's/@VERSION@/<next>/g'
+   -e 's/@ANCHOR@/<next with dashes>/g'`) and included first by the index.
+
 ## 12. b2 facts
 
 Each of these was measured; each has cost time.
@@ -2476,6 +2577,10 @@ Each of these was measured; each has cost time.
   `<boost/...>` names as system ones (`--system-header-prefix=boost/`).
 - **A checkout path that holds a space** builds: every path b2 hands to an
   action is quoted, and the tests of the build run in such a path.
+- **A target named `release-<word>` is no target.** b2 reads it as the
+  variant `release` with a subfeature and stops before it builds anything
+  (`"release-check" is not a known value of feature <variant>`); `debug-`
+  and `profile-` likewise. The release check is `check-release`.
 
 ## 13. Roadmap
 
@@ -2540,6 +2645,10 @@ What webcpp does not have yet, and the chapters that mention it:
   where a variable names it, else in `.local/` (chapters 1 and 9), until
   webcpp builds them from `third_party/`, each pinned there by a commit or a
   SHA-256.
+- **Every library on `<webcpp/config.hpp>`.** Each library's `config.hpp`
+  includes it first, and `WEBCPP_NO_EXCEPTIONS` disables every library's
+  exceptions at once (xactor, xstate, pratt and trystero; wasi with its
+  redesign, which brings Boost into it).
 - **Allocators.** The rule of chapter 6, shareable data structures with an
   `Allocator` template parameter and every other allocation through the
   user's allocator, applied first to xactor, xstate and wasi, whose response

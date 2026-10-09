@@ -153,6 +153,11 @@ exception through `boost::throw_exception` alone. A program that a library
 does not declare for a target is skipped there.
 `b2 declared-targets -d0` lists the targets each library declares.
 
+webcpp has one version, `WEBCPP_VERSION` in `<webcpp/version.hpp>`, part of
+`libs/config`, whose `<webcpp/config.hpp>` every library includes first.
+Each library's page ends with its changelog, and the index page shows each
+version's release notes.
+
 A library may also run some of its programs in lanes of its own, which
 `test` and `example` leave out: the HTTP components wasmtime serves, for
 one. `b2 declared-lanes -d0` lists them, each with the target it runs on
