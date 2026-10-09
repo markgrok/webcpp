@@ -234,34 +234,42 @@ def built(_: str, names: list[str]) -> set[str]:
     return {name for name in names if name in IGNORED}
 
 
-def ignored_by_git(top: Path, names: list[str]) -> set[str]:
-    """The names of top that git ignores, by a .gitignore or by the checkout's own excludes, so that
-    what one machine keeps there stays out of a copy; none when top is not a git checkout."""
+def ignored_by_git(top: Path, paths: list[str]) -> set[str]:
+    """Which of paths, each relative to top, git ignores there, by a .gitignore or by the
+    checkout's own excludes, at any depth, so that what one machine keeps there (built, or local
+    to it) stays out of a copy; none of them when top is not a git checkout."""
     result = subprocess.run(['git', '-C', str(top), 'check-ignore', '-z', '--stdin'],
-                            input='\0'.join(names), capture_output=True, text=True, check=False)
-    if result.returncode != 0:
+                            input='\0'.join(paths), capture_output=True, text=True, check=False)
+    if result.returncode not in (0, 1):
         return set()
-    return {name for name in result.stdout.split('\0') if name}
+    return {path for path in result.stdout.split('\0') if path}
 
 
 def copy_tree(src: Path) -> Path:
     """Copies src to a new directory of the run's own, whose path contains a space, and returns
     it.
 
-    third_party/libs is a link to src's, which a case makes its own with third_party_of_its_own
-    before it changes anything there. Only src's user-config.jam comes from its .local/, and a
-    link to its .local/boost-source when it has one, so that the copy builds with the same
-    toolsets and Boost sources without copying them.
+    The copy holds what git tracks, plus what it would track (untracked, not ignored), as the
+    lint reads a repository (chapter 6): never what a build or a run wrote, nor what one
+    machine's .gitignore keeps out of the tree, at any depth, so a build in src before or during
+    the copy (doc/html/, bin/, and the rest .gitignore lists) cannot change what a test builds
+    from. third_party/libs is a link to src's, which a case makes its own with
+    third_party_of_its_own before it changes anything there. Only src's user-config.jam comes
+    from its .local/, and a link to its .local/boost-source when it has one, so that the copy
+    builds with the same toolsets and Boost sources without copying them.
     """
     top = src.resolve()
 
     def left_out(directory: str, names: list[str]) -> set[str]:
-        if Path(directory) == top / 'third_party':
-            return built(directory, names) | ({'libs'} & set(names))
-        if Path(directory) != top:
-            return built(directory, names)
-        return (built(directory, names) | {name for name in names if name in TOP_IGNORED}
-                | ignored_by_git(top, names))
+        skip = built(directory, names)
+        relative = Path(directory).resolve().relative_to(top)
+        if relative == Path('.'):
+            skip |= {name for name in names if name in TOP_IGNORED}
+        elif relative == Path('third_party'):
+            skip |= {'libs'} & set(names)
+        paths = {name: str(relative / name) for name in names if name not in skip}
+        ignored = ignored_by_git(top, list(paths.values()))
+        return skip | {name for name, path in paths.items() if path in ignored}
 
     scratch = Path(tempfile.mkdtemp(prefix='webcpp scratch ', dir=run_directory()))
     shutil.copytree(top, scratch, ignore=left_out, symlinks=True, dirs_exist_ok=True)
