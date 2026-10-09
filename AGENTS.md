@@ -103,6 +103,8 @@ webcpp/
                       exceptions
     boost_json.cpp    Boost.JSON's definitions, built as /webcpp//boost_json (chapter 2)
     boost_test_runner.cpp  Boost.Test's header-only framework, for webcpp.boost-test (chapter 9)
+    boost/            Jamfile: the compiled Boost libraries built from Boost's sources
+                      (/webcpp//boost_url)
     oracle/           the shared oracle (chapter 5): oracle.jam, twins.py, compare.py and their
                       tests
     lint/             lint.sh, rules.py, compile_commands.py and their test
@@ -122,11 +124,11 @@ webcpp/
     node/             install.py, which installs the Node packages of the documentation, an
                       oracle and the lint once per lockfile, and its test
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
-    test/             the tests of the Jamroot, webcpp.jam, third-party code, the oracle's
-                      rules, the check of generated files, the component rules, the
-                      emscripten target, the libraries webcpp does not build and the doc
-                      build, their harness, and the fixture libraries demo, oracle_demo,
-                      component_demo and browser_demo
+    test/             the tests of the Jamroot, the compiled Boost libraries, webcpp.jam,
+                      third-party code, the oracle's rules, the check of generated files,
+                      the component rules, the emscripten target, the libraries webcpp does
+                      not build and the doc build, their harness, and the fixture libraries
+                      demo, oracle_demo, component_demo and browser_demo
     ci/               matrix.py (the lanes), assemble.py (the site), download.sh and
                       helpers.sh (what the actions share), wasi-sdk.jam
                       and emsdk.jam (the lines that register the WASI and emscripten
@@ -181,7 +183,8 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
 
 ### Prerequisites
 
-- Boost 1.92 or newer, installed;
+- Boost 1.92 or newer, installed, and, for a library that links a compiled
+  Boost library (Boost.URL), Boost's sources of the same version (below);
 - b2 (B2 5.5.3 measured);
 - a C++20 compiler;
 - Python 3.9 or newer;
@@ -278,6 +281,20 @@ the configured Boost from its `boost/version.hpp`, with `grep`, or with
 cached check on it; a Boost whose `#define BOOST_VERSION <number>` line it
 cannot read stops the build too, naming the directory.
 
+**Boost's sources.** A compiled Boost library that a webcpp library needs
+is built from Boost's own sources, for every target, as Boost.JSON's
+definitions are: `/webcpp//boost_url` (`tools/boost/Jamfile`). An installed
+Boost has none (Homebrew's ships its own `libboost_url` and no
+`libs/url/src`), so the build reads them from `-sBOOST_SOURCE=<dir>` on b2's
+command line, which wins, else a user-config.jam's `modules.poke :
+BOOST_SOURCE : <dir> ;`, else `.local/boost-source`: a tree with Boost's
+`boost/version.hpp` and the `libs/<library>/src` of each library, which
+`bash tools/ci/actions/boost/install.sh source .local/boost-source` fills
+from the archive the CI uses, checked against its SHA-256. When a target
+needs the tree, the build stops if it is missing, naming both places, if
+its version is not the configured Boost's, naming both versions, and if it
+lacks the library's sources; a build that needs none never looks.
+
 **Machine-local setup.** `.local/` is git-ignored and holds what one machine
 needs: `.local/user-config.jam`, `.local/wasi-sdk/`, `.local/mrdocs/`,
 `.local/wit-bindgen/` and `.local/wasi-wit/p2` and `p3`, `.local/emsdk` (an
@@ -304,28 +321,29 @@ not a `modules.poke` of `user-config.jam`, nor the environment's `EMSDK`.
 with the file `$WEBCPP_USER_CONFIG` names, else with b2's own search. The
 tests of the build and of the tools read `.local/user-config.jam`, else the
 file `$WEBCPP_USER_CONFIG` names, and stop with an error when neither exists
-(`tools/test/harness.py`); a test that needs wit-bindgen and the WIT links
-`.local/wit-bindgen`, `.local/wasi-wit` and `.local/wasi-sdk`, or the
-directories `$WIT_BINDGEN_ROOT`, `$WASI_WIT_ROOT` and `$WASI_SDK` name, into
-its scratch copy, one that needs Emscripten `.local/emsdk`, or `$EMSDK_ROOT`,
-and one that needs MrDocs `.local/mrdocs`, or `$MRDOCS_ROOT`. Emscripten
-writes its cache where `EM_CACHE` names, else inside the emsdk: every b2 of a
-test gets the cache the shell's `EM_CACHE` names, as the CI's emsdk action
-names the one it restores with its system libraries built, so that no test
-builds them again; else one of its run, beside its scratch copies. Either is
-named by its resolved path, since Emscripten 6.0.11 builds a system library
-from a relative path that misses its sources through a link, as macOS's
-`$TMPDIR` is one. Sharing it is safe: Emscripten builds a library that is
-missing under a lock of the cache's own and looks again once it holds it, and
-three test runs at once on one empty cache pass. Each b2 also gets
+(`tools/test/harness.py`); each scratch copy links the checkout's
+`.local/boost-source` when it has one, and a test that needs wit-bindgen and
+the WIT links `.local/wit-bindgen`, `.local/wasi-wit` and `.local/wasi-sdk`,
+or the directories `$WIT_BINDGEN_ROOT`, `$WASI_WIT_ROOT` and `$WASI_SDK` name,
+into its scratch copy, one that needs Emscripten `.local/emsdk`, or
+`$EMSDK_ROOT`, and one that needs MrDocs `.local/mrdocs`, or `$MRDOCS_ROOT`.
+Emscripten writes its cache where `EM_CACHE` names, else inside the emsdk:
+every b2 of a test gets the cache the shell's `EM_CACHE` names, as the CI's
+emsdk action names the one it restores with its system libraries built, so
+that no test builds them again; else one of its run, beside its scratch
+copies. Either is named by its resolved path, since Emscripten 6.0.11 builds a
+system library from a relative path that misses its sources through a link, as
+macOS's `$TMPDIR` is one. Sharing it is safe: Emscripten builds a library that
+is missing under a lock of the cache's own and looks again once it holds it,
+and three test runs at once on one empty cache pass. Each b2 also gets
 `EMCC_SKIP_SANITY_CHECK=1`: Emscripten checks its configuration when it first
 meets a cache, which a run's own is in every run, and prints "Running sanity
 checks" into the output of the b2 that configures the toolset, which a test
 compares whole (`b2 -d0 declared-targets`); the check's one other use,
 clearing a cache made by another toolchain, has nothing to clear in a cache of
-the run's own, and the CI's was checked when the action warmed it. The
-doc build finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only
-when told: `b2 --user-config=.local/user-config.jam ...`.
+the run's own, and the CI's was checked when the action warmed it. The doc
+build finds MrDocs at `.local/mrdocs/bin/mrdocs`. b2 itself reads it only when
+told: `b2 --user-config=.local/user-config.jam ...`.
 
 ### The build commands
 
@@ -435,21 +453,23 @@ owner's:
    ```
 
    A dependency on another library is written as its target,
-   `<library>/webcpp/xactor//xactor`. Only Boost's header-only libraries are
-   available: the CI installs Boost's headers alone, and no rule links a
-   compiled Boost library. A library that needs Boost.JSON adds
-   `<library>/webcpp//boost_json` to its target's usage requirements, as
-   xstate's `build.jam` does: the Jamroot's `boost_json`, `tools/boost_json.cpp`,
-   compiles Boost.JSON's definitions (`<boost/json/src.hpp>`, as Boost.JSON
-   documents for a header-only build) into a static library, once per variant,
-   so a user's build without exceptions gets them built without exceptions
-   too. Compiled Boost libraries are on the roadmap (chapter 13). A library
-   that builds WebAssembly components declares the C bindings of its worlds
-   there too, with `webcpp.wit-bindings` (chapter 9), as wasi's `build.jam`
-   does for the world of each WASI version under its `wit/`. Nothing else
-   registers a library: the
-   test, example and doc directories join the aggregates `test`, `example` and
-   `doc` by themselves, and `include/webcpp/**` joins `install`.
+   `<library>/webcpp/xactor//xactor`. A compiled Boost library is built by
+   webcpp from Boost's sources (chapter 1): a library that needs Boost.URL
+   adds `<library>/webcpp//boost_url` to its target's usage requirements,
+   static, built once per variant with Boost.URL's own macros; never
+   `/boost//url`, which would link the system's. A library that needs
+   Boost.JSON adds `<library>/webcpp//boost_json` to its target's usage
+   requirements, as xstate's `build.jam` does: the Jamroot's `boost_json`,
+   `tools/boost_json.cpp`, compiles Boost.JSON's definitions
+   (`<boost/json/src.hpp>`, as Boost.JSON documents for a header-only build)
+   into a static library, once per variant, so a user's build without
+   exceptions gets them built without exceptions too. A library that builds
+   WebAssembly components declares the C bindings of its worlds there too,
+   with `webcpp.wit-bindings` (chapter 9), as wasi's `build.jam` does for the
+   world of each WASI version under its `wit/`. Nothing else registers a
+   library: the test, example and doc directories join the aggregates `test`,
+   `example` and `doc` by themselves, and `include/webcpp/**` joins
+   `install`.
 5. **`test/Jamfile`, `example/Jamfile` and `doc/Jamfile`**, with the rules of
    chapter 9 and chapter 8.
 6. **The files of the repository:** `LICENSE_1_0.txt`, `README.md` (what the
@@ -2011,16 +2031,20 @@ wrapper each quoted as one word of Jam.
   `https://archives.boost.io/release/1.92.0/source/`, checked against the
   SHA-256 it records: the gzip archive, since Windows Server 2022's `tar.exe`
   has no bzip2. It builds b2 with `bootstrap`, installs Boost's headers
-  (`--with-headers`, since no library links a compiled Boost library) and
-  that b2 into a prefix cached per image, writes the `using boost` line of
+  (`--with-headers`), keeps in `<prefix>/source` the archive's
+  `boost/version.hpp` and every `libs/<library>/src`, which `configure` names
+  in `.local/user-config.jam` with `modules.poke : BOOST_SOURCE`, and that b2
+  into a prefix cached per image, writes the `using boost` line of
   `.local/user-config.jam`, and puts b2 on `PATH`, on Linux, macOS and
   Windows. The headers are installed with `--layout=system`, in
   `<prefix>/include/boost`, and b2 with `b2-install-layout=standard`, in
   `<prefix>/bin`: on Windows, Boost's default is the versioned layout,
   `<prefix>/include/boost-1_92`, and b2's the portable one, which ignores
-  `--bindir` and puts b2 in the prefix itself. A prefix that lacks either
-  after the install fails the action before it is cached. It refuses an empty
-  or relative prefix: b2 given an empty `--prefix` installs into `/usr/local`.
+  `--bindir` and puts b2 in the prefix itself. A prefix that lacks the
+  headers, b2 or the sources after the install fails the action before it is
+  cached. It refuses an empty or relative prefix: b2 given an empty
+  `--prefix` installs into `/usr/local`. `install.sh source <dir>` fills such
+  a tree alone, for a machine whose Boost comes from elsewhere.
 - `wasi-sdk` installs wasi-sdk 34 into `.local/wasi-sdk`, `wasmtime`
   installs wasmtime 47.0.3 on `PATH`, `mrdocs` installs MrDocs 2026.9.29 into
   `.local/mrdocs`, and `node` sets up Node 26.7.0, with npm's cache keyed on
@@ -2256,6 +2280,7 @@ superproject's new `main`. `main` is the only branch.
     `tools/test/emscripten_test.py`, `tools/test/external_test.py`,
     `tools/test/doc_test.py`,
     `tools/test/harness_test.py`, `tools/test/third_party_test.py`,
+    `tools/test/boost_libraries_test.py`,
     `tools/lint/lint_test.py`, `tools/report/report_test.py`,
     `tools/doc/doc_check_test.py`, `tools/doc/doc_comments_test.py`,
     `tools/doc/extensions_test.py`, `tools/doc/counts_test.py`,
@@ -2473,8 +2498,9 @@ What webcpp does not have yet, and the chapters that mention it:
   user's allocator, applied first to xactor, xstate and wasi, whose response
   holds its body as a `std::string`; pratt is born with the rule, and
   trystero through `std::pmr` (chapter 6).
-- **Compiled Boost libraries.** The CI installs Boost's headers alone, so a
-  library uses only header-only Boost, and a Boost.Test suite compiles the
+- **Compiled Boost libraries.** Boost.URL is built from Boost's sources
+  (`/webcpp//boost_url`); Boost.Locale and Boost.Charconv join the same way
+  when a library needs them. A Boost.Test suite still compiles the
   framework's header-only form (chapters 2 and 9).
 - **Bundled toolchains.** Each toolchain is installed by hand and configured
   in `user-config.jam` (chapter 1), until webcpp bundles them.

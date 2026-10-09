@@ -1,0 +1,46 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The compiled Boost libraries that webcpp's libraries need, built from
+# Boost's sources for every target, static and once per variant, so that a
+# program's own features, exception-handling=off among them, reach them. The
+# sources are the Jamroot's WEBCPP_BOOST_SOURCE, whose version the Jamroot's
+# alias of each library checks before anything is built: /webcpp//boost_url.
+# They are Boost's code, not webcpp's, and compile without webcpp's
+# warnings, as Boost's headers are read as system ones.
+import errors ;
+
+project /webcpp/boost-libraries
+  : source-location $(WEBCPP_BOOST_SOURCE)
+  : requirements <warnings>off <warnings-as-errors>off
+  ;
+
+# A tree without Boost.URL's sources gets an alias that stops the build
+# naming them, never a lib without sources, which b2 would search for on the
+# system, where a package's own libboost_url may be.
+rule url-sources-missing ( properties * )
+{
+    errors.user-error "$(WEBCPP_BOOST_SOURCE)/libs/url/src holds no .cpp file, and"
+        "/webcpp//boost_url is built from them: fill the tree from Boost's source"
+        "archive (`bash tools/ci/actions/boost/install.sh source <dir>`)" ;
+}
+
+# Boost.URL, with the macros of its own libs/url/build/Jamfile: its sources
+# see BOOST_URL_SOURCE, and it and its users BOOST_URL_STATIC_LINK=1 and
+# BOOST_URL_NO_LIB=1.
+.url = [ glob-tree-ex libs/url/src : *.cpp ] ;
+if $(.url)
+{
+    lib boost_url : $(.url)
+      : <link>static <define>BOOST_URL_SOURCE <define>BOOST_URL_STATIC_LINK=1
+      : : <define>BOOST_URL_STATIC_LINK=1 <define>BOOST_URL_NO_LIB=1 ;
+}
+else
+{
+    alias boost_url : : <conditional>@url-sources-missing ;
+}
+
+explicit boost_url ;

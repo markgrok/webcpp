@@ -17,9 +17,12 @@
 #                                 <prefix>, and fails when <prefix> then lacks either, before the
 #                                 action caches it;
 #   install.sh configure <prefix> writes .local/user-config.jam with the `using boost` line of
-#                                 <prefix>, and puts <prefix>/bin, where b2 is, on PATH.
+#                                 <prefix>, and puts <prefix>/bin, where b2 is, on PATH;
+#   install.sh source <directory> fills <directory> with what install keeps in <prefix>/source,
+#                                 for a machine whose Boost has no sources.
 #
-# Only headers are installed: no webcpp library links a compiled Boost library.
+# The headers are installed, and beside them, in <prefix>/source, the sources of Boost's compiled
+# libraries, from which webcpp builds those it needs (the Jamroot's /webcpp//boost_url).
 set -euo pipefail
 
 version=1.92.0
@@ -33,6 +36,51 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The functions every action shares: digest, mixed, configuration, compiler_identity.
 # shellcheck source=SCRIPTDIR/../../helpers.sh
 . "${here}/../../helpers.sh"
+
+# Stops when destination exists and is no tree of Boost's sources: .local itself, or a directory
+# of the user's, is never replaced.
+refuse_foreign() {
+    if [ -e "$1" ] && [ ! -f "$1/boost/version.hpp" ]; then
+        printf 'install.sh: %s exists and holds no boost/version.hpp, so it is left as it is\n' \
+            "$1" >&2
+        exit 1
+    fi
+}
+
+# Copies into destination what webcpp builds Boost's compiled libraries from: boost/version.hpp,
+# which the Jamroot compares with the configured Boost's, and every libs/<library>/src of the
+# source tree. It fills a sibling first and moves it into place, so that a build reading the old
+# tree never sees half of the new one.
+keep_sources() {
+    local tree="$1" destination="${2%/}"
+    refuse_foreign "${destination}"
+    local filling="${destination}.filling"
+    rm -rf "${filling}"
+    mkdir -p "${filling}/boost" "${filling}/libs"
+    cp "${tree}/boost/version.hpp" "${filling}/boost/version.hpp"
+    local src library
+    for src in "${tree}"/libs/*/src; do
+        [ -d "${src}" ] || continue
+        library="$(basename "$(dirname "${src}")")"
+        mkdir -p "${filling}/libs/${library}"
+        cp -R "${src}" "${filling}/libs/${library}/src"
+    done
+    rm -rf "${destination}"
+    mv "${filling}" "${destination}"
+}
+
+# Fills directory with the sources install keeps, from the same archive, checked the same way: a
+# machine's .local/boost-source, where the Jamroot looks when no -sBOOST_SOURCE is given.
+source_tree() {
+    local directory="$1"
+    refuse_foreign "${directory%/}"
+    local work
+    work="$(mktemp -d)"
+    "${here}/../../download.sh" "${url}" "${sha256}" "${work}/${archive}"
+    tar -xzf "${work}/${archive}" -C "${work}"
+    keep_sources "${work}/boost_${version//./_}" "${directory}"
+    rm -rf "${work}"
+}
 
 key() {
     # The image is part of the key: b2 is a native program, and one built on a newer image need
@@ -74,6 +122,7 @@ install() {
     fi
     rm "${archive}"
     cd "boost_${version//./_}"
+    keep_sources "$(pwd)" "${prefix}/source"
     local b2=./b2
     if [ "${RUNNER_OS}" = Windows ]; then
         cmd //c bootstrap.bat || { cat bootstrap.log; exit 1; }
@@ -99,14 +148,15 @@ install() {
     "${prefix}/bin/${b2#./}" --version
 }
 
-# Whether prefix holds what configure uses: Boost's headers in <prefix>/include/boost, and b2 in
-# <prefix>/bin.
+# Whether prefix holds what configure uses: Boost's headers in <prefix>/include/boost, b2 in
+# <prefix>/bin, and the sources of Boost's compiled libraries in <prefix>/source.
 check() {
     local prefix="$1"
     local b2="${prefix}/bin/b2"
     [ "${RUNNER_OS}" != Windows ] || b2="${b2}.exe"
-    if [ ! -f "${prefix}/include/boost/version.hpp" ] || [ ! -x "${b2}" ]; then
-        printf 'install.sh: %s holds no Boost headers or no b2\n' "${prefix}" >&2
+    if [ ! -f "${prefix}/include/boost/version.hpp" ] || [ ! -x "${b2}" ] \
+        || [ ! -f "${prefix}/source/boost/version.hpp" ]; then
+        printf 'install.sh: %s holds no Boost headers, no b2 or no sources\n' "${prefix}" >&2
         exit 1
     fi
 }
@@ -120,6 +170,7 @@ configure() {
             "${version}" "${prefix}"
         printf 'using boost : 1.92 : <include>"%s/include" <library>"%s/lib" ;\n' \
             "${prefix}" "${prefix}"
+        printf 'modules.poke : BOOST_SOURCE : "%s/source" ;\n' "${prefix}"
     } > .local/user-config.jam
     cat .local/user-config.jam
     if [ "${RUNNER_OS}" = Windows ]; then
@@ -130,7 +181,8 @@ configure() {
 }
 
 usage() {
-    printf 'usage: install.sh key | install <prefix> | configure <prefix>\n' >&2
+    printf 'usage: install.sh key | install <prefix> | configure <prefix> | source <directory>\n' \
+        >&2
     exit 2
 }
 
@@ -151,6 +203,10 @@ case "${1-}" in
     configure)
         require_prefix "${2-}"
         configure "$2"
+        ;;
+    source)
+        [ -n "${2-}" ] || usage
+        source_tree "$2"
         ;;
     *) usage ;;
 esac

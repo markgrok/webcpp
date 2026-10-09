@@ -527,6 +527,14 @@ def libraries(root: str) -> list[str]:
     return sorted(build.parent.name for build in Path(root, 'libs').glob('*/build.jam'))
 
 
+def of_the_tree(root: str, source: str) -> bool:
+    """Whether source, as b2 names it, is a file of the tree the lint reads: not a path outside
+    root, nor one under its .local/, where a machine keeps what it fetched, Boost's sources among
+    them, nor one under third_party/libs/, whose code is not webcpp's."""
+    parts = Path(os.path.relpath(os.path.normpath(os.path.join(root, source)), root)).parts
+    return parts[0] not in ('..', '.local') and parts[:2] != ('third_party', 'libs')
+
+
 Units = dict[str, dict[str, list[list[str]]]]
 
 
@@ -546,7 +554,7 @@ def read(root: str, target: str, commands: list[list[str]], entries: list[dict[s
         unit = ALONE.match(source)
         if unit:
             units.setdefault(unit.group(1), {}).setdefault(unit.group(2), []).append(words)
-        if source.startswith(f'{BUILD_DIR}/'):
+        if source.startswith(f'{BUILD_DIR}/') or not of_the_tree(root, source):
             continue
         sources.add(source)
         key = tuple(without_output(words))
@@ -658,7 +666,8 @@ def twins(root: str, target: str, chosen: dict[str, list[Aggregate]], units: Uni
         unit = ALONE.match(source)
         if unit:
             without.setdefault(unit.group(1), {}).setdefault(unit.group(2), []).append(words)
-        if source.startswith(f'{BUILD_DIR}/') or first.setdefault(source, target) != target:
+        if (source.startswith(f'{BUILD_DIR}/') or not of_the_tree(root, source)
+                or first.setdefault(source, target) != target):
             continue
         if NO_EXCEPTIONS not in words:
             kept.add(source)

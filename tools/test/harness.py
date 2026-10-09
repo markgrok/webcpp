@@ -248,9 +248,10 @@ def copy_tree(src: Path) -> Path:
     """Copies src to a new directory of the run's own, whose path contains a space, and returns
     it.
 
-    Only src's user-config.jam comes from its .local/, so that the copy builds with the same
-    toolsets without copying the toolchains themselves; and third_party/libs is a link to src's,
-    which a case makes its own with third_party_of_its_own before it changes anything there.
+    third_party/libs is a link to src's, which a case makes its own with third_party_of_its_own
+    before it changes anything there. Only src's user-config.jam comes from its .local/, and a
+    link to its .local/boost-source when it has one, so that the copy builds with the same
+    toolsets and Boost sources without copying them.
     """
     top = src.resolve()
 
@@ -268,6 +269,10 @@ def copy_tree(src: Path) -> Path:
     if config.is_file():
         (scratch / '.local').mkdir()
         shutil.copy2(config, scratch / '.local/user-config.jam')
+    sources = top / '.local/boost-source'
+    if sources.exists():
+        (scratch / '.local').mkdir(exist_ok=True)
+        (scratch / '.local/boost-source').symlink_to(sources.resolve())
     libs = top / 'third_party/libs'
     if libs.is_dir():
         (scratch / 'third_party/libs').symlink_to(libs.resolve())
@@ -370,6 +375,42 @@ def without_emscripten(root: Path) -> None:
     text = user_config(root).read_text()
     configure(root, USING_EMSCRIPTEN.sub('', text))
     assert not USING_EMSCRIPTEN.search(user_config(root).read_text()), user_config(root)
+
+
+# A line of a user-config.jam that names Boost's sources.
+POKE_BOOST_SOURCE = re.compile(r'^\s*modules\.poke\s*:\s*BOOST_SOURCE\s*:\s*"?([^";]+?)"?\s*;\s*$',
+                               re.MULTILINE)
+
+
+def boost_source() -> Path:
+    """The tree of Boost's sources this checkout builds with: the one its user-config.jam names,
+    else its .local/boost-source."""
+    found = POKE_BOOST_SOURCE.search(user_config(ROOT).read_text())
+    return Path(found.group(1)) if found else (ROOT / '.local/boost-source').resolve()
+
+
+# A line of a user-config.jam that configures gcc, and the version it names.
+USING_GCC = re.compile(r'^\s*using\s+gcc\s*(?::\s*([^\s:;]+))?', re.MULTILINE)
+
+
+def gcc_request(root: Path) -> tuple[str, ...]:
+    """The b2 request of the gcc that root's user-config.jam configures, toolset=gcc-<version>,
+    or nothing when it configures none, as the CI's tools job, which registers clang alone."""
+    found = USING_GCC.search(user_config(root).read_text())
+    if not found:
+        return ()
+    return (f'toolset=gcc-{found.group(1)}',) if found.group(1) else ('toolset=gcc',)
+
+
+def without_boost_source(root: Path) -> None:
+    """Leaves the scratch superproject root without Boost's sources: its user-config.jam, the one
+    b2 reads for it, names none, and its .local holds no boost-source."""
+    configure(root, POKE_BOOST_SOURCE.sub('', user_config(root).read_text()))
+    link = root / '.local/boost-source'
+    if link.is_symlink():
+        link.unlink()
+    elif link.exists():
+        shutil.rmtree(link)
 
 
 def configure(root: Path, text: str) -> None:

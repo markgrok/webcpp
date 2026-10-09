@@ -33,7 +33,9 @@ library on every target are published at <https://webcpporg.github.io/>.
 
 ## Prerequisites
 
-- Boost 1.92 or newer, installed;
+- Boost 1.92 or newer, installed, and for a library that links Boost.URL its
+  sources, which `bash tools/ci/actions/boost/install.sh source
+  .local/boost-source` fetches;
 - b2;
 - a C++20 compiler;
 - Python 3.9 or newer, which compares the examples with their expected output
@@ -240,14 +242,14 @@ clang-tidy, which takes most of the time, and runs every other rule.
 
 ## The tests of the tools
 
-The build and its tools have tests of their own, each a Python script run
-from the root, such as `python3 tools/test/jamroot_test.py`:
-`tools/test/*_test.py` for the Jamroot, `tools/webcpp.jam`, third-party code,
-the oracle's rules, the check of generated files, the rules of a WebAssembly
-component and the documentation build, and `tools/<tool>/*_test.py` for the
-oracle, the lint, the report, the documentation, the example runner, the
-server of a component, the driver of generated files, the installer of the
-Node packages and the CI's scripts.
+The build and its tools have tests of their own, each a Python script run from
+the root, such as `python3 tools/test/jamroot_test.py`: `tools/test/*_test.py`
+for the Jamroot, the compiled Boost libraries, `tools/webcpp.jam`, third-party
+code, the oracle's rules, the check of generated files, the rules of a
+WebAssembly component and the documentation build, and
+`tools/<tool>/*_test.py` for the oracle, the lint, the report, the
+documentation, the example runner, the server of a component, the driver of
+generated files, the installer of the Node packages and the CI's scripts.
 
 ## Contributing
 

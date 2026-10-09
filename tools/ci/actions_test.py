@@ -10,8 +10,12 @@ the pinned one, exits 1 and leaves no file when the digest differs or the downlo
 Boost action's install.sh refuses an empty or relative prefix before it downloads anything, since
 b2 given an empty --prefix installs into /usr/local, installs b2 in <prefix>/bin and the headers
 in <prefix>/include/boost on every runner, Windows's included, where the default layouts would put
-b2 in <prefix> itself and the headers in <prefix>/include/boost-1_92, and fails, before the prefix
-is cached, when the prefix holds no headers or no b2 after the install. The wit-bindgen action
+b2 in <prefix> itself and the headers in <prefix>/include/boost-1_92, keeps in <prefix>/source the
+archive's boost/version.hpp and every libs/<library>/src, which configure names in
+user-config.jam, and fails, before the prefix is cached, when the prefix holds no headers, no b2 or
+no sources after the install; its source step fills a directory with the same tree alone, in
+place of one it wrote, and refuses one that holds no boost/version.hpp before it downloads
+anything. The wit-bindgen action
 installs the build of the runner's system and processor, the program alone, in .local/wit-bindgen,
 where the build looks for it, in place of what was there, and refuses a runner it pins no build
 for before it downloads anything; the wasi-wit action installs the wit/deps directory of each
@@ -136,12 +140,12 @@ def test_boost_refuses_an_empty_or_relative_prefix(scratch: Path) -> None:
     runner = {'RUNNER_OS': 'Linux', 'RUNNER_TEMP': str(scratch / 'temp'),
               'GITHUB_PATH': str(scratch / 'path')}
     for arguments in (['install'], ['install', ''], ['install', 'relative/prefix'],
-                      ['configure'], ['configure', ''], ['configure', 'relative/prefix'], [],
-                      ['other']):
+                      ['configure'], ['configure', ''], ['configure', 'relative/prefix'],
+                      ['source'], ['source', ''], [], ['other']):
         result = run(script, *arguments, env=runner)
         assert result.returncode == 2, (arguments, result.returncode, result.stderr)
-        assert 'usage: install.sh key | install <prefix> | configure <prefix>' in (
-            result.stderr), (arguments, result.stderr)
+        assert ('usage: install.sh key | install <prefix> | configure <prefix> | source '
+                '<directory>') in result.stderr, (arguments, result.stderr)
         assert CALLED not in result.stderr, (arguments, result.stderr)
     assert not (scratch / '.local').exists()
     # An absolute prefix, a POSIX one or a Windows one with slashes, gets to the download.
@@ -188,6 +192,13 @@ def boost_archive(scratch: Path) -> Path:
     """A boost_1_92_0.tar.gz whose bootstrap.sh writes the stand-in b2."""
     tree = scratch / 'archive/boost_1_92_0'
     (tree / 'tools/build').mkdir(parents=True)
+    for path, text in (('boost/version.hpp', '#define BOOST_VERSION 109200\n'),
+                       ('libs/url/src/url.cpp', '// url\n'),
+                       ('libs/url/src/detail/pattern.hpp', '// pattern\n'),
+                       ('libs/json/src/src.cpp', '// json\n'),
+                       ('libs/url/doc/index.html', '<p>not kept</p>\n')):
+        (tree / path).parent.mkdir(parents=True, exist_ok=True)
+        (tree / path).write_text(text)
     (tree / 'b2.in').write_text(FAKE_B2)
     bootstrap = tree / 'bootstrap.sh'
     bootstrap.write_text('#!/bin/sh\ncp b2.in b2 && chmod +x b2\n')
@@ -236,8 +247,63 @@ def test_boost_install_fails_when_the_prefix_is_incomplete(scratch: Path) -> Non
     prefix = scratch / 'prefix'
     result = run(script, 'install', prefix, env={**runner, 'STAND_IN_INSTALLS_NOTHING': '1'})
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
-    assert f'install.sh: {prefix} holds no Boost headers or no b2' in result.stderr, (
-        result.stderr)
+    assert f'install.sh: {prefix} holds no Boost headers, no b2 or no sources' in (
+        result.stderr), result.stderr
+
+
+# What install keeps in <prefix>/source, and source writes into a directory: the archive's
+# boost/version.hpp and every libs/<library>/src, nothing else.
+KEPT_SOURCES = ['boost/version.hpp', 'libs/json/src/src.cpp', 'libs/url/src/detail/pattern.hpp',
+                'libs/url/src/url.cpp']
+
+
+def files_under(directory: Path) -> list[str]:
+    return sorted(str(path.relative_to(directory)) for path in directory.rglob('*')
+                  if path.is_file())
+
+
+def test_boost_keeps_the_sources_of_its_compiled_libraries(scratch: Path) -> None:
+    script, runner = boost_install_tree(scratch)
+    prefix = scratch / 'prefix'
+    result = run(script, 'install', prefix, env=runner)
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    assert files_under(prefix / 'source') == KEPT_SOURCES, files_under(prefix / 'source')
+    result = subprocess.run(['bash', str(script), 'configure', str(prefix)], capture_output=True,
+                            text=True, check=False, cwd=scratch, env={**os.environ, **runner})
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    config = (scratch / '.local/user-config.jam').read_text()
+    assert f'modules.poke : BOOST_SOURCE : "{prefix}/source" ;\n' in config, config
+
+
+def test_boost_source_fills_a_directory_alone(scratch: Path) -> None:
+    # A machine whose Boost comes from a package manager has no sources: source fills
+    # .local/boost-source from the same archive, checked the same way, with no runner around it.
+    script, _ = boost_install_tree(scratch)
+    directory = scratch / 'local sources'
+    for _ in range(2):
+        # The second run replaces the tree the first wrote.
+        result = run(script, 'source', directory,
+                     env={'RUNNER_OS': '', 'RUNNER_TEMP': '', 'GITHUB_PATH': ''})
+        assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+        assert files_under(directory) == KEPT_SOURCES, files_under(directory)
+    assert not (scratch / '.local').exists()
+    assert not (scratch / 'local sources.filling').exists()
+
+
+def test_boost_source_refuses_a_directory_it_did_not_write(scratch: Path) -> None:
+    # A tree of Boost's sources is replaced; anything else (.local itself, a directory of the
+    # user's) is left as it is, before anything is downloaded: the stand-in download.sh only says
+    # it was called.
+    script = boost_tree(scratch)
+    directory = scratch / 'mine'
+    directory.mkdir()
+    (directory / 'keep.txt').write_text('mine\n')
+    result = run(script, 'source', directory,
+                 env={'RUNNER_OS': '', 'RUNNER_TEMP': '', 'GITHUB_PATH': ''})
+    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
+    assert f'install.sh: {directory} exists and holds no boost/version.hpp' in result.stderr
+    assert CALLED not in result.stderr, result.stderr
+    assert files_under(directory) == ['keep.txt'], files_under(directory)
 
 
 def place_helpers(scratch: Path) -> None:
@@ -1561,6 +1627,9 @@ CASES: list[Callable[[Path], None]] = [
     test_boost_refuses_an_empty_or_relative_prefix,
     test_boost_installs_b2_and_the_headers_where_configure_finds_them,
     test_boost_install_fails_when_the_prefix_is_incomplete,
+    test_boost_keeps_the_sources_of_its_compiled_libraries,
+    test_boost_source_fills_a_directory_alone,
+    test_boost_source_refuses_a_directory_it_did_not_write,
     test_wit_bindgen_installs_the_runners_build_alone,
     test_wit_bindgen_refuses_a_runner_it_pins_no_build_for,
     test_wasi_wit_installs_each_crates_wit_deps,

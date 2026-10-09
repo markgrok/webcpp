@@ -697,6 +697,38 @@ def test_a_dependency_s_warnings_are_not_ours(root):
     assert 'fake_dependency.hpp:' not in result.stdout, result.stdout[-6000:]
 
 
+def test_a_compiled_boost_library_s_sources_are_not_analysed(root):
+    # Boost.URL's sources, which /webcpp//boost_url compiles from Boost's tree outside the tree
+    # the lint reads (.local/boost-source, or a CI runner's prefix), are Boost's: the database
+    # lists the program that links them, and none of theirs.
+    prepare(root)
+    append(root, 'libs/demo/test/Jamfile',
+           'webcpp.run parses_url : parses_url.cpp : <library>/webcpp//boost_url ;\n')
+    (root / 'libs/demo/test/parses_url.cpp').write_text(
+        CPP + '\n'
+        '#include <boost/url/parse.hpp>\n'
+        '\n'
+        'int main() {\n'
+        '    return boost::urls::parse_uri("http://example.com").has_value() ? 0 : 1;\n'
+        '}\n')
+    commit(root / 'libs/demo', 'A program that links Boost.URL')
+    completed = compile_database(root)
+    assert completed.returncode == 0, completed.stdout[-6000:]
+    files = {entry['file'] for entry in json.loads(
+        (root / 'compile database/compile_commands.json').read_text())}
+    assert str(root / 'libs/demo/test/parses_url.cpp') in files, sorted(files)
+    assert not [file for file in files if '/libs/url/src/' in file], sorted(files)
+    # Above, b2 names Boost's sources by their physical path, which on macOS is outside root
+    # (/var is /private/var), so the case also asks of_the_tree of each place by itself.
+    for source, ours in (('libs/demo/test/parses_url.cpp', True),
+                         ('.local/boost-source/libs/url/src/url.cpp', False),
+                         (str(root / '.local/boost-source/libs/url/src/url.cpp'), False),
+                         ('third_party/libs/srell/single-header/srell.hpp', False),
+                         (str(root.parent / 'boost source/libs/url/src/url.cpp'), False)):
+        assert compile_commands.of_the_tree(str(root), source) == ours, (source, ours)
+    expect_clean(lint(root))
+
+
 def test_clang_tidy_refuses_a_throw_on_each_target_without_exceptions(root):
     prepare(root)
     add_browser_demo(root)
@@ -1912,6 +1944,7 @@ CASES = [
     test_compile_database_gives_each_target_its_aggregate,
     test_clang_tidy_reads_what_only_one_target_builds,
     test_a_dependency_s_warnings_are_not_ours,
+    test_a_compiled_boost_library_s_sources_are_not_analysed,
     test_clang_tidy_refuses_a_throw_on_each_target_without_exceptions,
     test_a_native_header_that_needs_no_exceptions_has_its_twin,
     test_a_library_webcpp_does_not_build_missing_is_named,

@@ -308,6 +308,66 @@ rule projects ( pattern )
 
 path-constant WEBCPP_ROOT : . ;
 
+# The sources of the compiled Boost libraries that webcpp builds for every
+# target (tools/boost/Jamfile), as /webcpp//boost_json is built from
+# Boost.JSON's headers: a tree of Boost's source archive, at least its
+# boost/version.hpp and the libs/<library>/src of each library built. It is
+# -sBOOST_SOURCE=<dir> on the command line, which wins, else a
+# user-config.jam's modules.poke of BOOST_SOURCE, else .local/boost-source,
+# which `bash tools/ci/actions/boost/install.sh source .local/boost-source`
+# fills. Its version must be the configured Boost's. Both are checked only
+# when a target uses a compiled Boost library.
+.boost-source-local = [ path.join [ path.root [ path.make $(WEBCPP_ROOT) ] [ path.pwd ] ]
+    .local/boost-source ] ;
+.boost-source-given = [ MATCH "^-sBOOST_SOURCE=(.+)$" : [ modules.peek : ARGV ] ] ;
+.boost-source-origin = "-sBOOST_SOURCE=$(.boost-source-given[-1])" ;
+if ! $(.boost-source-given)
+{
+    .boost-source-given = [ modules.peek : BOOST_SOURCE ] ;
+    .boost-source-origin = "user-config.jam's BOOST_SOURCE, $(.boost-source-given[-1])," ;
+}
+.boost-source = $(.boost-source-local) ;
+if $(.boost-source-given)
+{
+    .boost-source-given = $(.boost-source-given[-1]) ;
+    .boost-source = [ path.root [ path.make $(.boost-source-given) ] [ path.pwd ] ] ;
+}
+path-constant WEBCPP_BOOST_SOURCE : [ path.native $(.boost-source) ] ;
+
+# The check of a compiled Boost library's alias: the tree holds a
+# boost/version.hpp, of the configured Boost's version.
+rule boost-source-usable ( properties * )
+{
+    local shown = [ path.native $(.boost-source) ] ;
+    local version = [ boost-version $(.boost-source) ] ;
+    if ! $(version)
+    {
+        local looked = "no -sBOOST_SOURCE=<dir> was given, and $(shown) holds no boost/version.hpp" ;
+        if $(.boost-source-given)
+        {
+            looked = "$(.boost-source-origin) holds no boost/version.hpp" ;
+        }
+        errors.user-error "Boost's sources, which a compiled Boost library of /webcpp is built"
+            "from, were not found: $(looked). Fill .local/boost-source with `bash"
+            "tools/ci/actions/boost/install.sh source .local/boost-source`, or give"
+            "-sBOOST_SOURCE=<dir>." ;
+    }
+    if $(version[1]) != $(.boost-found[1])
+    {
+        errors.user-error "$(shown) holds Boost $(version[2])'s sources, and the configured"
+            "Boost in $(.boost-include) is $(.boost-found[2]): a compiled Boost library is"
+            "built from the sources of the configured Boost's version" ;
+    }
+}
+
+# Boost's compiled libraries, built from those sources (tools/boost/Jamfile).
+use-project /webcpp/boost-libraries : tools/boost ;
+
+# Boost.URL, compiled: a library that needs it puts <library>/webcpp//boost_url
+# in its main target's usage requirements, as one that needs Boost.JSON does
+# with boost_json. The alias checks the sources before anything is built.
+alias boost_url : tools/boost//boost_url : <conditional>@boost-source-usable ;
+
 # The emsdk a library's reference is read with, for Emscripten's target, as
 # its em++ compiles (tools/doc/doc.jam): a reference puts
 # <library>/webcpp//emscripten-reference in its requirements when one of the
@@ -530,8 +590,8 @@ notfile declared-lanes : @declared-lanes : : <webcpp-boost-check>off ;
 # every test, those the lane skips included. With --out-xml, b2 exits 0 even
 # when a test fails: the report's exit status is the verdict.
 
-explicit boost_version throw_exception boost_json emscripten-reference test example doc
-    install $(.install) declared-targets declared-lanes site site-serve ;
+explicit boost_version throw_exception boost_json boost_url emscripten-reference test
+    example doc install $(.install) declared-targets declared-lanes site site-serve ;
 if [ glob site/Jamfile ]
 {
     explicit site-declared.txt libraries.json site-pages ;
