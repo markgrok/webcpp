@@ -38,8 +38,10 @@
 # when the lockfile's content changed: tools/node/install.py installs once per
 # lockfile under .node-modules/ beside it and links node_modules there. Node
 # and npm are looked for on PATH only when an oracle target runs, and the
-# build stops, naming the one that is missing. The targets compile nothing,
-# so they leave the Jamroot's check of Boost out.
+# build stops, naming the one that is missing. The targets compile nothing
+# and leave the Jamroot's check of Boost out of their own requirements, but
+# they keep the libraries their project's requirements name, whose targets
+# run it: an oracle lane needs Boost.
 #
 # This file is loaded as the module webcpp-oracle, beside webcpp-doc. Each
 # rule receives first where its Jamfile is, as tools/webcpp.jam's `where`

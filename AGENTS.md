@@ -483,6 +483,16 @@ owner's:
    | emscripten | refused by name: `shared/date_time.cpp`, `shared/generator.cpp` and `shared/localization_backend.cpp` include `<boost/thread/mutex.hpp>`, and Boost.Config stops with "Compiler threading support is not turned on" (`boost/config/requires_threads.hpp:47`), webcpp's emscripten being single-threaded (measured) | yes (measured) |
    | any target, `exception-handling=off` | refused by name: Boost.Locale throws and catches unguarded (61 `throw`, 14 `try` in its sources, 8 `throw` in its headers) | yes (measured natively and on wasip2) |
 
+   Since Boost.Locale needs exceptions, a program that names
+   `/webcpp//boost_locale`, directly or through a library, declares
+   `<exception-handling>on` in its own requirements, which keeps it with
+   exceptions in a build without them, the lint's twins included (chapter 6):
+   b2 ignores it as a usage requirement, and the refusal stops the whole
+   build, naming that fix but not the program, which b2 does not give it. A
+   library whose programs run on emscripten keeps `/webcpp//boost_locale` out
+   of its main target's usage requirements, and gives it to the header and
+   the programs that need it.
+
    A library that needs Boost.JSON adds `<library>/webcpp//boost_json` to its
    target's usage requirements, as xstate's `build.jam` does: the Jamroot's
    `boost_json`, `tools/boost_json.cpp`, compiles Boost.JSON's definitions

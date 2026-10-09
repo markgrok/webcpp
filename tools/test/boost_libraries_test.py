@@ -391,8 +391,9 @@ CODEPAGES_JAMFILE = ('import webcpp ;\n'
                      '\n'
                      'webcpp.run codepages : codepages.cpp : <library>/webcpp//boost_locale ;\n')
 
-# Shift_JIS is no codepage of Boost.Locale's own: only iconv converts it, so the program fails on a
-# Boost.Locale built without iconv.
+# Shift_JIS, a multibyte charset, which each platform's iconv must know (macOS's libiconv,
+# wasi-libc's tables). converts proves that iconv is there, with ISO-8859-1, which Boost.Locale
+# 1.92 too converts only through iconv (or ICU); this one, that a charset beyond Latin-1 converts.
 CODEPAGES_SOURCE = r'''#include <boost/locale.hpp>
 
 #include <iostream>
@@ -423,6 +424,37 @@ def test_boost_locale_converts_through_iconv(root: Path) -> None:
         shutil.rmtree(root / 'bin')
 
 
+def compiled_locale_sources(output: str) -> dict[str, str]:
+    """Each source of Boost.Locale that a b2 -d+2 output compiles, by its path under
+    libs/locale/src, with its command."""
+    found = re.findall(r'^.* -c .*libs/locale/src/([\w/]+\.cpp)".*$', output, re.MULTILINE)
+    commands = [line for line in output.splitlines()
+                if ' -c ' in line and 'libs/locale/src/' in line]
+    return {source: next(line for line in commands if f'libs/locale/src/{source}"' in line)
+            for source in found}
+
+
+def test_boost_locale_on_windows_is_boost_s_configuration(root: Path) -> None:
+    # No Windows machine measures it yet: a dry run for target-os=windows on this host holds the
+    # branch to AGENTS.md's table until the CI's MSVC lanes build it, the winapi and std backends,
+    # without iconv.
+    add_locales(root)
+    result = harness.run_b2(root, '-a', '-n', '-d+2', 'target-os=windows',
+                            'libs/locales/test//converts')
+    harness.expect(result, True)
+    compiled = compiled_locale_sources(result.stdout)
+    backends = {source.split('/')[0] for source in compiled}
+    assert backends == {'encoding', 'shared', 'util', 'std', 'win32'}, sorted(compiled)
+    assert {source for source in compiled if source.startswith('win32/')} == {
+        'win32/collate.cpp', 'win32/converter.cpp', 'win32/numeric.cpp', 'win32/win_backend.cpp',
+        'win32/lcid.cpp'}, sorted(compiled)
+    for source, command in compiled.items():
+        assert '-DBOOST_LOCALE_NO_POSIX_BACKEND=1' in command, (source, command)
+        assert 'BOOST_LOCALE_WITH_ICONV' not in command, (source, command)
+        assert 'BOOST_LOCALE_NO_WINAPI_BACKEND' not in command, (source, command)
+    assert '-liconv' not in result.stdout, result.stdout[-4000:]
+
+
 def test_boost_locale_is_refused_on_emscripten(root: Path) -> None:
     harness.link_emsdk(root)
     add_locales(root)
@@ -434,7 +466,18 @@ def test_boost_locale_is_refused_on_emscripten(root: Path) -> None:
 def test_boost_locale_is_refused_without_exceptions(root: Path) -> None:
     add_locales(root)
     harness.expect(harness.run_b2(root, 'exception-handling=off', 'libs/locales/test'), False,
-                   '/webcpp//boost_locale needs exceptions')
+                   '/webcpp//boost_locale needs exceptions',
+                   'declares <exception-handling>on in its own requirements')
+    # The fix the refusal names: programs that declare it build Boost.Locale with exceptions in a
+    # build without them, as the lint's twins are.
+    jamfile = root / 'libs/locales/test/Jamfile'
+    jamfile.write_text(jamfile.read_text().replace(
+        '<library>/webcpp//boost_locale', '<library>/webcpp//boost_locale <exception-handling>on'))
+    for request in ((), WASIP2):
+        result = harness.run_b2(root, '-a', *request, 'exception-handling=off', 'libs/locales/test')
+        harness.expect(result, True)
+        expected = {'converts', 'translates'} if not request else {'converts'}
+        assert passed(result) == expected, (request, passed(result), result.stdout[-4000:])
 
 
 CASES = [
@@ -442,6 +485,7 @@ CASES = [
     test_boost_charconv_links_on_every_target,
     test_boost_locale_on_native_wasip2_and_wasip3,
     test_boost_locale_converts_through_iconv,
+    test_boost_locale_on_windows_is_boost_s_configuration,
     test_boost_locale_is_refused_on_emscripten,
     test_boost_locale_is_refused_without_exceptions,
     test_without_the_library_a_program_does_not_link,

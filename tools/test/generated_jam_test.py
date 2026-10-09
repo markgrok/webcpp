@@ -13,8 +13,8 @@ tree as it was, passing or failing. update-generated writes the outputs of every
 Jamfile in place, and leaves every committed file as it was when any generator fails. An own lane
 names the check, which `b2 declared-lanes` lists and the ordinary lanes never build, nor
 update-generated; none of them, the lane included, runs the Jamroot's check of Boost, so they build
-without Boost; and a wrong declaration, two generators that name one output among them, stops the
-build by name.
+without Boost, while a lane of programs still runs it; and a wrong declaration, two generators that
+name one output among them, stops the build by name.
 
 Each case builds a scratch superproject with the fixture library demo, whose path holds a space.
 Run with the names of some cases to run only those."""
@@ -201,6 +201,29 @@ def test_no_target_of_it_checks_boost(root: Path) -> None:
     assert (test / 'generated/words.txt').read_text() == WORDS
 
 
+def test_a_lane_of_programs_still_checks_boost(root: Path) -> None:
+    # The skip is exact: a lane's alias leaves the check to what it names, and a program it names
+    # checks Boost, with the lane naming no target and naming native.
+    project = 'project : requirements <library>/webcpp/gen//gen ;\n\n'
+    test = add_generator(root)
+    (root / LIBRARY / 'build.jam').write_text(
+        'project /webcpp/gen ;\n'
+        '\n'
+        'alias gen : : : : <include>include <library>/boost//headers ;\n')
+    (test / 'program.cpp').write_text('int main() { return 0; }\n')
+    text = harness.user_config(root).read_text()
+    for targets in ('', ' : native'):
+        (test / 'Jamfile').write_text(project + JAMFILE + 'webcpp.run program : program.cpp ;\n'
+                                      f'webcpp.lane programs : program{targets} ;\n')
+        harness.configure(root, text)
+        result = harness.run_b2(root, '-a', f'{LIBRARY}/test//programs')
+        harness.expect(result, True, 'Boost 1.92 or newer', '**passed**')
+        harness.configure(root, harness.without_boost())
+        result = harness.run_b2(root, '-a', f'{LIBRARY}/test//programs',
+                                env_extra={'BOOST_ROOT': None})
+        harness.expect(result, False, 'Boost 1.92 or newer was not found')
+
+
 def test_a_wrong_declaration_is_refused(root: Path) -> None:
     test = add_generator(root)
     for jamfile, message in (
@@ -227,6 +250,7 @@ CASES = [
     test_a_generator_failing_after_one_output_leaves_every_committed_file,
     test_the_lane_is_listed_and_the_ordinary_lanes_skip_it,
     test_no_target_of_it_checks_boost,
+    test_a_lane_of_programs_still_checks_boost,
     test_a_wrong_declaration_is_refused,
 ]
 
