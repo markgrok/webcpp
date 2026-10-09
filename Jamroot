@@ -683,8 +683,9 @@ rule webcpp-version ( )
 }
 
 # The release tooling, tools/release/release.py (AGENTS.md chapter 11), run
-# only when named: check-release, what a tag needs. No release target is
-# named release-<word>, which b2 reads as the variant release (AGENTS.md
+# only when named: check-release, what a tag needs; whats-new, the skeleton
+# of a version's What's new; dist, its archive. No release target is named
+# release-<word>, which b2 reads as the variant release (AGENTS.md
 # chapter 12).
 if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 
@@ -722,9 +723,27 @@ actions whats-new
 
 notfile whats-new : @whats-new : : <webcpp-boost-check>off ;
 
+# `b2 dist` builds every page, the index's and each library's, then writes
+# bin/dist/webcpp-<version>.tar.gz and its sha256sum file, the same bytes
+# wherever and whenever the same commits and pages are archived.
+rule dist ( targets * : sources * : properties * )
+{
+    release-tool $(targets) : $(sources) : $(properties) ;
+    OUT on $(targets) = [ path.native [ path.join [ path.make $(WEBCPP_ROOT) ]
+        bin/dist ] ] ;
+}
+
+actions dist
+{
+    "$(PYTHON)" "$(SCRIPT)" dist --root "$(ROOT)" --version "$(VERSION)" --out "$(OUT)"
+}
+
+notfile dist : @dist : : <dependency>doc <webcpp-boost-check>off ;
+
 explicit boost_version throw_exception boost_json boost_url boost_charconv
     boost_locale emscripten-reference test example doc install $(.install)
-    declared-targets declared-lanes site site-serve check-release whats-new ;
+    declared-targets declared-lanes site site-serve check-release whats-new
+    dist ;
 if [ glob site/Jamfile ]
 {
     explicit site-declared.txt libraries.json site-pages ;

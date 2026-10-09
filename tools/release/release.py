@@ -9,6 +9,7 @@
 
 Usage: release.py check --root <superproject> --version <a.b.c>
        release.py whats-new --root <superproject> --version <a.b.c>
+       release.py dist --root <superproject> --version <a.b.c> --out <directory>
 
 check names every fault that keeps the tree from being tagged webcpp-<a.b.c>:
 - the superproject or a library holds a change its HEAD does not record: a changed, staged,
@@ -48,6 +49,21 @@ first three, in Markdown. Its section Highlights holds a comment naming the form
 back once an agent, and then the owner, have written them in its place: at most five highlights,
 each "- **<category>**: <sentence>", in the order of CATEGORIES, a category with nothing to say
 left out.
+
+dist writes webcpp-<a.b.c>.tar.gz into the directory --out names, and webcpp-<a.b.c>.tar.gz.txt,
+its sha256sum line: the files the superproject's HEAD records and those each library's HEAD
+records, read from git's objects and never from the working tree, and every built page, the
+index's doc/html and each library's, all under webcpp-<a.b.c>/, no path with a part that starts
+with a dot. It refuses, naming each fault, a change HEAD does not record (named alone, as check
+names it), a version other than version.hpp's, a library that is no checkout of its own, not
+checked out, no submodule at HEAD or at another commit than HEAD records, and a page not built.
+The archive is the same bytes from the same commits and pages wherever, whenever, by whomever
+and under whatever time zone, locale and umask it is written: its members in the order of their
+names' code points, each with the time of the superproject's HEAD commit, owner and group 0 and
+no names, mode 755 for a file git records as executable, 777 for a link and 644 for every other
+file and every page; its gzip header with no name, no time and the operating system unknown.
+No tar or gzip program is run.
+
 Exit 0 when nothing is wrong; 1 with each fault on a line of its own, `<command>: <fault>`; 2 on a
 usage error, or when a file it reads is not there, cannot be read or is not UTF-8.
 """
@@ -55,9 +71,13 @@ usage error, or when a file it reads is not there, cannot be read or is not UTF-
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import re
 import subprocess
 import sys
+import tarfile
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -150,6 +170,14 @@ def read(root: Path, relative: str) -> str:
     try:
         return (root / relative).read_text(encoding='utf-8')
     except (OSError, UnicodeDecodeError) as error:
+        raise Broken(f'{relative} cannot be read: {error}') from error
+
+
+def read_bytes(root: Path, relative: str) -> bytes:
+    """The bytes of the file relative in root; one that cannot be read is Broken, named."""
+    try:
+        return (root / relative).read_bytes()
+    except OSError as error:
         raise Broken(f'{relative} cannot be read: {error}') from error
 
 
@@ -357,6 +385,28 @@ def state_findings(root: Path, version: Version, notes: changelog.Notes,
     return findings
 
 
+def checkout_findings(root: Path, current: list[str], head: dict[str, str]) -> list[str]:
+    """What keeps the libraries checked out from being those the superproject records at HEAD,
+    head: a submodule of HEAD not checked out, which holds no build.jam; a library that is no git
+    checkout of its own, or no submodule at HEAD, or checked out at another commit."""
+    findings = [f'libs/{name} is a submodule of the superproject at HEAD, and is not checked '
+                f'out: git submodule update --init libs/{name}'
+                for name in sorted(set(head) - set(current))]
+    for name in current:
+        if not is_checkout(root, name):
+            findings.append(f'libs/{name} is no git checkout of its own: a library is a '
+                            'repository, recorded by the superproject')
+        elif name not in head:
+            findings.append(f'libs/{name} is no submodule of the superproject at HEAD: a release '
+                            'ships only what its tag records')
+        else:
+            checked_out = git(root / 'libs' / name, 'rev-parse', 'HEAD').strip()
+            if checked_out != head[name]:
+                findings.append(f'libs/{name} is at {checked_out}, and the superproject records '
+                                f'{head[name]}')
+    return findings
+
+
 def library_findings(root: Path, version: Version, notes: changelog.Notes,
                      logs: dict[str, list[changelog.Region]], current: list[str]) -> list[str]:
     """What the libraries get wrong: each recorded at its checked-out commit; New and Removed
@@ -368,24 +418,11 @@ def library_findings(root: Path, version: Version, notes: changelog.Notes,
     since = previous or 'the first version'
     before = gitlinks(root, previous) if previous else {}
     head = gitlinks(root, 'HEAD')
-    findings = []
-    # A submodule that is not checked out holds no build.jam, and is not gone: it is named, and
-    # counted as present.
+    findings = checkout_findings(root, current, head)
+    # A submodule that is not checked out is not gone: checkout_findings names it, and it counts
+    # as present.
     absent = sorted(set(head) - set(current))
-    findings += [f'libs/{name} is a submodule of the superproject at HEAD, and is not checked '
-                 f'out: git submodule update --init libs/{name}' for name in absent]
     checkouts = [name for name in current if is_checkout(root, name)]
-    findings += [f'libs/{name} is no git checkout of its own: a library is a repository, '
-                 'recorded by the superproject' for name in current if name not in checkouts]
-    for name in checkouts:
-        if name not in head:
-            findings.append(f'libs/{name} is no submodule of the superproject at HEAD: a release '
-                            'ships only what its tag records')
-            continue
-        checked_out = git(root / 'libs' / name, 'rev-parse', 'HEAD').strip()
-        if checked_out != head[name]:
-            findings.append(f'libs/{name} is at {checked_out}, and the superproject records '
-                            f'{head[name]}')
     present = set(current) | set(absent)
     new = sorted(present - set(before))
     removed = sorted(set(before) - present)
@@ -658,6 +695,188 @@ def check(root: Path, version: Version) -> list[str]:
     return findings
 
 
+# The header of every archive's gzip member, RFC 1952's ten bytes, written here rather than left
+# to a gzip writer: the method deflate, no flag, so no file name, the time 0, the best
+# compression, and the operating system 255, unknown.
+GZIP_HEADER = b'\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff'
+
+
+def blobs(directory: Path) -> list[tuple[str, str, str]]:
+    """The blobs of the tree at HEAD of the repository directory: each path, git mode and
+    object; its gitlinks left out. A path that is not UTF-8 is Broken, named."""
+    listed = subprocess.run(['git', '-C', str(directory), 'ls-tree', '-r', '-z', 'HEAD'],
+                            capture_output=True, check=False)
+    if listed.returncode != 0:
+        error = listed.stderr.decode(errors='replace').strip()
+        raise Broken(f'git ls-tree in {directory}: {error}')
+    found = []
+    for entry in listed.stdout.split(b'\0'):
+        if not entry:
+            continue
+        meta, path = entry.split(b'\t', 1)
+        mode, kind, name = meta.decode().split()
+        if kind != 'blob':
+            continue
+        try:
+            found.append((path.decode('utf-8'), mode, name))
+        except UnicodeDecodeError as error:
+            raise Broken(f'{directory}: the path {path!r} is not UTF-8') from error
+    return found
+
+
+def contents(directory: Path, objects: list[str]) -> dict[str, bytes]:
+    """Each object's bytes, read with one git cat-file --batch: git's objects, never the working
+    tree, so that no checkout's line ends, filters or modes reach them."""
+    read = subprocess.run(['git', '-C', str(directory), 'cat-file', '--batch'],
+                          input=''.join(f'{name}\n' for name in objects).encode(),
+                          capture_output=True, check=False)
+    if read.returncode != 0:
+        error = read.stderr.decode(errors='replace').strip()
+        raise Broken(f'git cat-file in {directory}: {error}')
+    data = read.stdout
+    found: dict[str, bytes] = {}
+    position = 0
+    while position < len(data):
+        end = data.index(b'\n', position)
+        fields = data[position:end].decode().split()
+        if len(fields) != 3:
+            raise Broken(f'git cat-file in {directory}: {" ".join(fields)}')
+        name, size = fields[0], int(fields[2])
+        start = end + 1
+        found[name] = data[start:start + size]
+        position = start + size + 1
+    return found
+
+
+def hidden(path: str) -> bool:
+    """Whether a path has a part that starts with a dot, which the archive leaves out."""
+    return any(part.startswith('.') for part in PurePosixPath(path).parts)
+
+
+def pages(current: list[str]) -> list[str]:
+    """The page each documentation's build writes: the index's, and each library's."""
+    return ['doc/html/index.html'] + [f'libs/{name}/doc/html/index.html' for name in current]
+
+
+def dist_refusals(root: Path, version: Version) -> list[str]:
+    """Why the tree cannot be archived as version: a change HEAD does not record, named alone,
+    as check names it; a version other than version.hpp's; a library that is not the commit the
+    superproject records; a page not built."""
+    current = libraries(root)
+    uncommitted = uncommitted_findings(root, current)
+    if uncommitted:
+        return uncommitted
+    refusals = version_findings(root, version)
+    refusals += checkout_findings(root, current, gitlinks(root, 'HEAD'))
+    refusals += [f'{page} is not built: b2 dist builds every page first'
+                 for page in pages(current) if not (root / page).is_file()]
+    return refusals
+
+
+# A member of the archive: its mode, its bytes, and whether it is a link, whose bytes are its
+# target.
+Member = tuple[int, bytes, bool]
+
+
+def utf8(data: bytes) -> bool:
+    """Whether data is UTF-8 text."""
+    try:
+        data.decode('utf-8')
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def members_of(root: Path) -> dict[str, Member]:
+    """Each file the archive holds, by its path in the superproject: the blobs each repository's
+    HEAD records, and the files of every documentation's doc/html, none with a part that starts
+    with a dot. A page is a document, mode 644, whatever mode its build and the umask left."""
+    members: dict[str, Member] = {}
+    for base, directory in [('', root)] + [(f'libs/{name}/', root / 'libs' / name)
+                                           for name in libraries(root)]:
+        listed = [entry for entry in blobs(directory) if not hidden(entry[0])]
+        data = contents(directory, [name for _, _, name in listed])
+        for path, mode, name in listed:
+            link = mode == '120000'
+            if link and not utf8(data[name]):
+                raise Broken(f'{base}{path} is a link whose target is not UTF-8')
+            members[base + path] = (0o777 if link else 0o755 if mode == '100755' else 0o644,
+                                    data[name], link)
+    for page in pages(libraries(root)):
+        built = (root / page).parent
+        for file in sorted(built.rglob('*')):
+            path = file.relative_to(root).as_posix()
+            if file.is_file() and not hidden(path):
+                members[path] = (0o644, read_bytes(root, path), False)
+    return members
+
+
+def archive_bytes(prefix: str, mtime: int, members: dict[str, Member]) -> bytes:
+    """The gzip-compressed tar of members under prefix, in the order of their names' code
+    points, each at mtime, owned by 0:0 without names: a PAX tar, which records a name that is
+    not ASCII, or is long, as UTF-8 and nothing else beside it."""
+    packed = io.BytesIO()
+    with tarfile.open(fileobj=packed, mode='w', format=tarfile.PAX_FORMAT,
+                      encoding='utf-8') as archive:
+        for path in sorted(members):
+            mode, data, link = members[path]
+            info = tarfile.TarInfo(f'{prefix}/{path}')
+            info.mtime = mtime
+            info.mode = mode
+            info.uid = info.gid = 0
+            info.uname = info.gname = ''
+            if link:
+                info.type = tarfile.SYMTYPE
+                info.linkname = data.decode('utf-8')
+                archive.addfile(info)
+            else:
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+    tar = packed.getvalue()
+    compressor = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+    deflated = compressor.compress(tar) + compressor.flush()
+    trailer = zlib.crc32(tar).to_bytes(4, 'little') + (len(tar) & 0xFFFFFFFF).to_bytes(4, 'little')
+    return GZIP_HEADER + deflated + trailer
+
+
+def write_bytes(path: Path, data: bytes) -> None:
+    """Writes data at path through a partial file, which never stays; a fault is Broken,
+    naming path."""
+    partial = path.with_name(f'{path.name}.partial')
+    try:
+        partial.write_bytes(data)
+        partial.replace(path)
+    except OSError as error:
+        raise Broken(f'{path} cannot be written: {error}') from error
+    finally:
+        partial.unlink(missing_ok=True)
+
+
+def dist(root: Path, version: Version, out: Path) -> list[str]:
+    """Writes webcpp-<version>.tar.gz and its sha256sum file into out: the blobs of the
+    superproject and of every library at the commits recorded, and every built page, under
+    webcpp-<version>/, no path with a part that starts with a dot; the same bytes from the same
+    commits and pages, wherever and whenever it runs. Everything is read before out is
+    touched."""
+    refusals = dist_refusals(root, version)
+    if refusals:
+        raise Failure('\n'.join(refusals))
+    prefix = f'webcpp-{version.name}'
+    mtime = int(git(root, 'log', '-1', '--format=%ct', 'HEAD').strip())
+    data = archive_bytes(prefix, mtime, members_of(root))
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise Broken(f'{out} cannot be written: {error}') from error
+    target = out / f'{prefix}.tar.gz'
+    checksum = out / f'{prefix}.tar.gz.txt'
+    write_bytes(target, data)
+    write_bytes(checksum, f'{hashlib.sha256(data).hexdigest()}  {target.name}\n'.encode())
+    print(target)
+    print(checksum)
+    return []
+
+
 # A command: given the superproject, the version and its arguments, it returns the faults that
 # stop it, and prints what it writes.
 Command = Callable[[Path, Version, argparse.Namespace], list[str]]
@@ -665,6 +884,7 @@ Command = Callable[[Path, Version, argparse.Namespace], list[str]]
 COMMANDS: dict[str, Command] = {
     'check': lambda root, version, _: check(root, version),
     'whats-new': lambda root, version, _: whats_new(root, version),
+    'dist': lambda root, version, arguments: dist(root, version, arguments.out.resolve()),
 }
 
 
@@ -675,6 +895,8 @@ def main(argv: list[str]) -> int:
         command = commands.add_parser(name)
         command.add_argument('--root', type=Path, required=True)
         command.add_argument('--version', required=True)
+        if name == 'dist':
+            command.add_argument('--out', type=Path, required=True)
     arguments = parser.parse_args(argv)
     try:
         version = Version.parse(arguments.version)

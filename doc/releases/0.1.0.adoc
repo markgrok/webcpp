@@ -64,6 +64,8 @@ or before `_`, to those no library may take.
 code span.
 * Added each version's release notes to the index page, newest first.
 * Added the lint rule `changelog`: every changelog line keeps its form.
+* Added `b2 check-release`, `b2 whats-new` and `b2 dist`, which check,
+announce and package a release.
 
 [#webcpp-0-1-0-compilers-tested]
 == Compilers tested

@@ -12,11 +12,17 @@ the names of some cases to run only those."""
 from __future__ import annotations
 
 import contextlib
+import gzip
+import hashlib
 import io
+import os
 import re
 import shutil
+import subprocess
 import sys
+import tarfile
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -1146,6 +1152,244 @@ def test_whats_new_five_highlights_with_continuations_check_clean(directory: Pat
     assert case.check(case.text(release.HIGHLIGHTS, '', *five).replace('\n', '\r\n')) == []
 
 
+def test_dist_is_reproducible(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    release.dist(tree.root, V010, directory / 'out one')
+    first = (directory / 'out one/webcpp-0.1.0.tar.gz').read_bytes()
+    time.sleep(1.1)
+    release.dist(tree.root, V010, directory / 'out two')
+    assert (directory / 'out two/webcpp-0.1.0.tar.gz').read_bytes() == first
+    # The same commits and pages at another path, every page's time changed.
+    other = directory / 'another place'
+    shutil.copytree(tree.root, other, symlinks=True)
+    for page in other.rglob('index.html'):
+        os.utime(page, (0, 0))
+    release.dist(other, V010, directory / 'out three')
+    assert (directory / 'out three/webcpp-0.1.0.tar.gz').read_bytes() == first
+    digest, name = (directory / 'out one/webcpp-0.1.0.tar.gz.txt').read_text().split()
+    assert (digest, name) == (hashlib.sha256(first).hexdigest(), 'webcpp-0.1.0.tar.gz')
+    with tarfile.open(directory / 'out one/webcpp-0.1.0.tar.gz') as archive:
+        assert all(member.startswith('webcpp-0.1.0/') for member in archive.getnames())
+
+
+def test_dist_leaves_out_dot_files_and_what_git_does_not_track(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    scratch.write(tree.root / 'bin/dist/old.tar.gz', 'ignored\n')
+    release.dist(tree.root, V010, directory / 'out')
+    with tarfile.open(directory / 'out/webcpp-0.1.0.tar.gz') as archive:
+        members = {member.name.removeprefix('webcpp-0.1.0/'): member
+                   for member in archive.getmembers()}
+    for absent in ('.gitignore', '.clang-format', '.github/workflows/ci.yml',
+                   'libs/alpha/.gitattributes', 'libs/alpha/.gitignore', 'bin/dist/old.tar.gz'):
+        assert absent not in members, absent
+    for present in ('README.md', 'doc/index.adoc', 'doc/html/index.html',
+                    'libs/alpha/doc/html/index.html', 'libs/alpha/include/webcpp/alpha.hpp',
+                    'libs/config/include/webcpp/version.hpp'):
+        assert present in members, present
+    assert members['tools/run.sh'].mode == 0o755 and members['README.md'].mode == 0o644
+    assert {(member.uid, member.gid, member.uname, member.gname)
+            for member in members.values()} == {(0, 0, '', '')}
+
+
+def test_dist_refuses_a_dirty_tree_and_missing_pages(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    out = directory / 'out'
+    scratch.write(tree.library('alpha') / 'notes.txt', 'untracked\n')
+    try:
+        release.dist(tree.root, V010, out)
+    except release.Failure as failure:
+        assert 'libs/alpha/notes.txt is not committed' in str(failure), failure
+    else:
+        raise AssertionError('dist archived a dirty tree')
+    (tree.library('alpha') / 'notes.txt').unlink()
+    (tree.library('beta') / 'doc/html/index.html').unlink()
+    try:
+        release.dist(tree.root, V010, out)
+    except release.Failure as failure:
+        assert 'libs/beta/doc/html/index.html is not built' in str(failure), failure
+    else:
+        raise AssertionError('dist archived without a page')
+    assert not out.exists()
+
+
+# The ten bytes every archive's gzip header is: no file name, no time, the best compression,
+# and the operating system unknown.
+GZIP_HEADER = b'\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff'
+
+
+def dist_refusal(root: Path, version: release.Version, out: Path) -> str:
+    """What dist refuses to archive root for, which it must; it writes nothing."""
+    try:
+        release.dist(root, version, out)
+    except release.Failure as failure:
+        assert not out.exists(), out
+        return str(failure)
+    raise AssertionError(f'dist archived {root}')
+
+
+def member_bytes(archive: tarfile.TarFile, member: tarfile.TarInfo) -> bytes:
+    """The bytes the archive holds for a file member."""
+    file = archive.extractfile(member)
+    assert file is not None, member.name
+    return file.read()
+
+
+def test_dist_fixes_every_field(directory: Path) -> None:
+    # A name whose UTF-8 is not ASCII; names a collating locale orders otherwise than their code
+    # points; a link; pages under a directory, with a dot file, and modes of their own.
+    tree = scratch.make_tree(directory)
+    commit_bytes(tree, None, 'doc/caf\u00e9.txt', 'caf\u00e9\n'.encode())
+    commit_bytes(tree, None, 'Zeta.txt', b'zeta\n')
+    commit_bytes(tree, None, 'alpha_b.txt', b'underscore\n')
+    commit_bytes(tree, None, 'alpha-b.txt', b'dash\n')
+    (tree.root / 'link').symlink_to('README.md')
+    scratch.git(tree.root, 'add', 'link')
+    # HEAD committed long before dist runs: every member carries its time, never the clock's.
+    os.environ['GIT_COMMITTER_DATE'] = '2001-02-03T04:05:06+0000'
+    try:
+        scratch.git(tree.root, 'commit', '-q', '-m', 'link')
+    finally:
+        del os.environ['GIT_COMMITTER_DATE']
+    scratch.write(tree.root / 'doc/html/images/logo.svg', '<svg/>\n')
+    scratch.write(tree.root / 'doc/html/.buildinfo', 'built\n')
+    (tree.root / 'doc/html/images/logo.svg').chmod(0o755)
+    (tree.library('alpha') / 'doc/html/index.html').chmod(0o600)
+    release.dist(tree.root, V010, directory / 'out')
+    data = (directory / 'out/webcpp-0.1.0.tar.gz').read_bytes()
+    assert data[:10] == GZIP_HEADER, data[:10]
+    # One gzip member, whole: its CRC and its size are checked.
+    assert gzip.decompress(data)
+    committed = int(scratch.git(tree.root, 'log', '-1', '--format=%ct', 'HEAD'))
+    assert committed == 981173106, committed
+    with tarfile.open(directory / 'out/webcpp-0.1.0.tar.gz') as archive:
+        listed = archive.getmembers()
+        names = [member.name for member in listed]
+        assert names == sorted(names) and len(set(names)) == len(names), names
+        assert names.index('webcpp-0.1.0/Zeta.txt') < names.index('webcpp-0.1.0/alpha-b.txt') \
+            < names.index('webcpp-0.1.0/alpha_b.txt'), names
+        for member in listed:
+            assert member.mtime == committed, (member.name, member.mtime)
+            assert member.type in (tarfile.REGTYPE, tarfile.SYMTYPE), member.name
+            assert (member.uid, member.gid, member.uname, member.gname) == (0, 0, '', '')
+            assert (member.devmajor, member.devminor) == (0, 0), member.name
+            # No time beside mtime, as an atime or a ctime would be, and no other record.
+            assert set(member.pax_headers) <= {'path'}, (member.name, member.pax_headers)
+        members = {member.name.removeprefix('webcpp-0.1.0/'): member for member in listed}
+        cafe = members['doc/caf\u00e9.txt']
+        assert cafe.pax_headers == {'path': 'webcpp-0.1.0/doc/caf\u00e9.txt'}, cafe.pax_headers
+        assert member_bytes(archive, cafe) == 'caf\u00e9\n'.encode()
+        link = members['link']
+        assert (link.issym(), link.linkname, link.mode) == (True, 'README.md', 0o777)
+        assert member_bytes(archive, members['README.md']) == b'# webcpp\n'
+    assert members['doc/html/images/logo.svg'].mode == 0o644
+    assert members['libs/alpha/doc/html/index.html'].mode == 0o644
+    assert 'doc/html/.buildinfo' not in members
+
+
+def test_dist_ignores_the_environment(directory: Path) -> None:
+    # The archive dist writes here, and the one release.py writes from another process: another
+    # time zone, locale and umask, every working file's mode cut as a umask of 077 would, a tar
+    # and a gzip that fail on the path, and git configured to change line ends.
+    tree = scratch.make_tree(directory)
+    commit_bytes(tree, None, 'doc/caf\u00e9.txt', 'caf\u00e9\n'.encode())
+    release.dist(tree.root, V010, directory / 'here')
+    expected = (directory / 'here/webcpp-0.1.0.tar.gz').read_bytes()
+    # A checkout that writes CRLF line ends, which git, so configured, finds equal to HEAD's.
+    (tree.root / 'README.md').unlink()
+    scratch.git(tree.root, '-c', 'core.autocrlf=true', 'checkout', '--', 'README.md')
+    assert (tree.root / 'README.md').read_bytes() == b'# webcpp\r\n'
+    for path in tree.root.rglob('*'):
+        if path.is_file() and not path.is_symlink() and '.git' not in path.parts:
+            path.chmod(path.stat().st_mode & 0o700)
+    shims = directory / 'shims'
+    for tool in ('tar', 'gzip', 'gtar', 'bsdtar', 'pigz'):
+        scratch.write(shims / tool, '#!/bin/sh\nexit 1\n')
+        (shims / tool).chmod(0o755)
+    config = directory / 'gitconfig'
+    scratch.write(config, '[core]\n\tautocrlf = true\n\tquotePath = true\n')
+    environment = {name: value for name, value in os.environ.items()
+                   if name not in ('PYTHONUTF8', 'PYTHONIOENCODING', 'LANG', 'LC_CTYPE')}
+    environment.update({'TZ': 'Pacific/Kiritimati', 'LC_ALL': 'en_US.ISO8859-1',
+                        'PATH': f'{shims}{os.pathsep}{os.environ["PATH"]}',
+                        'SOURCE_DATE_EPOCH': '1', 'GZIP': '-1', 'GIT_CONFIG_GLOBAL': str(config)})
+    completed = subprocess.run(['sh', '-c', 'umask 077 && exec "$@"', 'sh', sys.executable,
+                                str(Path(release.__file__)), 'dist', '--root', str(tree.root),
+                                '--version', '0.1.0', '--out', str(directory / 'there')],
+                               env=environment, capture_output=True, text=True, check=False)
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+    assert (directory / 'there/webcpp-0.1.0.tar.gz').read_bytes() == expected
+
+
+def test_dist_refuses_libraries_not_as_recorded(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    out = directory / 'out'
+    assert 'the build read the version 0.2.0' in dist_refusal(tree.root, V020, out)
+    scratch.git(tree.library('beta'), 'commit', '-q', '--allow-empty', '-m', 'beta: unrecorded')
+    refused = dist_refusal(tree.root, V010, out)
+    assert 'libs/beta is at ' in refused and ', and the superproject records ' in refused, refused
+    tree.record('beta')
+    shutil.rmtree(tree.library('beta'))
+    tree.library('beta').mkdir()
+    assert 'libs/beta is a submodule of the superproject at HEAD, and is not checked out' in \
+        dist_refusal(tree.root, V010, out)
+    (directory / 'second').mkdir()
+    tree = scratch.make_tree(directory / 'second')
+    shutil.rmtree(tree.library('alpha') / '.git')
+    assert 'libs/alpha is no git checkout of its own' in dist_refusal(tree.root, V010, out)
+
+
+def test_dist_names_what_it_cannot_read_or_write(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    root = str(tree.root)
+    status, output, error = run_main('dist', '--root', root, '--version', '0.1.0', '--out',
+                                     str(directory / 'out'))
+    assert (status, error) == (0, ''), (status, error)
+    # The directory as main resolves it: a temporary directory's path may run through a link.
+    out = (directory / 'out').resolve()
+    assert output == f'{out / "webcpp-0.1.0.tar.gz"}\n{out / "webcpp-0.1.0.tar.gz.txt"}\n', output
+    page = tree.library('alpha') / 'doc/html/index.html'
+    page.chmod(0)
+    try:
+        status, output, error = run_main('dist', '--root', root, '--version', '0.1.0', '--out',
+                                         str(directory / 'unread'))
+    finally:
+        page.chmod(0o644)
+    assert (status, output) == (2, ''), (status, output)
+    assert error.startswith('dist: libs/alpha/doc/html/index.html cannot be read: '), error
+    assert not (directory / 'unread').exists()
+    scratch.write(directory / 'a file', 'no directory\n')
+    status, output, error = run_main('dist', '--root', root, '--version', '0.1.0', '--out',
+                                     str(directory / 'a file'))
+    assert (status, output) == (2, ''), (status, output)
+    assert error.startswith(f'dist: {(directory / "a file").resolve()} cannot be written: '), error
+    scratch.write(tree.root / 'README.md', '# changed\n')
+    status, output, error = run_main('dist', '--root', root, '--version', '0.1.0', '--out',
+                                     str(directory / 'dirty'))
+    assert (status, error) == (1, ''), (status, error)
+    assert output.startswith('dist: README.md is not committed'), output
+    assert not (directory / 'dirty').exists()
+
+
+def test_dist_names_what_is_not_utf8(directory: Path) -> None:
+    # A path, and a link's target, that are not UTF-8, committed through git's plumbing, which
+    # no file system needs to hold: dist names each rather than archive it.
+    for entry, fault in ((b'100644,%s,caf\xe9.txt', "the path b'caf\\xe9.txt' is not UTF-8"),
+                         (b'120000,%s,link', 'link is a link whose target is not UTF-8')):
+        (directory / fault[:4]).mkdir()
+        tree = scratch.make_tree(directory / fault[:4])
+        blob = subprocess.run([*scratch.GIT, '-C', str(tree.root), 'hash-object', '-w', '--stdin'],
+                              input=b'caf\xe9', capture_output=True, check=True).stdout.strip()
+        subprocess.run([*scratch.GIT, '-C', str(tree.root), 'update-index', '--add',
+                        '--cacheinfo', entry % blob], capture_output=True, check=True)
+        scratch.git(tree.root, 'commit', '-q', '-m', 'not UTF-8')
+        try:
+            release.members_of(tree.root)
+        except release.Broken as broken:
+            assert fault in str(broken), broken
+        else:
+            raise AssertionError(f'{fault}: archived')
+
+
 def git_checkout(root: Path) -> None:
     """Makes the harness's scratch superproject root a git checkout whose libraries, config and
     demo, are gitlinks, config holding the version.hpp of 0.1.0, with an index and notes of its
@@ -1153,6 +1397,8 @@ def git_checkout(root: Path) -> None:
     scratch.write(root / 'libs/config/build.jam', 'project /webcpp/config ;\n\nalias config ;\n')
     scratch.write(root / 'libs/config/include/webcpp/version.hpp',
                   scratch.VERSION_HPP.format(number=100, lib='0_1'))
+    # A project in config's doc, which the aggregate doc names, and which builds no page.
+    scratch.write(root / 'libs/config/doc/Jamfile', '# config\'s changelog, and no page.\n')
     for name in ('config', 'demo'):
         scratch.write(root / 'libs' / name / 'doc/changelog.adoc', scratch.changelog_text(name))
         scratch.git(root / 'libs' / name, 'init', '-q')
@@ -1169,6 +1415,18 @@ def git_checkout(root: Path) -> None:
 def test_jamroot_targets(root: Path) -> None:
     git_checkout(root)
     harness.expect(harness.run_b2(root, '-d0', 'check-release'), True)
+    # b2 dist builds every page, then packs: the index's conversion comes before the archive.
+    # The doc build needs Boost, which the configuration below takes away.
+    (root / '.local/mrdocs').symlink_to(harness.mrdocs_root())
+    dry = harness.run_b2(root, '-n', 'dist')
+    harness.expect(dry, True)
+    converted = dry.stdout.find('index.adoc')
+    packed = dry.stdout.find('release.py" dist')
+    assert 0 <= converted < packed, dry.stdout[-4000:]
+    # And every page's copy into its doc/html, the index's and demo's, which dist archives.
+    copies = [match.start() for match in re.finditer(r'^common\.copy \S*doc/html/index\.html$',
+                                                      dry.stdout, re.MULTILINE)]
+    assert len(copies) == 2 and max(copies) < packed, dry.stdout[-4000:]
     # check-release compiles nothing, so it needs no Boost, as declared-targets needs none.
     harness.configure(root, harness.without_boost() + 'using boost : 1.92 ;\n')
     harness.expect(harness.run_b2(root, '-d0', 'check-release', env_extra={'BOOST_ROOT': None}),
@@ -1234,8 +1492,8 @@ def test_the_tree_s_version(root: Path) -> None:
 
 def test_jamroot_without_config(root: Path) -> None:
     # The copy holds no libs/config: everything but the release targets builds, the doc included,
-    # and those stop, naming the header. The doc build reads the files demo's git lists, as
-    # tools/test/doc_test.py's prepare gives them.
+    # and those stop, naming the header, dist before it builds a page. The doc build reads the
+    # files demo's git lists, as tools/test/doc_test.py's prepare gives them.
     (root / '.local/mrdocs').symlink_to(harness.mrdocs_root())
     scratch.git(root / 'libs/demo', 'init', '-q')
     harness.expect(harness.run_b2(root, '-d0', 'declared-targets'), True)
@@ -1245,6 +1503,8 @@ def test_jamroot_without_config(root: Path) -> None:
     harness.expect(harness.run_b2(root, '-d0', 'check-release'), False,
                    'libs/config/include/webcpp/version.hpp', 'check out libs/config')
     harness.expect(harness.run_b2(root, '-d0', 'whats-new'), False,
+                   'libs/config/include/webcpp/version.hpp', 'check out libs/config')
+    harness.expect(harness.run_b2(root, '-d0', 'dist'), False,
                    'libs/config/include/webcpp/version.hpp', 'check out libs/config')
 
 
@@ -1286,6 +1546,14 @@ CASES: list[Callable[[Path], None]] = [
     test_whats_new_section_ends_at_a_heading,
     test_whats_new_a_continuation_starts_no_markdown_block,
     test_whats_new_five_highlights_with_continuations_check_clean,
+    test_dist_is_reproducible,
+    test_dist_leaves_out_dot_files_and_what_git_does_not_track,
+    test_dist_refuses_a_dirty_tree_and_missing_pages,
+    test_dist_fixes_every_field,
+    test_dist_ignores_the_environment,
+    test_dist_refuses_libraries_not_as_recorded,
+    test_dist_names_what_it_cannot_read_or_write,
+    test_dist_names_what_is_not_utf8,
 ]
 
 B2_CASES: list[Callable[[Path], None]] = [
