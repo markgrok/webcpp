@@ -335,7 +335,8 @@ rule run-fail ( name : sources + : requirements * : targets * )
 # The requirements, or usage requirements, that give a program of webcpp.run
 # or webcpp.run-fail the directories at run time, each absolute, as a
 # path-constant gives it: the program reads them at the same path on every
-# target. Quoted whole, for a path that holds a space.
+# target. Quoted whole, for a path that holds a space; a path that holds ",
+# $ or a backquote, which the shell reads inside double quotes, is refused.
 rule data ( directories + )
 {
     local result ;
@@ -345,6 +346,12 @@ rule data ( directories + )
         {
             errors.user-error "webcpp.data: $(directory) is not absolute; give the directory"
                 "as a path-constant gives it" ;
+        }
+        local read = [ MATCH "([\"$`])" : $(directory) ] ;
+        if $(read)
+        {
+            errors.user-error "webcpp.data: $(directory) holds a character the shell would"
+                "read: $(read[1]); give a directory whose path holds no \", $ or `" ;
         }
         result += <target-os>wasi:<webcpp-data>"--dir=\"$(directory)\"" ;
     }

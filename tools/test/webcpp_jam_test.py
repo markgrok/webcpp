@@ -20,9 +20,9 @@ by name, and every served program runs in one on every target it is served on; t
 library are recorded by kind, a link-only program and a driven test among them; a Boost.Test suite
 is built and run natively only, its framework always with exceptions; Boost.JSON's definitions link
 on every target; every program sees C++20 and exceptions, on every target; and a test reads the
-directory webcpp.data gives it, which must be absolute, at the same path on every target, wasmtime
-being given it on WASI. Each case builds a scratch superproject with the fixture library demo. Run
-with the names of some cases to run only those."""
+directory webcpp.data gives it, which must be absolute and hold no character the shell would read,
+at the same path on every target, wasmtime being given it on WASI. Each case builds a scratch
+superproject with the fixture library demo. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -1038,6 +1038,19 @@ def test_data_must_be_absolute(root):
                    'webcpp.data: data is not absolute')
 
 
+def test_data_the_shell_would_read_is_refused(root):
+    # wasmtime's --dir="<directory>" reaches the shell inside double quotes, where these three
+    # would be read rather than passed: each stops the build, naming it, before a broken command.
+    add_data_reader(root)
+    jamfile = root / 'libs/data_reader/test/Jamfile'
+    for character, written in (('"', '\\"'), ('$', '$'), ('`', '`')):
+        jamfile.write_text(DATA_JAMFILE.replace('[ webcpp.data $(DATA) ]',
+                                                f'[ webcpp.data "$(DATA)/a{written}b" ]'))
+        harness.expect(harness.run_b2(root, 'libs/data_reader/test'), False, 'webcpp.data: ',
+                       f'/the data/a{character}b holds a character the shell would read: '
+                       f'{character}')
+
+
 CASES = [
     test_native_builds_exactly_the_declared_programs,
     test_wasip2_skips_native_only_and_has_exceptions,
@@ -1072,6 +1085,7 @@ CASES = [
     test_a_test_reads_its_data_on_every_target,
     test_without_its_data_a_wasi_test_reads_nothing,
     test_data_must_be_absolute,
+    test_data_the_shell_would_read_is_refused,
 ]
 
 
