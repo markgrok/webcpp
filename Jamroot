@@ -70,17 +70,20 @@ rule boost-include ( )
 
 .boost-include = [ boost-include ] ;
 
-# The line of the file header that defines BOOST_VERSION, as every Boost
-# writes it: #define BOOST_VERSION 109200. b2 runs a SHELL command with
-# cmd.exe on Windows, where findstr does what grep does elsewhere.
-local rule version-line ( header )
+# The line of the file header that defines macro, `#define <macro> <value>`,
+# without its end of line: Boost's BOOST_VERSION, config's WEBCPP_VERSION. b2
+# runs a SHELL command with cmd.exe on Windows, where findstr does what grep
+# does elsewhere; no Windows lane runs the release targets, so
+# WEBCPP_VERSION's findstr is read by none.
+local rule define-line ( header : macro )
 {
     if [ os.name ] = NT
     {
         local native = [ path.native [ path.make $(header) ] ] ;
-        return [ SHELL "findstr /B /C:\"#define BOOST_VERSION \" \"$(native)\"" ] ;
+        return [ SHELL "findstr /B /C:\"#define $(macro) \" \"$(native)\""
+            : strip-eol ] ;
     }
-    return [ SHELL "grep \"^#define BOOST_VERSION \" \"$(header)\"" ] ;
+    return [ SHELL "grep \"^#define $(macro) \" \"$(header)\"" : strip-eol ] ;
 }
 
 # The version the boost/version.hpp under directory defines, as its
@@ -91,7 +94,7 @@ rule boost-version ( directory )
     local header = $(directory)/boost/version.hpp ;
     if [ path.exists $(header) ]
     {
-        local line = [ version-line $(header) ] ;
+        local line = [ define-line $(header) : BOOST_VERSION ] ;
         local digits = [ MATCH "BOOST_VERSION +(([0-9]+)([0-9][0-9][0-9])([0-9][0-9]))" : $(line) ] ;
         if $(digits)
         {
@@ -633,9 +636,68 @@ notfile declared-lanes : @declared-lanes : : <webcpp-boost-check>off ;
 # every test, those the lane skips included. With --out-xml, b2 exits 0 even
 # when a test fails: the report's exit status is the verdict.
 
+# webcpp's version, which libs/config/include/webcpp/version.hpp writes, the
+# one place it is written: its WEBCPP_VERSION and its name, 100 0.1.0. Only
+# the release targets read it, so that a checkout without libs/config (a
+# submodule not checked out, the scratch copies of the tools' tests) builds
+# everything else; they stop, naming the header, when it is not there or has
+# no line `#define WEBCPP_VERSION <number>`, the number alone.
+rule webcpp-version ( )
+{
+    local header = [ path.native [ path.join [ path.make $(WEBCPP_ROOT) ]
+        libs/config/include/webcpp/version.hpp ] ] ;
+    if ! [ CHECK_IF_FILE $(header) ]
+    {
+        errors.user-error "webcpp's version is read from $(header), which does not"
+            "exist: check out libs/config" ;
+    }
+    local number = [ MATCH "^#define WEBCPP_VERSION +([0-9]+) *$"
+        : [ define-line $(header) : WEBCPP_VERSION ] ] ;
+    if ! $(number)
+    {
+        errors.user-error "$(header) has no line `#define WEBCPP_VERSION <number>`" ;
+    }
+    # major, minor (three digits) and patch (two), each without its zeros.
+    local parts = [ MATCH "^([0-9]*)([0-9][0-9][0-9])([0-9][0-9])$" : 00000$(number) ] ;
+    local name ;
+    for local part in $(parts)
+    {
+        name += [ MATCH "^0*([0-9]+)$" : $(part) ] ;
+    }
+    return $(number) $(name:J=.) ;
+}
+
+# The release tooling, tools/release/release.py (AGENTS.md chapter 11), run
+# only when named: check-release, what a tag needs. No release target is
+# named release-<word>, which b2 reads as the variant release (AGENTS.md
+# chapter 12).
+if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
+
+rule release-tool ( targets * : sources * : properties * )
+{
+    local version = [ webcpp-version ] ;
+    PYTHON on $(targets) = $(.python) ;
+    SCRIPT on $(targets) = [ path.native [ path.join [ path.make $(WEBCPP_ROOT) ]
+        tools/release/release.py ] ] ;
+    ROOT on $(targets) = $(WEBCPP_ROOT) ;
+    VERSION on $(targets) = $(version[2]) ;
+}
+
+rule check-release ( targets * : sources * : properties * )
+{
+    release-tool $(targets) : $(sources) : $(properties) ;
+}
+
+actions check-release
+{
+    "$(PYTHON)" "$(SCRIPT)" check --root "$(ROOT)" --version "$(VERSION)"
+}
+
+notfile check-release : @check-release : : <webcpp-boost-check>off ;
+
 explicit boost_version throw_exception boost_json boost_url boost_charconv
     boost_locale emscripten-reference test example doc install $(.install)
-    declared-targets declared-lanes site site-serve ;
+    declared-targets declared-lanes site site-serve check-release ;
 if [ glob site/Jamfile ]
 {
     explicit site-declared.txt libraries.json site-pages ;
