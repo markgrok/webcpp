@@ -668,8 +668,9 @@ def test_serve_script_refuses_what_is_not_there(root):
 
 
 # A stand-in for wasmtime that starts the real one, writes the pids of both into the file mark
-# once the real one serves, and says so itself only pause seconds later: a window in which the
-# test interrupts b2, or b2 stops the action.
+# once the real one serves, and says so itself only once the file gate exists, or pause seconds
+# later: a window in which the test interrupts b2, or b2 stops the action, which a loaded machine
+# cannot close before the test acts.
 SLOW_WASMTIME = """#!{python}
 import os
 import subprocess
@@ -680,7 +681,9 @@ real = subprocess.Popen([{real!r}, *sys.argv[1:]], stderr=subprocess.PIPE)
 line = real.stderr.readline()
 with open({mark!r}, 'w') as mark:
     mark.write(f'{{os.getpid()}} {{real.pid}}')
-time.sleep({pause})
+deadline = time.monotonic() + {pause}
+while not os.path.exists({gate!r}) and time.monotonic() < deadline:
+    time.sleep(0.05)
 sys.stderr.buffer.write(line)
 sys.stderr.flush()
 for line in real.stderr:
@@ -695,8 +698,9 @@ def test_an_interrupted_b2_leaves_no_wasmtime(root):
     mark = root / 'serving'
     slow = root / 'linked tools/slow-wasmtime'
     slow.parent.mkdir()
+    gate = root / 'interrupted'
     slow.write_text(SLOW_WASMTIME.format(python=sys.executable, real=shutil.which('wasmtime'),
-                                         mark=str(mark), pause=3))
+                                         mark=str(mark), gate=str(gate), pause=60))
     slow.chmod(0o755)
     process = harness.start_b2(root, '-a', WASIP2, f'-sWASMTIME={slow}', f'{TEST}//answers')
     deadline = time.monotonic() + harness.TIMEOUT
@@ -707,8 +711,10 @@ def test_an_interrupted_b2_leaves_no_wasmtime(root):
     pids = [int(word) for word in mark.read_text().split()]
     # b2 is interrupted as a terminal does it: SIGINT to its process group, which holds b2
     # alone, since b2 gives each action a group of its own. b2 ends; serve.py, left behind,
-    # finishes its run and stops wasmtime.
+    # finishes its run and stops wasmtime. The stand-in says it serves only once b2 is
+    # interrupted, so that b2 cannot finish first, however late the interrupt comes.
     os.killpg(process.pid, signal.SIGINT)
+    gate.touch()
     process.communicate(timeout=60)
     assert process.returncode != 0
     assert not left(root, seconds=60), left(root)
@@ -728,7 +734,7 @@ def test_a_b2_that_kills_its_action_leaves_no_wasmtime(root):
     mark = root / 'serving'
     slow = root / 'linked tools/slow-wasmtime'
     slow.write_text(SLOW_WASMTIME.format(python=sys.executable, real=shutil.which('wasmtime'),
-                                         mark=str(mark), pause=60))
+                                         mark=str(mark), gate=str(root / 'never'), pause=60))
     slow.chmod(0o755)
     # b2 -l stops an action that outlasts it with a SIGKILL to the action's process group, which
     # serve.py cannot answer: wasmtime, which says it serves only a minute after it does, is
