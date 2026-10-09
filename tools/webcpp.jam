@@ -570,11 +570,14 @@ local rule load-jamfiles ( directories * )
 # lanes computes once every Jamfile is loaded, says what the CI sets up for it
 # beside its target's toolset: original when one of b2-targets runs the
 # original's language (the twins, cases, node-modules or update-expected of the
-# oracle's rules, or a driven test), else programs. Each target is one of its
-# Jamfile's webcpp.targets, which must come before it (native when there are
-# none). A lane-only program, served or driven, is named by such a lane on every
-# target it is built for, which lanes checks. Only a Jamfile under the library's
-# test or example directory, which lanes loads, may declare one.
+# oracle's rules, or a driven test), else programs. The kind reads only the
+# names the lane gives itself: a lane over an alias of the oracle's targets is
+# of the kind programs. It is no kind of a program's, which program records.
+# Each target is one of its Jamfile's webcpp.targets, which must come before it
+# (native when there are none). A lane-only program, served or driven, is named
+# by such a lane on every target it is built for, which lanes checks. Only a
+# Jamfile under the library's test or example directory, which lanes loads, may
+# declare one.
 rule lane ( name : b2-targets + : targets * )
 {
     local found = [ where ] ;

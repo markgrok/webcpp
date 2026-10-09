@@ -1350,7 +1350,9 @@ oracle's rules (chapter 5) or a driven test (`webcpp.drive`), whose CI job
 then installs Node, and `programs` when it runs only what its toolset builds,
 such as wasi's served components, whose job installs no Node of its own. A
 lane's kind is computed once every Jamfile is loaded, so a lane may name a
-target its Jamfile declares after it.
+target its Jamfile declares after it, and it reads only the names the lane
+gives itself: a lane over an alias of the oracle's targets is of the kind
+`programs`, so a lane names them directly.
 
 - **An own lane that names no target,** such as xstate's oracle lane, which
   needs Node where a toolset lane does not, is the line `<library> <lane>

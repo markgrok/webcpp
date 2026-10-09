@@ -31,12 +31,13 @@
 #               the emscripten lane emsdk and Node, which runs its programs.
 #   own-lanes   one job per own lane of a library and target it runs on, which runs the lane
 #               in every directory that declares it there. One that names no target, as an
-#               oracle, runs on Linux x86-64 with Node and Clang 18, b2 -a <directory>//<lane>,
-#               and its exit status is its verdict. One that names a target, as wasi's served
-#               tests and examples on wasip2, or a driven test on emscripten, is set up as that
-#               target's lane is, runs b2 -a --dump-tests --out-xml with its toolset, and uploads
-#               the XML, which the report reads as a lane's. A library that declares none, as
-#               xactor, has no such job.
+#               oracle, runs on Linux x86-64 with Clang 18, and with Node when it runs the
+#               original, b2 -a <directory>//<lane>, and its exit status is its verdict. One that
+#               names a target, as wasi's served tests and examples on wasip2, or a driven test on
+#               emscripten, is set up as that target's lane is, with Node when it runs the
+#               original, runs b2 -a --dump-tests --out-xml with its toolset, and uploads the
+#               XML, which the report reads as a lane's. A library that declares none, as xactor,
+#               has no such job.
 #   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64,
 #               wit-bindgen and the WASI WIT, for a reference that parses a component's
 #               bindings, and, when a library declares emscripten (the plan's has-emscripten),

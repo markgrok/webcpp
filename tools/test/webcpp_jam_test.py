@@ -376,10 +376,16 @@ def test_a_lanes_kind_says_whether_it_runs_the_original(root):
                                     'webcpp.twins ../../example : twins : .mjs ;\n'
                                     'webcpp.cases c : c.mjs : cases : expected ;\n'
                                     'webcpp.lane by_cases : cases-c ;\n'
-                                    'webcpp.lane by_twins : twins ;\n')
+                                    'webcpp.lane by_twins : twins ;\n'
+                                    'webcpp.lane by_setup : node-modules update-expected ;\n'
+                                    # The kind reads the names the lane gives, not an alias's.
+                                    'alias all : twins cases-c ;\n'
+                                    'webcpp.lane by_alias : all ;\n')
     result = harness.run_b2(root, '-d0', 'declared-lanes')
     harness.expect(result, True)
-    assert result.stdout == ('driven by_cases libs/driven/test/oracle original\n'
+    assert result.stdout == ('driven by_alias libs/driven/test/oracle programs\n'
+                             'driven by_cases libs/driven/test/oracle original\n'
+                             'driven by_setup libs/driven/test/oracle original\n'
                              'driven by_twins libs/driven/test/oracle original\n'
                              'driven driver libs/driven/test native original\n'
                              'driven early libs/driven/test native original\n'
