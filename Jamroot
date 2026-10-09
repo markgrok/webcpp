@@ -70,20 +70,23 @@ rule boost-include ( )
 
 .boost-include = [ boost-include ] ;
 
-# The line of the file header that defines macro, `#define <macro> <value>`,
-# without its end of line: Boost's BOOST_VERSION, config's WEBCPP_VERSION. b2
-# runs a SHELL command with cmd.exe on Windows, where findstr does what grep
-# does elsewhere; no Windows lane runs the release targets, so
-# WEBCPP_VERSION's findstr is read by none.
+# The lines of the file header that define macro, `#define <macro> <value>`,
+# one text without its last end of line, then the search's exit status: 0
+# when it found one, 1 when none, and grep's 2 when the header cannot be
+# read. Boost's BOOST_VERSION, config's WEBCPP_VERSION. b2 runs a SHELL
+# command with cmd.exe on Windows, where findstr does what grep does
+# elsewhere; no Windows lane runs the release targets, so WEBCPP_VERSION's
+# findstr is read by none. SHELL takes each option as an argument of its own.
 local rule define-line ( header : macro )
 {
     if [ os.name ] = NT
     {
         local native = [ path.native [ path.make $(header) ] ] ;
         return [ SHELL "findstr /B /C:\"#define $(macro) \" \"$(native)\""
-            : strip-eol ] ;
+            : strip-eol : exit-status ] ;
     }
-    return [ SHELL "grep \"^#define $(macro) \" \"$(header)\"" : strip-eol ] ;
+    return [ SHELL "grep \"^#define $(macro) \" \"$(header)\""
+        : strip-eol : exit-status ] ;
 }
 
 # The version the boost/version.hpp under directory defines, as its
@@ -95,6 +98,7 @@ rule boost-version ( directory )
     if [ path.exists $(header) ]
     {
         local line = [ define-line $(header) : BOOST_VERSION ] ;
+        line = $(line[1]) ;
         local digits = [ MATCH "BOOST_VERSION +(([0-9]+)([0-9][0-9][0-9])([0-9][0-9]))" : $(line) ] ;
         if $(digits)
         {
@@ -640,8 +644,10 @@ notfile declared-lanes : @declared-lanes : : <webcpp-boost-check>off ;
 # one place it is written: its WEBCPP_VERSION and its name, 100 0.1.0. Only
 # the release targets read it, so that a checkout without libs/config (a
 # submodule not checked out, the scratch copies of the tools' tests) builds
-# everything else; they stop, naming the header, when it is not there or has
-# no line `#define WEBCPP_VERSION <number>`, the number alone.
+# everything else; they stop, naming the header, when it is not there, cannot
+# be read, defines the macro twice or has no line
+# `#define WEBCPP_VERSION <number>`, the number alone, in decimal, without a
+# leading zero, which C++ reads as octal: as tools/release/release.py reads it.
 rule webcpp-version ( )
 {
     local header = [ path.native [ path.join [ path.make $(WEBCPP_ROOT) ]
@@ -651,11 +657,20 @@ rule webcpp-version ( )
         errors.user-error "webcpp's version is read from $(header), which does not"
             "exist: check out libs/config" ;
     }
-    local number = [ MATCH "^#define WEBCPP_VERSION +([0-9]+) *$"
-        : [ define-line $(header) : WEBCPP_VERSION ] ] ;
+    local found = [ define-line $(header) : WEBCPP_VERSION ] ;
+    if ! ( $(found[2]) in 0 1 )
+    {
+        errors.user-error "$(header) cannot be read" ;
+    }
+    if [ MATCH "^(#define WEBCPP_VERSION .*#define WEBCPP_VERSION )" : $(found[1]) ]
+    {
+        errors.user-error "$(header) defines WEBCPP_VERSION twice" ;
+    }
+    local number = [ MATCH "^#define WEBCPP_VERSION +(0|[1-9][0-9]*) *$" : $(found[1]) ] ;
     if ! $(number)
     {
-        errors.user-error "$(header) has no line `#define WEBCPP_VERSION <number>`" ;
+        errors.user-error "$(header) has no line `#define WEBCPP_VERSION <number>`,"
+            "the number in decimal, without a leading zero" ;
     }
     # major, minor (three digits) and patch (two), each without its zeros.
     local parts = [ MATCH "^([0-9]*)([0-9][0-9][0-9])([0-9][0-9])$" : 00000$(number) ] ;

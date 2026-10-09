@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import contextlib
 import io
-import os
 import shutil
 import sys
 import tempfile
@@ -28,7 +27,34 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'test'))
 import harness  # noqa: E402  (tools/test, put on the path above)
 
 V010 = release.Version.parse('0.1.0')
-V020 = release.Version.parse('0.2.0')
+
+LIB_LINE = '#define WEBCPP_LIB_VERSION "0_1"\n'
+
+# Each form a WEBCPP_VERSION line of version.hpp may take, and the version both readers, release.py
+# and the Jamroot, take it for: None when both refuse it. They agree with C++ or refuse: C++ reads
+# 0144 as octal, 100, and 100u, 0x64 and a tab before the value as 100, which no reader takes.
+FORMS: list[tuple[str, str | None]] = [
+    ('#define WEBCPP_VERSION 100\n', '0.1.0'),
+    ('// NOLINTNEXTLINE(modernize-macro-to-enum)\n#define WEBCPP_VERSION 100\n', '0.1.0'),
+    ('#define WEBCPP_VERSION 100\r\n', '0.1.0'),
+    ('#define WEBCPP_VERSION  100\n', '0.1.0'),
+    ('#define WEBCPP_VERSION 100  \n', '0.1.0'),
+    ('#define WEBCPP_VERSION 100\t\n', '0.1.0'),
+    ('#define WEBCPP_VERSION 0\n', '0.0.0'),
+    ('#define WEBCPP_VERSION\t100\n', None),
+    ('#define WEBCPP_VERSION 0x64\n', None),
+    ('#define WEBCPP_VERSION 0144\n', None),
+    ('#define WEBCPP_VERSION 00\n', None),
+    ('#define WEBCPP_VERSION 100u\n', None),
+    ('#define WEBCPP_VERSION 100  // 0.1.0\n', None),
+    ('#define WEBCPP_VERSION \u0661\u0660\u0660\n', None),
+    ('#define WEBCPP_VERSION 1\u00b2\n', None),
+    ('#  define WEBCPP_VERSION 100\n', None),
+    ('', None),
+]
+
+# A header that defines WEBCPP_VERSION twice, which both readers refuse, naming the macro.
+TWICE = '#if A\n#define WEBCPP_VERSION 100\n#else\n#define WEBCPP_VERSION 200\n#endif\n'
 
 
 def expect(found: list[str], *texts: str) -> None:
@@ -53,6 +79,43 @@ def test_versions_are_named(directory: Path) -> None:
     assert (other.name, other.lib) == ('1.2.3', '1_2_3')
     assert release.Version.of_number(99999) == release.Version(0, 999, 99)
     assert release.Version.parse('0.10.0') > release.Version.parse('0.9.0')
+    for name in ('0.1', '01.1.0', '0.01.0', '\u0661.0.0', '1.2.3 ', '1.2.3.4'):
+        try:
+            release.Version.parse(name)
+        except release.Broken as broken:
+            assert str(broken) == f'{name} is no version <major>.<minor>.<patch>', broken
+        else:
+            raise AssertionError(f'{name!r} parsed')
+
+
+def test_version_forms(directory: Path) -> None:
+    # release.py's half of FORMS; test_jamroot_reads_the_version is the Jamroot's.
+    tree = scratch.make_tree(directory)
+    header = tree.library('config') / 'include/webcpp/version.hpp'
+    for form, name in FORMS:
+        header.write_bytes((form + LIB_LINE).encode('utf-8'))
+        status, output, error = run_main('check', '--root', str(tree.root), '--version', '0.1.0')
+        if name is None:
+            assert (status, output) == (2, ''), (form, status, output)
+            assert error == (f'check: {release.HEADER} has no lines `#define WEBCPP_VERSION '
+                             '<number>` and `#define WEBCPP_LIB_VERSION "<text>"`, the number in '
+                             'decimal, without a leading zero\n'), (form, error)
+        else:
+            assert release.read_version(tree.root)[0] == release.Version.parse(name), form
+    for text, macro in ((TWICE + LIB_LINE, 'WEBCPP_VERSION'),
+                        ('#define WEBCPP_VERSION 100\n' + LIB_LINE + LIB_LINE,
+                         'WEBCPP_LIB_VERSION')):
+        header.write_text(text, encoding='utf-8')
+        assert run_main('check', '--root', str(tree.root), '--version', '0.1.0') == (
+            2, '', f'check: {release.HEADER} defines {macro} twice\n'), text
+    header.write_text('#define WEBCPP_VERSION 100\n' + LIB_LINE, encoding='utf-8')
+    header.chmod(0)
+    try:
+        status, output, error = run_main('check', '--root', str(tree.root), '--version', '0.1.0')
+    finally:
+        header.chmod(0o644)
+    assert (status, output) == (2, ''), (status, output)
+    assert error.startswith(f'check: {release.HEADER} cannot be read: '), error
 
 
 def test_version_must_agree(directory: Path) -> None:
@@ -86,7 +149,8 @@ def test_check_fails_by_name(directory: Path) -> None:
         scratch.write(header, text)
         assert run_main('check', '--root', root, '--version', '0.1.0') == (
             2, '', f'check: {release.HEADER} has no lines `#define WEBCPP_VERSION <number>` and '
-                   '`#define WEBCPP_LIB_VERSION "<text>"`\n'), text
+                   '`#define WEBCPP_LIB_VERSION "<text>"`, the number in decimal, without a '
+                   'leading zero\n'), text
     header.write_bytes(b'#define WEBCPP_VERSION 100\n#define WEBCPP_LIB_VERSION "\xff"\n')
     status, output, error = run_main('check', '--root', root, '--version', '0.1.0')
     assert (status, output) == (2, ''), (status, output)
@@ -127,13 +191,6 @@ def test_scratch_files_keep_their_form(directory: Path) -> None:
         assert changelog.file_findings(path, (tree.root / path).read_text()) == [], path
 
 
-def mrdocs_root() -> Path:
-    """The MrDocs of this checkout, as tools/test/doc_test.py links it: $MRDOCS_ROOT, else
-    .local/mrdocs."""
-    configured = os.environ.get('MRDOCS_ROOT')
-    return Path(configured) if configured else harness.ROOT / '.local/mrdocs'
-
-
 def git_checkout(root: Path) -> None:
     """Makes the harness's scratch superproject root a git checkout whose libraries, config and
     demo, are gitlinks, config holding the version.hpp of 0.1.0, with an index and notes of its
@@ -171,24 +228,54 @@ def test_jamroot_targets(root: Path) -> None:
 
 def test_jamroot_reads_the_version(root: Path) -> None:
     # The version check-release hands release.py, read from version.hpp's WEBCPP_VERSION: b2 -n
-    # prints the command and runs nothing.
+    # prints the command and runs nothing. The Jamroot's half of FORMS, then its reading of names
+    # of every width, a header that defines the macro twice, and one it cannot read.
     header = root / 'libs/config/include/webcpp/version.hpp'
-    for number, name in ((100, '0.1.0'), (100203, '1.2.3'), (1000000, '10.0.0'),
-                         (9999, '0.99.99'), (2001000, '20.10.0')):
+    for form, name in FORMS:
+        header.parent.mkdir(parents=True, exist_ok=True)
+        header.write_bytes((form + LIB_LINE).encode('utf-8'))
+        if name is None:
+            harness.expect(harness.run_b2(root, '-n', 'check-release'), False,
+                           'libs/config/include/webcpp/version.hpp has no line '
+                           '`#define WEBCPP_VERSION <number>`, the number in decimal, without a '
+                           'leading zero')
+        else:
+            harness.expect(harness.run_b2(root, '-n', 'check-release'), True,
+                           f'--version "{name}"')
+    for number, name in ((100203, '1.2.3'), (1000000, '10.0.0'), (9999, '0.99.99'),
+                         (2001000, '20.10.0')):
         scratch.write(header, scratch.VERSION_HPP.format(number=number, lib='0_1'))
         harness.expect(harness.run_b2(root, '-n', 'check-release'), True,
                        f'--version "{name}"')
-    scratch.write(header, '#define WEBCPP_VERSION 0x64\n')
+    scratch.write(header, TWICE)
     harness.expect(harness.run_b2(root, '-n', 'check-release'), False,
-                   'libs/config/include/webcpp/version.hpp has no line '
-                   '`#define WEBCPP_VERSION <number>`')
+                   'libs/config/include/webcpp/version.hpp defines WEBCPP_VERSION twice')
+    scratch.write(header, scratch.VERSION_HPP.format(number=100, lib='0_1'))
+    header.chmod(0)
+    try:
+        result = harness.run_b2(root, '-n', 'check-release')
+    finally:
+        header.chmod(0o644)
+    harness.expect(result, False, 'libs/config/include/webcpp/version.hpp cannot be read')
+
+
+def test_the_tree_s_version(root: Path) -> None:
+    # This checkout's own version.hpp, which config writes: release.py reads a coherent version
+    # from it, and the Jamroot hands release.py the same name.
+    tree_header = harness.ROOT / release.HEADER
+    assert tree_header.is_file(), f'{tree_header} does not exist: check out libs/config'
+    version, lib = release.read_version(harness.ROOT)
+    assert lib == version.lib, (version, lib)
+    scratch.write(root / release.HEADER, tree_header.read_text(encoding='utf-8'))
+    harness.expect(harness.run_b2(root, '-n', 'check-release'), True,
+                   f'--version "{version.name}"')
 
 
 def test_jamroot_without_config(root: Path) -> None:
     # The copy holds no libs/config: everything but the release targets builds, the doc included,
     # and those stop, naming the header. The doc build reads the files demo's git lists, as
     # tools/test/doc_test.py's prepare gives them.
-    (root / '.local/mrdocs').symlink_to(mrdocs_root())
+    (root / '.local/mrdocs').symlink_to(harness.mrdocs_root())
     scratch.git(root / 'libs/demo', 'init', '-q')
     harness.expect(harness.run_b2(root, '-d0', 'declared-targets'), True)
     harness.expect(harness.run_b2(root, '-n', '-d0'), True)
@@ -202,12 +289,14 @@ CASES: list[Callable[[Path], None]] = [
     test_versions_are_named,
     test_version_must_agree,
     test_check_fails_by_name,
+    test_version_forms,
     test_scratch_files_keep_their_form,
 ]
 
 B2_CASES: list[Callable[[Path], None]] = [
     test_jamroot_targets,
     test_jamroot_reads_the_version,
+    test_the_tree_s_version,
     test_jamroot_without_config,
 ]
 

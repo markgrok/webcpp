@@ -29,6 +29,9 @@ HEADER = 'libs/config/include/webcpp/version.hpp'
 # A value runs to the end of its line, so config writes no comment after one: its exemption from
 # clang-tidy is a NOLINTNEXTLINE on the line above.
 DEFINE = re.compile(r'^#define (WEBCPP_VERSION|WEBCPP_LIB_VERSION) +(.+?)\s*$', re.MULTILINE)
+# A number as the Jamroot reads one, and as C++ reads it too: decimal, in ASCII digits, since C++
+# reads a leading zero as octal.
+NUMBER = re.compile(r'0|[1-9][0-9]*')
 
 
 class Failure(Exception):
@@ -55,10 +58,10 @@ class Version:
     @staticmethod
     def parse(name: str) -> Version:
         """The version name writes, <major>.<minor>.<patch>."""
-        match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)', name)
-        if match is None:
+        numbers = name.split('.')
+        if len(numbers) != 3 or not all(NUMBER.fullmatch(number) for number in numbers):
             raise Broken(f'{name} is no version <major>.<minor>.<patch>')
-        return Version(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        return Version(int(numbers[0]), int(numbers[1]), int(numbers[2]))
 
     @property
     def name(self) -> str:
@@ -79,7 +82,8 @@ class Version:
 
 
 def read_version(root: Path) -> tuple[Version, str]:
-    """The version WEBCPP_VERSION names, and WEBCPP_LIB_VERSION's text without its quotes."""
+    """The version WEBCPP_VERSION names, and WEBCPP_LIB_VERSION's text without its quotes; each
+    defined once, the number in decimal, as the Jamroot's webcpp-version reads it."""
     header = root / HEADER
     if not header.is_file():
         raise Broken(f'{HEADER} does not exist: check out libs/config')
@@ -87,12 +91,17 @@ def read_version(root: Path) -> tuple[Version, str]:
         text = header.read_text(encoding='utf-8')
     except (OSError, UnicodeDecodeError) as error:
         raise Broken(f'{HEADER} cannot be read: {error}') from error
-    defined = dict(DEFINE.findall(text))
+    found = DEFINE.findall(text)
+    for macro in ('WEBCPP_VERSION', 'WEBCPP_LIB_VERSION'):
+        if [name for name, _ in found].count(macro) > 1:
+            raise Broken(f'{HEADER} defines {macro} twice')
+    defined = dict(found)
     number = defined.get('WEBCPP_VERSION', '')
     lib = defined.get('WEBCPP_LIB_VERSION', '')
-    if not number.isdigit() or len(lib) < 2 or lib[0] != '"' or lib[-1] != '"':
+    if NUMBER.fullmatch(number) is None or len(lib) < 2 or lib[0] != '"' or lib[-1] != '"':
         raise Broken(f'{HEADER} has no lines `#define WEBCPP_VERSION <number>` and '
-                     '`#define WEBCPP_LIB_VERSION "<text>"`')
+                     '`#define WEBCPP_LIB_VERSION "<text>"`, the number in decimal, without a '
+                     'leading zero')
     return Version.of_number(int(number)), lib[1:-1]
 
 

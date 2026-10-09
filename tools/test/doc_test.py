@@ -79,21 +79,10 @@ SCOPE = '<span class="wbr"></span>'
 PART = '<span class="wbr part"></span>'
 
 
-def mrdocs_root() -> Path:
-    """The directory MrDocs is installed in, which holds bin/mrdocs: $MRDOCS_ROOT, else this
-    checkout's .local/mrdocs."""
-    configured = os.environ.get('MRDOCS_ROOT')
-    root = Path(configured) if configured else harness.ROOT / '.local/mrdocs'
-    if not (root / 'bin/mrdocs').is_file():
-        raise RuntimeError(f'no {root}/bin/mrdocs: install MrDocs 2026.9.29 there, or set '
-                           'MRDOCS_ROOT')
-    return root
-
-
 def prepare(root: Path) -> None:
     """Gives the scratch superproject root the MrDocs of this checkout, in its .local, and makes
     its libs/demo a git repository, whose files doc-check reads."""
-    (root / '.local/mrdocs').symlink_to(mrdocs_root())
+    (root / '.local/mrdocs').symlink_to(harness.mrdocs_root())
     subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=root / 'libs/demo', check=True)
 
 
@@ -388,7 +377,7 @@ def test_doc_builds_at_once_share_the_packages(root):
 
 def test_mrdocs_is_found_or_named(root):
     prepare(root)
-    installed = mrdocs_root()
+    installed = harness.mrdocs_root()
     (root / '.local/mrdocs').unlink()
     # Nowhere: not at -sMRDOCS, not in .local and not on PATH.
     result = harness.run_b2(root, 'libs/demo/doc')
@@ -855,7 +844,8 @@ def test_tools_given_at_paths_with_spaces(root):
     assert clang, 'no clang++ on PATH'
     tools = root / 'linked tools'
     tools.mkdir()
-    for name, tool in (('mrdocs', mrdocs_root() / 'bin/mrdocs'), ('clang++', Path(clang))):
+    for name, tool in (('mrdocs', harness.mrdocs_root() / 'bin/mrdocs'),
+                       ('clang++', Path(clang))):
         wrapper = tools / name
         wrapper.write_text(f'#!/bin/sh\nexec "{tool}" "$@"\n')
         wrapper.chmod(0o755)
@@ -868,7 +858,7 @@ def test_tools_given_at_paths_with_spaces(root):
 def test_page_outside_git(root):
     # A library that is not a git checkout loads, and builds what needs no git; only the check
     # of its page, which reads the files git lists, names it.
-    (root / '.local/mrdocs').symlink_to(mrdocs_root())
+    (root / '.local/mrdocs').symlink_to(harness.mrdocs_root())
     harness.expect(harness.run_b2(root, 'libs/demo/doc//reference'), True)
     harness.expect(harness.run_b2(root, '-n', 'libs/demo/doc'), True)
     harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,

@@ -306,6 +306,17 @@ def link_wasi_tools(root: Path) -> None:
         (root / '.local' / name).symlink_to(source.resolve())
 
 
+def mrdocs_root() -> Path:
+    """The directory MrDocs is installed in, which holds bin/mrdocs, for a test that links it
+    into a scratch superproject's .local: $MRDOCS_ROOT, else this checkout's .local/mrdocs."""
+    configured = os.environ.get('MRDOCS_ROOT')
+    root = Path(configured) if configured else ROOT / '.local/mrdocs'
+    if not (root / 'bin/mrdocs').is_file():
+        raise RuntimeError(f'no {root}/bin/mrdocs: install MrDocs 2026.9.29 there, or set '
+                           'MRDOCS_ROOT')
+    return root
+
+
 def link_emsdk(root: Path) -> None:
     """Gives the scratch superproject root, in its .local, the emsdk that a copy leaves out: a link
     to $EMSDK_ROOT, else to this checkout's .local/emsdk, which must hold
