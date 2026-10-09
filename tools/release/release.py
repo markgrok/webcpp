@@ -10,6 +10,9 @@
 Usage: release.py check --root <superproject> --version <a.b.c>
 
 check names every fault that keeps the tree from being tagged webcpp-<a.b.c>:
+- the superproject or a library holds a change its HEAD does not record: a changed, staged,
+  deleted or new file that git does not ignore. This is named first, and alone: every other rule
+  judges what the tag would carry;
 - the version disagrees anywhere: WEBCPP_VERSION and WEBCPP_LIB_VERSION of
   libs/config/include/webcpp/version.hpp, the one place it is written, name different versions,
   or the version the Jamroot read, --version, is not theirs;
@@ -22,16 +25,17 @@ check names every fault that keeps the tree from being tagged webcpp-<a.b.c>:
   Unreleased holds lines, Compilers tested is None., or a tag webcpp-<a.b.c> is not at HEAD;
   Compilers tested lists other lanes than the CI's, tools/ci/matrix.py's LANES, as the notes
   write them;
-- a library is no submodule at HEAD, is not checked out, or is checked out at another commit
-  than the superproject records;
+- a library is no git checkout of its own, is no submodule at HEAD, is not checked out, or is
+  checked out at another commit than the superproject records;
 - New Libraries or Removed Libraries is not exactly the libraries new or gone since the newest
-  earlier tag webcpp-<x.y.z> that HEAD holds, every library for the first version;
-- a library under Updated Libraries is new or removed, or its region holds no line;
+  earlier tag webcpp-<x.y.z> that HEAD holds, every library for the first version; a tag
+  webcpp-<x> whose x is no version is no release, and a notes file so named is named;
+- a name under Updated Libraries is new, removed or no library, or its region holds no line;
 - a library whose changelog has lines for this version is not under Updated Libraries;
 - a library changed since that tag, under USER_VISIBLE, and its region has no line; or the
   commit a tag or HEAD records is not in its repository.
 Exit 0 when nothing is wrong; 1 with each fault on a line of its own, `<command>: <fault>`; 2 on a
-usage error, or when what it reads is not there.
+usage error, or when a file it reads is not there, cannot be read or is not UTF-8.
 """
 
 from __future__ import annotations
@@ -56,11 +60,14 @@ USER_VISIBLE = ('include', 'build.jam', 'wit', 'meta/libraries.json', 'README.md
                 'doc', 'LICENSE*', ':(exclude)doc/changelog.adoc',
                 ':(exclude)include/webcpp/version.hpp')
 
-TAG = re.compile(r'webcpp-(\d+\.\d+\.\d+)')
+# A version's name as Version.parse takes it: three decimal numbers, none with a leading zero. A
+# tag webcpp-<x> whose x is no such name is no release, and a notes file so named is named.
+VERSION_NAME = r'(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)'
+TAG = re.compile(rf'webcpp-({VERSION_NAME})')
 RELEASES = re.compile(r'^\[#releases\]\n== Releases\n', re.MULTILINE)
 INCLUDED = re.compile(r'^include::releases/(\d+\.\d+\.\d+)\.adoc\[leveloffset=\+2\]$',
                       re.MULTILINE)
-NOTES_FILE = re.compile(r'(\d+\.\d+\.\d+)\.adoc')
+NOTES_FILE = re.compile(rf'({VERSION_NAME})\.adoc')
 
 HEADER = 'libs/config/include/webcpp/version.hpp'
 # A value runs to the end of its line, so config writes no comment after one: its exemption from
@@ -117,6 +124,20 @@ class Version:
     def tag(self) -> str:
         return f'webcpp-{self.name}'
 
+    @property
+    def notes(self) -> str:
+        """The path of the version's release notes in the superproject."""
+        return f'doc/releases/{self.name}.adoc'
+
+
+def read(root: Path, relative: str) -> str:
+    """The text of the file relative in root; one that cannot be read, or is not UTF-8, is Broken,
+    named."""
+    try:
+        return (root / relative).read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError) as error:
+        raise Broken(f'{relative} cannot be read: {error}') from error
+
 
 def read_version(root: Path) -> tuple[Version, str]:
     """The version WEBCPP_VERSION names, and WEBCPP_LIB_VERSION's text without its quotes; each
@@ -124,10 +145,7 @@ def read_version(root: Path) -> tuple[Version, str]:
     header = root / HEADER
     if not header.is_file():
         raise Broken(f'{HEADER} does not exist: check out libs/config')
-    try:
-        text = header.read_text(encoding='utf-8')
-    except (OSError, UnicodeDecodeError) as error:
-        raise Broken(f'{HEADER} cannot be read: {error}') from error
+    text = read(root, HEADER)
     found = DEFINE.findall(text)
     for macro in ('WEBCPP_VERSION', 'WEBCPP_LIB_VERSION'):
         if [name for name, _ in found].count(macro) > 1:
@@ -221,12 +239,57 @@ def lines_of(regions: list[changelog.Region], tag: str) -> list[changelog.Bullet
     return next((region.bullets for region in regions if region.tag == tag), [])
 
 
+def region_of(version: Version, notes: changelog.Notes) -> tuple[str, str]:
+    """The tag of the region of each library's changelog the notes include, and its section's
+    title: Unreleased while the version is in preparation, the version's own once frozen."""
+    if notes.preparing:
+        return 'unreleased', 'Unreleased'
+    return version.name, f'webcpp {version.name}'
+
+
+def is_checkout(root: Path, library: str) -> bool:
+    """Whether libs/<library> is a git checkout of its own, rather than a directory whose git
+    commands would reach the superproject's."""
+    directory = root / 'libs' / library
+    completed = subprocess.run(['git', '-C', str(directory), 'rev-parse', '--show-toplevel'],
+                               capture_output=True, text=True, check=False)
+    return completed.returncode == 0 and \
+        Path(completed.stdout.strip()).resolve() == directory.resolve()
+
+
+def uncommitted(directory: Path) -> list[str]:
+    """The paths of directory's repository that its HEAD does not record as they are: changed,
+    staged, deleted, or new and not ignored. A library's own changes are its repository's."""
+    entries = git(directory, 'status', '--porcelain=v1', '-z', '--untracked-files=all',
+                  '--ignore-submodules=all').split('\0')
+    paths = []
+    renamed = False
+    for entry in entries:
+        if renamed or not entry:
+            renamed = False
+            continue
+        paths.append(entry[3:])
+        # A rename or a copy is followed by the path it came from.
+        renamed = entry[0] in 'RC'
+    return paths
+
+
+def uncommitted_findings(root: Path, current: list[str]) -> list[str]:
+    """Each path of the superproject and of each library that HEAD does not record as it is."""
+    paths = uncommitted(root)
+    for name in current:
+        if is_checkout(root, name):
+            paths += [f'libs/{name}/{path}' for path in uncommitted(root / 'libs' / name)]
+    return [f'{path} is not committed: a tag carries only what HEAD records'
+            for path in sorted(paths)]
+
+
 def index_findings(root: Path, version: Version) -> list[str]:
     """What the index's section Releases gets wrong: it includes every version's notes of
     doc/releases once, newest first, the version's first."""
     if not (root / 'doc/index.adoc').is_file():
         return ['doc/index.adoc does not exist']
-    text = (root / 'doc/index.adoc').read_text(encoding='utf-8')
+    text = read(root, 'doc/index.adoc')
     section = RELEASES.search(text)
     if section is None:
         return ['doc/index.adoc has no section [#releases], == Releases']
@@ -250,8 +313,8 @@ def state_findings(root: Path, version: Version, notes: changelog.Notes,
                    logs: dict[str, list[changelog.Region]]) -> list[str]:
     """What breaks the state the notes give the version: in preparation, or frozen for its
     tag."""
-    relative = f'doc/releases/{version.name}.adoc'
-    wanted = 'unreleased' if notes.preparing else version.name
+    relative = version.notes
+    wanted, _ = region_of(version, notes)
     state = 'in preparation' if notes.preparing else 'frozen'
     findings = [f'{relative}: {name} is included with tag={tag}, and the version is {state}: '
                 f'tag={wanted}' for name, tag in notes.updated if tag != wanted]
@@ -285,9 +348,8 @@ def library_findings(root: Path, version: Version, notes: changelog.Notes,
     """What the libraries get wrong: each recorded at its checked-out commit; New and Removed
     Libraries exactly those new or gone since the previous tag; and every library changed since,
     or with lines for this version, under Updated Libraries with its lines."""
-    relative = f'doc/releases/{version.name}.adoc'
-    wanted = 'unreleased' if notes.preparing else version.name
-    region = 'Unreleased' if notes.preparing else f'webcpp {version.name}'
+    relative = version.notes
+    wanted, region = region_of(version, notes)
     previous = previous_tag(root, version)
     since = previous or 'the first version'
     before = gitlinks(root, previous) if previous else {}
@@ -298,7 +360,10 @@ def library_findings(root: Path, version: Version, notes: changelog.Notes,
     absent = sorted(set(head) - set(current))
     findings += [f'libs/{name} is a submodule of the superproject at HEAD, and is not checked '
                  f'out: git submodule update --init libs/{name}' for name in absent]
-    for name in current:
+    checkouts = [name for name in current if is_checkout(root, name)]
+    findings += [f'libs/{name} is no git checkout of its own: a library is a repository, '
+                 'recorded by the superproject' for name in current if name not in checkouts]
+    for name in checkouts:
         if name not in head:
             findings.append(f'libs/{name} is no submodule of the superproject at HEAD: a release '
                             'ships only what its tag records')
@@ -324,10 +389,13 @@ def library_findings(root: Path, version: Version, notes: changelog.Notes,
         if name in new or name in removed:
             findings.append(f'{relative}: {name} is under Updated Libraries, and is '
                             f'{"new" if name in new else "removed"} since {since}')
+        elif name not in present:
+            findings.append(f'{relative}: {name} is under Updated Libraries, and is no library '
+                            'of libs/')
         elif not lines_of(logs.get(name, []), wanted):
             findings.append(f'{relative}: {name} is under Updated Libraries, and its region '
                             f'{wanted} holds no line')
-    for name in sorted(set(current) & set(before)):
+    for name in sorted(set(checkouts) & set(before)):
         lines = lines_of(logs.get(name, []), wanted)
         if lines and name not in updated:
             findings.append(f'the release notes miss {name}, whose changelog has lines for this '
@@ -346,25 +414,29 @@ def library_findings(root: Path, version: Version, notes: changelog.Notes,
 
 
 def check(root: Path, version: Version) -> list[str]:
-    """Every fault that keeps the tree from being tagged webcpp-<version>."""
+    """Every fault that keeps the tree from being tagged webcpp-<version>; a change HEAD does
+    not record is named first, and alone, since every other rule judges what the tag carries."""
+    current = libraries(root)
+    findings = uncommitted_findings(root, current)
+    if findings:
+        return findings
     findings = version_findings(root, version)
-    relative = f'doc/releases/{version.name}.adoc'
+    relative = version.notes
     if not (root / relative).is_file():
         return findings + [f'{relative} does not exist: open it from '
                            'tools/release/template.adoc']
-    text = (root / relative).read_text(encoding='utf-8')
+    text = read(root, relative)
     notes, faults = changelog.parse_notes(text, version.name)
     findings += located(relative, sorted(faults + [fault for bullet in notes.tools
                                                    for fault in changelog.line_findings(bullet)]))
     findings += index_findings(root, version)
-    current = libraries(root)
     logs: dict[str, list[changelog.Region]] = {}
     for name in current:
         path = f'libs/{name}/doc/changelog.adoc'
         if not (root / path).is_file():
             findings.append(f'{path} does not exist')
             continue
-        log = (root / path).read_text(encoding='utf-8')
+        log = read(root, path)
         findings += located(path, changelog.changelog_findings(log, name))
         logs[name] = changelog.parse_changelog(log, name)[0]
     findings += state_findings(root, version, notes, logs)

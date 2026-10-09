@@ -30,6 +30,9 @@ import harness  # noqa: E402  (tools/test, put on the path above)
 V010 = release.Version.parse('0.1.0')
 V020 = release.Version.parse('0.2.0')
 
+# version.hpp's path in config's repository.
+HEADER_PATH = 'include/webcpp/version.hpp'
+
 LIB_LINE = '#define WEBCPP_LIB_VERSION "0_1"\n'
 
 # Each form a WEBCPP_VERSION line of version.hpp may take, and the version both readers, release.py
@@ -74,6 +77,18 @@ def run_main(*arguments: str) -> tuple[int, str, str]:
     return status, output.getvalue(), error.getvalue()
 
 
+def commit_bytes(tree: scratch.Tree, library: str | None, path: str, data: bytes) -> None:
+    """Commits data at path of library, recorded by the superproject, or of the superproject for
+    None: check judges what HEAD records, so a case commits what it plants."""
+    directory = tree.root if library is None else tree.library(library)
+    (directory / path).parent.mkdir(parents=True, exist_ok=True)
+    (directory / path).write_bytes(data)
+    scratch.git(directory, 'add', path)
+    scratch.git(directory, 'commit', '-q', '--allow-empty', '-m', path)
+    if library is not None:
+        tree.record(library)
+
+
 def test_versions_are_named(directory: Path) -> None:
     assert release.Version.of_number(100) == V010
     assert (V010.lib, V010.anchor, V010.tag) == ('0_1', '0-1-0', 'webcpp-0.1.0')
@@ -95,7 +110,7 @@ def test_version_forms(directory: Path) -> None:
     tree = scratch.make_tree(directory)
     header = tree.library('config') / 'include/webcpp/version.hpp'
     for form, name in FORMS:
-        header.write_bytes((form + LIB_LINE).encode('utf-8'))
+        commit_bytes(tree, 'config', HEADER_PATH, (form + LIB_LINE).encode('utf-8'))
         status, output, error = run_main('check', '--root', str(tree.root), '--version', '0.1.0')
         if name is None:
             assert (status, output) == (2, ''), (form, status, output)
@@ -107,17 +122,25 @@ def test_version_forms(directory: Path) -> None:
     for text, macro in ((TWICE + LIB_LINE, 'WEBCPP_VERSION'),
                         ('#define WEBCPP_VERSION 100\n' + LIB_LINE + LIB_LINE,
                          'WEBCPP_LIB_VERSION')):
-        header.write_text(text, encoding='utf-8')
+        commit_bytes(tree, 'config', HEADER_PATH, text.encode('utf-8'))
         assert run_main('check', '--root', str(tree.root), '--version', '0.1.0') == (
             2, '', f'check: {release.HEADER} defines {macro} twice\n'), text
-    header.write_text('#define WEBCPP_VERSION 100\n' + LIB_LINE, encoding='utf-8')
+    commit_bytes(tree, 'config', HEADER_PATH, ('#define WEBCPP_VERSION 100\n' + LIB_LINE).encode())
+    # A header that cannot be read: the reader names it; check names it first as a file git
+    # cannot find equal to HEAD's, since git reads it as changed.
     header.chmod(0)
     try:
-        status, output, error = run_main('check', '--root', str(tree.root), '--version', '0.1.0')
+        try:
+            release.read_version(tree.root)
+        except release.Broken as broken:
+            assert str(broken).startswith(f'{release.HEADER} cannot be read: '), broken
+        else:
+            raise AssertionError('an unreadable header was read')
+        found = run_main('check', '--root', str(tree.root), '--version', '0.1.0')
     finally:
         header.chmod(0o644)
-    assert (status, output) == (2, ''), (status, output)
-    assert error.startswith(f'check: {release.HEADER} cannot be read: '), error
+    assert found == (1, f'check: {release.HEADER} is not committed: a tag carries only what HEAD '
+                        'records\n', ''), found
 
 
 def test_version_must_agree(directory: Path) -> None:
@@ -146,16 +169,16 @@ def test_check_fails_by_name(directory: Path) -> None:
                       f'{release.HEADER} names 0.1.0\n'
                       'check: doc/releases/0.2.0.adoc does not exist: open it from '
                       'tools/release/template.adoc\n'), output
-    header = tree.library('config') / 'include/webcpp/version.hpp'
     for text in ('#define WEBCPP_VERSION 100  // 0.1.0\n#define WEBCPP_LIB_VERSION "0_1"\n',
                  '#define WEBCPP_VERSION 100\n#define WEBCPP_LIB_VERSION 0_1\n',
                  '#define WEBCPP_VERSION 100\n'):
-        scratch.write(header, text)
+        commit_bytes(tree, 'config', HEADER_PATH, text.encode('utf-8'))
         assert run_main('check', '--root', root, '--version', '0.1.0') == (
             2, '', f'check: {release.HEADER} has no lines `#define WEBCPP_VERSION <number>` and '
                    '`#define WEBCPP_LIB_VERSION "<text>"`, the number in decimal, without a '
                    'leading zero\n'), text
-    header.write_bytes(b'#define WEBCPP_VERSION 100\n#define WEBCPP_LIB_VERSION "\xff"\n')
+    commit_bytes(tree, 'config', HEADER_PATH,
+                 b'#define WEBCPP_VERSION 100\n#define WEBCPP_LIB_VERSION "\xff"\n')
     status, output, error = run_main('check', '--root', root, '--version', '0.1.0')
     assert (status, output) == (2, ''), (status, output)
     assert error.startswith(f'check: {release.HEADER} cannot be read: '), error
@@ -322,6 +345,88 @@ def test_the_previous_tag_is_the_newest_before_the_version(directory: Path) -> N
     assert release.check(tree.root, release.Version.parse('0.3.0')) == []
 
 
+def test_unreadable_files_are_named(directory: Path) -> None:
+    # The notes, a changelog and the index, each with a byte that is not UTF-8: check stops,
+    # naming the file, as it does for version.hpp, and never with a traceback.
+    for library, path, relative in ((None, 'doc/releases/0.1.0.adoc', 'doc/releases/0.1.0.adoc'),
+                                    ('alpha', 'doc/changelog.adoc',
+                                     'libs/alpha/doc/changelog.adoc'),
+                                    (None, 'doc/index.adoc', 'doc/index.adoc')):
+        (directory / relative.replace('/', '-')).mkdir()
+        tree = scratch.make_tree(directory / relative.replace('/', '-'))
+        commit_bytes(tree, library, path, b'\xff\n')
+        status, output, error = run_main('check', '--root', str(tree.root), '--version', '0.1.0')
+        assert (status, output) == (2, ''), (relative, status, output)
+        assert error.startswith(f'check: {relative} cannot be read: '), (relative, error)
+
+
+def test_uncommitted_changes_are_refused_first(directory: Path) -> None:
+    # check judges what the tag would carry, so a change that HEAD does not record, in the
+    # superproject or in a library, is named before anything else; ignored build output is not.
+    tree = scratch.make_tree(directory)
+    released(tree)
+    tree.change('alpha', 'include/webcpp/alpha.hpp', '// alpha, changed\n')
+    tree.commit_file('doc/releases/0.2.0.adoc',
+                     scratch.notes_text('0.2.0', updated=(('alpha', 'unreleased'),)))
+    log = tree.library('alpha') / 'doc/changelog.adoc'
+    scratch.write(log, scratch.changelog_text('alpha', unreleased=('* Changed alpha.',)))
+    assert release.check(tree.root, V020) == [
+        'libs/alpha/doc/changelog.adoc is not committed: a tag carries only what HEAD records']
+    scratch.git(tree.library('alpha'), 'add', 'doc/changelog.adoc')
+    expect(release.check(tree.root, V020), 'libs/alpha/doc/changelog.adoc is not committed')
+    scratch.git(tree.library('alpha'), 'commit', '-q', '-m', 'alpha: its line')
+    tree.record('alpha')
+    assert release.check(tree.root, V020) == []
+    scratch.write(tree.root / 'doc/releases/0.3.0.adoc', scratch.notes_text('0.3.0'))
+    scratch.write(tree.root / 'doc/index.adoc', 'Changed.\n')
+    assert release.check(tree.root, V020) == [
+        f'{path} is not committed: a tag carries only what HEAD records'
+        for path in ('doc/index.adoc', 'doc/releases/0.3.0.adoc')]
+    scratch.git(tree.root, 'checkout', '-q', '--', 'doc/index.adoc')
+    (tree.root / 'doc/releases/0.3.0.adoc').unlink()
+    # A rename staged is named once, by the path it has now.
+    scratch.git(tree.library('beta'), 'mv', 'AGENTS.md', 'AGENTS.txt')
+    assert release.check(tree.root, V020) == [
+        'libs/beta/AGENTS.txt is not committed: a tag carries only what HEAD records']
+    scratch.git(tree.library('beta'), 'mv', 'AGENTS.txt', 'AGENTS.md')
+    for ignored in (tree.root / 'bin/x.o', tree.root / 'doc/html/more.html',
+                    tree.library('beta') / 'doc/html/more.html'):
+        scratch.write(ignored, 'built\n')
+    assert release.check(tree.root, V020) == []
+
+
+def test_a_library_without_its_own_git_is_named(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    shutil.rmtree(tree.library('alpha') / '.git')
+    found = release.check(tree.root, V020)
+    assert found == ['libs/alpha is no git checkout of its own: a library is a repository, '
+                     'recorded by the superproject'], found
+
+
+def test_names_that_are_no_version_are_named(directory: Path) -> None:
+    # A tag webcpp-<x> whose x is no version is no release, and a notes file whose name is no
+    # version is named; neither stops the check.
+    tree = scratch.make_tree(directory)
+    released(tree)
+    scratch.git(tree.root, 'tag', 'webcpp-0.01.0')
+    scratch.git(tree.root, 'tag', 'webcpp-0.2')
+    assert release.check(tree.root, V020) == []
+    tree.commit_file('doc/releases/0.01.0.adoc', scratch.notes_text('0.1.0'))
+    expect(release.check(tree.root, V020),
+           "doc/releases/0.01.0.adoc is no version's notes, <a.b.c>.adoc")
+
+
+def test_an_updated_name_that_is_no_library(directory: Path) -> None:
+    tree = scratch.make_tree(directory)
+    released(tree)
+    tree.commit_file('doc/releases/0.2.0.adoc',
+                     scratch.notes_text('0.2.0', updated=(('alhpa', 'unreleased'),)))
+    assert release.check(tree.root, V020) == [
+        'doc/releases/0.2.0.adoc: alhpa is under Updated Libraries, and is no library of libs/'
+    ], release.check(tree.root, V020)
+
+
 def test_lines_out_of_form_are_named(directory: Path) -> None:
     tree = scratch.make_tree(directory)
     tree.change('alpha', 'doc/changelog.adoc',
@@ -445,9 +550,13 @@ def test_jamroot_targets(root: Path) -> None:
     harness.configure(root, harness.without_boost() + 'using boost : 1.92 ;\n')
     harness.expect(harness.run_b2(root, '-d0', 'check-release', env_extra={'BOOST_ROOT': None}),
                    True)
-    # A fault fails the target, which prints it.
+    # A fault fails the target, which prints it: committed, and recorded, since a tree with
+    # uncommitted changes is refused first.
     scratch.write(root / 'libs/config/include/webcpp/version.hpp',
                   scratch.VERSION_HPP.format(number=100, lib='0_2'))
+    scratch.git(root / 'libs/config', 'commit', '-q', '-a', '-m', 'config: 0_2')
+    scratch.git(root, 'add', 'libs/config')
+    scratch.git(root, 'commit', '-q', '-m', 'libs/config: recorded')
     harness.expect(harness.run_b2(root, 'check-release', env_extra={'BOOST_ROOT': None}), False,
                    'check: libs/config/include/webcpp/version.hpp: WEBCPP_VERSION names 0.1.0, '
                    'and WEBCPP_LIB_VERSION "0_2" is not "0_1"')
@@ -526,6 +635,11 @@ CASES: list[Callable[[Path], None]] = [
     test_a_missing_commit_and_a_stale_pointer,
     test_a_library_not_checked_out_is_named,
     test_the_previous_tag_is_the_newest_before_the_version,
+    test_unreadable_files_are_named,
+    test_uncommitted_changes_are_refused_first,
+    test_a_library_without_its_own_git_is_named,
+    test_names_that_are_no_version_are_named,
+    test_an_updated_name_that_is_no_library,
     test_lines_out_of_form_are_named,
     test_compilers_tested_are_the_ci_lanes,
     test_frozen_state,
