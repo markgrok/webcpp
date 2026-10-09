@@ -15,12 +15,12 @@ exceptions and without them; the fixture library browser_demo, whose headers no 
 has an aggregate per target, its emscripten one analysed by wasi-sdk's clang++ with the words of
 em++ --cflags, and its native one, against the fake dependency that throws, twinned without the
 header that needs exceptions and with a native header whose own headers-alone call does not declare
-them; a public header that no target compiles alone, a target whose
-toolset is not configured, and a WebAssembly command whose compiler is neither wasi-sdk's clang++
-nor, on emscripten, Emscripten's em++, fail the database by name. Each case lints a scratch
-superproject whose libs/demo is the fixture library demo, a repository of its own as a library's
-submodule is, and libs/component_demo or libs/browser_demo too in the cases of WASI and of
-emscripten. Run with the names of some cases to run only those."""
+them; a public header that no target compiles alone, a target whose toolset is not configured, and a
+WebAssembly command whose compiler is neither wasi-sdk's clang++ nor, on emscripten, Emscripten's
+em++, fail the database by name. Each case lints a scratch superproject whose libs/demo is the
+fixture library demo, a repository of its own as a library's submodule is, and libs/component_demo
+or libs/browser_demo too in the cases of WASI and of emscripten. Run with the names of some cases to
+run only those."""
 
 from __future__ import annotations
 
@@ -1060,9 +1060,14 @@ def test_returns_this(root):
     prepare(root)
     # An assignment operator may return *this after a body that calls functions, whose lines
     # hold parentheses as a signature does; a function after it that is no assignment operator
-    # may not, however long its body.
+    # may not, however long its body. The body is followed only from a signature line that opens
+    # it with {: an assignment operator whose signature clang-format splits before the brace
+    # falls back to the nearest line with a parenthesis, which spares it while its body calls
+    # nothing, and takes a call in its body for its signature, a known false finding.
     path = 'libs/demo/test/builder.cpp'
     write(root, path, CPP + '\n'
+          '#include <initializer_list>\n'
+          '\n'
           'struct builder {\n'
           '    builder& add() { return *this; }\n'
           '\n'
@@ -1078,11 +1083,26 @@ def test_returns_this(root):
           '        return *this;  // appended\n'
           '    }\n'
           '\n'
+          '    builder& operator=(\n'
+          '        const std::initializer_list<int>& numbers_given_to_the_builder_one_by_one)'
+          ' noexcept {\n'
+          '        return *this;  // split, no call\n'
+          '    }\n'
+          '\n'
+          '    builder& operator=(\n'
+          '        const std::initializer_list<long>& numbers_given_to_the_builder_one_by_one)'
+          ' noexcept {\n'
+          '        swap(*this);\n'
+          '        return *this;  // split, a call\n'
+          '    }\n'
+          '\n'
           '    void swap(builder& /*other*/) noexcept {}\n'
           '};\n')
     expect_alone(lint(root), 'returns *this',
-                 [at(root, path, 'add()'), at(root, path, '// appended')],
-                 spared=(at(root, path, 'operator=(const'), at(root, path, '// moved')))
+                 [at(root, path, 'add()'), at(root, path, '// appended'),
+                  at(root, path, '// split, a call')],
+                 spared=(at(root, path, 'operator=(const'), at(root, path, '// moved'),
+                         at(root, path, '// split, no call')))
 
 
 def test_em_dash(root):
