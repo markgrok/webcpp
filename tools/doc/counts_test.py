@@ -6,7 +6,8 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 
 """Checks tools/doc/counts.py: the fixture demo counts its examples and its tests per target, its
-Boost.Test suite and its headers compiled alone, from the programs b2 recorded; the fixture
+Boost.Test suite and its headers compiled alone, from the programs b2 recorded, each count of a
+thousand or more printed with a thousands separator, 1,234; the fixture
 component_demo counts its served programs, as tests and on their own; the fixture browser_demo
 counts its link-only program and its driven test, as tests and on their own; the fixture
 oracle_demo counts its agreeing, divergent and without-twin programs from twins.py --list, which
@@ -300,6 +301,23 @@ def test_library_counts_are_added(root: Path) -> None:
     assert 'a warning, n-steps=4' in result.stderr, result.stderr
 
 
+def test_counts_print_with_a_thousands_separator(root: Path) -> None:
+    # A page reads 1,234 where a count reaches a thousand, as English writes it, in the counts of
+    # the programs b2 recorded and in a library's own; a library's counts.py prints plain digits.
+    directory = library(root, 'demo')
+    own_counts(directory, 'print("n-cases=999")\nprint("n-steps=1111")\n'
+                          'print("n-checks=1234567")\n')
+    many = (*DEMO_PROGRAMS, *(f'run case_{index} native' for index in range(1000)))
+    found = counted(count(directory, many))
+    assert (found['n-cases'], found['n-steps'], found['n-checks']) == (
+        '999', '1,111', '1,234,567'), found
+    assert (found['n-tests'], found['n-tests-native'], found['n-tests-wasip2']) == (
+        '1,009', '1,009', '6'), found
+    for line in ('n-cases=1,111', 'n-cases=1 111'):
+        script = own_counts(directory, f'print({line!r})\n')
+        fails(count(directory, DEMO_PROGRAMS), f'{script}: not a count name=<number>: {line}')
+
+
 def test_library_count_named_as_a_generic_one_fails(root: Path) -> None:
     directory = library(root, 'demo')
     script = own_counts(directory, 'print("n-cases=1")\nprint("n-headers=3")\n')
@@ -346,6 +364,7 @@ CASES = [
     test_served_programs_are_tests_and_counted,
     test_linked_and_driven_programs_are_tests_and_counted,
     test_library_counts_are_added,
+    test_counts_print_with_a_thousands_separator,
     test_library_count_named_as_a_generic_one_fails,
     test_library_count_of_nothing_fails,
     test_usage_errors_exit_2,

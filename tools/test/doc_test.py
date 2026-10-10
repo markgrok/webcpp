@@ -809,16 +809,18 @@ def test_page_outside_git(root):
 
 def test_counts_warn_and_fail_through_the_build(root):
     # A library's own counts.py: what it writes on its standard error is shown and is no count;
-    # its failure stops the build with its message.
+    # a count of a thousand or more reads with a thousands separator; its failure stops the build
+    # with its message.
     prepare(root)
     script = root / 'libs/demo/doc/counts.py'
     script.write_text('import sys\n'
                       'print("counts.py: a warning, n-cases=99", file=sys.stderr, flush=True)\n'
-                      'print("n-cases=3")\n')
-    edit(root, 'libs/demo/doc/demo.adoc', 'compiles alone.\n', 'compiles alone. {n-cases} cases.\n')
+                      'print("n-cases=3")\nprint("n-steps=1234567")\n')
+    edit(root, 'libs/demo/doc/demo.adoc', 'compiles alone.\n',
+         'compiles alone. {n-cases} cases, {n-steps} steps.\n')
     result = harness.run_b2(root, 'libs/demo/doc')
     harness.expect(result, True, 'counts.py: a warning, n-cases=99')
-    assert 'compiles alone. 3 cases.' in page_text(root), page_text(root)
+    assert 'compiles alone. 3 cases, 1,234,567 steps.' in page_text(root), page_text(root)
     script.write_text('import sys\nsys.exit("counts.py: no case file in fixtures")\n')
     harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
                    'counts.py: no case file in fixtures',

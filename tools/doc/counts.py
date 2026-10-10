@@ -9,7 +9,9 @@
 
 A page states how many examples, tests, headers and twins its library has as Asciidoctor
 attributes, `{n-examples}`, which webcpp.doc computes with this script at every build, so that
-none is typed and none drifts from the tree. It prints each on a line of its own, `name=value`:
+none is typed and none drifts from the tree. It prints each on a line of its own, `name=value`,
+the value as English writes a number, with a comma between each three digits from a thousand on,
+`1,234`:
 
 * From the programs b2 recorded, each given as `--program "<kind> <name> <target>..."`, as
   tools/webcpp.jam records the programs of the library's test and example Jamfiles (a Jamfile is
@@ -31,8 +33,8 @@ none is typed and none drifts from the tree. It prints each on a line of its own
   has none of these.
 * From the library's own `doc/counts.py`, when there is one, run with the library's directory as
   its one argument: each line `<name>=<number>` it prints, a count of what only that library
-  holds, such as the cases of its fixtures. What it writes on its standard error is written on
-  this script's, and is no count.
+  holds, such as the cases of its fixtures, each in plain digits, `n-cases=1234`. What it writes
+  on its standard error is written on this script's, and is no count.
 
 A count that finds nothing fails, naming what it looked for, rather than put a zero on the page:
 the headers, the twins (a library that declares twins and has none), and each count of a
@@ -236,7 +238,7 @@ def main(argv: Sequence[str]) -> int:
         print(fault, file=sys.stderr)
         return 1
     for name, value in counts.items():
-        print(f'{name}={value}')
+        print(f'{name}={value:,}')
     return 0
 
 

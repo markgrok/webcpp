@@ -534,9 +534,10 @@ local rule counts ( library : twins * )
             "page states; its message is above" ;
     }
     local counts = [ SPLIT_BY_CHARACTERS $(counted[1]) : "\n" ] ;
+    # A value is English's, 1,234 from a thousand on.
     for local count in $(counts)
     {
-        if ! [ MATCH "^([a-z][a-z0-9-]*=[0-9]+)$" : $(count) ]
+        if ! [ MATCH "^([a-z][a-z0-9-]*=[0-9]?[0-9]?[0-9](,[0-9][0-9][0-9])*)$" : $(count) ]
         {
             errors.user-error "webcpp.doc $(library): tools/doc/counts.py printed \"$(count)\","
                 "which is not a count name=<number>" ;

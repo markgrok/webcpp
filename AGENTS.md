@@ -1056,7 +1056,9 @@ every build, so that no count drifts from the tree:
   of its fixtures, `{n-machine-cases}` among them).
 
 A count that finds nothing fails the build rather than put a zero on the
-page, and so does a name of a library's own that is also a generic one.
+page, and so does a name of a library's own that is also a generic one. A
+count reads as English writes a number, with a thousands separator, `1,234`;
+a library's own `counts.py` prints plain digits, `n-machine-steps=1234`.
 
 ### Links between pages
 
