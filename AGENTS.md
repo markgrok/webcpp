@@ -45,7 +45,7 @@ repository of its own, checked out here as a submodule under `libs/<name>`.
 | --- | --- | --- | --- |
 | xactor | a deterministic actor system, webcpp's own | native, wasip2, wasip3 (`xactor_asio` native only) | a submodule at `libs/xactor`; the model for every port |
 | xstate | a port of XState 5.33.2's state machines and actors; depends on xactor and Boost.JSON | native, wasip2, wasip3; its oracle lane | a submodule at `libs/xstate`; the first user of the shared oracle (chapter 5) |
-| pratt | a Pratt parser engine, generic through concepts, with a calculator built on it, webcpp's own | native, wasip2, wasip3 | a submodule at `libs/pratt`; born with the allocation rule (chapter 6) |
+| pratt | a Pratt parser engine, generic through concepts, with a calculator built on it, webcpp's own | native, emscripten, wasip2, wasip3 | a submodule at `libs/pratt`; born with the allocation rule (chapter 6) |
 | wasi | header-only helpers for C++ built as WebAssembly components: the HTTP handler a component exports, webcpp's own | wasip2, wasip3 (`response.hpp` also natively); its own lanes `http`, the components wasmtime serves | a submodule at `libs/wasi`; the first library built as components (chapter 9) |
 | trystero | a port of Trystero 0.26.0, serverless WebRTC rooms | native, emscripten; its own lanes `oracle` and `interop` | a submodule at `libs/trystero`; born with the allocation rule through `std::pmr` |
 
