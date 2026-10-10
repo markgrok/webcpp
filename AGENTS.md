@@ -776,7 +776,8 @@ single page, from the library's Doc Comments. `webcpp.reference <name> ;` in
   `auto-function-metadata: false`, `auto-relates: false`, every `warn-*` on,
   the symbols of `webcpp::<name>::**`, `detail` namespaces as
   implementation-defined, the macros `WEBCPP_<NAME>_*` except the include
-  guards, and `base-url: https://github.com/webcpporg/<name>/blob/main/`;
+  guards, `base-url: https://github.com/webcpporg/<name>/blob/main/` and
+  `inherit-base-members: never` (below);
 - `tools/doc/doc_comments.py` then checks with clang++ what MrDocs does not
   (below);
 - the page includes the result with
@@ -785,7 +786,15 @@ single page, from the library's Doc Comments. `webcpp.reference <name> ;` in
 `auto-function-metadata` and `auto-relates` are off because, at their
 defaults, they document a parameter with its type's brief and count a class
 with related functions as documented, which hid 48 findings on the first
-library measured.
+library measured. `inherit-base-members` is `never`, so a derived class lists
+its own members alone and an interface's are in the interface's section:
+MrDocs reads an override whose parameter is spelled through an alias as an
+overload of its own, and at its default copies the interface's member into
+the derived class under the interface's anchor, which Asciidoctor refuses as
+a duplicate; no reference of xactor, xstate, wasi or pratt changed with it.
+A link MrDocs writes inside another link's text,
+`link:#a[handler<void(link:#b[bytes])>]`, which Asciidoctor would end at the
+inner `]`, is written as its text, the outer link kept (`reference.py`).
 
 **A library's `doc/mrdocs.yml` holds presentation keys only.** It may set
 `sort-members`, `sort-members-by`, `sort-namespace-members-by`,

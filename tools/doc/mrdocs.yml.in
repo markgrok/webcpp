@@ -46,6 +46,13 @@ embedded: true
 output: @OUTPUT@
 base-url: https://github.com/webcpporg/@LIBRARY@/blob/main/
 
+# A derived class lists its own members alone, and an interface's are in the
+# interface's section: MrDocs reads an override whose parameter is spelled
+# through an alias as an overload of its own, and would copy the interface's
+# member into the derived class under the interface's own anchor, which
+# Asciidoctor refuses as a duplicate.
+inherit-base-members: never
+
 # Strict: any warning fails the reference. With their defaults,
 # auto-function-metadata documents a parameter with the brief of its type and
 # auto-relates counts a class with related free functions as documented,

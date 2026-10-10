@@ -506,6 +506,32 @@ def test_page_includes_a_file_of_its_library(root):
     assert listing is not None and 'class="hljs-number">42<' in listing.group(1), html
 
 
+def test_an_override_spelled_through_an_alias_is_the_derived_class_s_own(root):
+    # An override whose parameter is spelled through an alias, which MrDocs reads as an overload
+    # of its own: had MrDocs copied the interface's member into the derived class, under the
+    # interface's anchor, Asciidoctor would refuse the page for the anchor twice. Each class
+    # lists its own members, and the interface's are in its section.
+    prepare(root)
+    edit(root, HEADER, '}  // namespace webcpp::demo\n',
+         '/** A number, spelled through an alias. */\nusing number = int;\n\n'
+         '/** A source of answers. */\nclass source {\npublic:\n'
+         '    /** Destroys the source. */\n    virtual ~source() = default;\n\n'
+         '    /** Returns an answer.\n\n        @param value The value.\n'
+         '        @return The answer.\n    */\n    virtual int give(int value) = 0;\n};\n\n'
+         '/** A source that doubles. */\nclass doubler final : public source {\npublic:\n'
+         '    /** Returns twice the value.\n\n        @param value The value.\n'
+         '        @return Twice the value.\n    */\n'
+         '    int give(number value) override {\n        return 2 * value;\n    }\n};\n\n'
+         '}  // namespace webcpp::demo\n')
+    result = harness.run_b2(root, 'libs/demo/doc')
+    harness.expect(result, True)
+    html = (root / PAGE).read_text()
+    ids = re.findall(r'\bid="([^"]+)"', html)
+    assert len(ids) == len(set(ids)), sorted(i for i in set(ids) if ids.count(i) > 1)
+    assert 'id="webcpp-demo-source-give"' in html and 'id="webcpp-demo-doubler-give"' in html, (
+        re.findall(r'id="(webcpp-demo-[a-z_]+-give[^"]*)"', html))
+
+
 def test_page_shows_the_counts_of_its_programs(root):
     # Counted from what demo's test and example Jamfiles declare, as b2 recorded it: each program
     # once, and each header compiled alone one.
@@ -957,6 +983,7 @@ CASES = [
     test_doc_check_and_rendered_check_run,
     test_page_includes_a_file_of_the_superproject,
     test_page_includes_a_file_of_its_library,
+    test_an_override_spelled_through_an_alias_is_the_derived_class_s_own,
     test_page_shows_the_counts_of_its_programs,
     test_page_shows_twins_and_their_counts,
     test_page_shows_its_linked_and_driven_programs,
