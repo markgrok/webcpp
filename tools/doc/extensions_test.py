@@ -554,9 +554,13 @@ def test_breaks_are_never_wbr_and_never_copied(_: None) -> None:
     assert '<wbr' not in page, page
     assert parts('include/|webcpp/|idna/|options.|hpp') in html, html
     assert '\u200b' not in page and '&#8203;' not in page.lower(), page
-    generated = [(media, declarations) for media, selectors, declarations in page_style()
-                 for selector in selectors if selector == 'span.wbr::after']
-    assert generated == [(None, {'content': '"\\200B"'})], generated
+    # The zero-width space has empty alternative text, so that a screen reader reads the name
+    # whole; an engine that does not know the alternative keeps the first declaration.
+    docinfo = (HERE / 'docinfo.html').read_text()
+    rule = re.search(r'\nspan\.wbr::after \{([^}]*)\}', docinfo)
+    assert rule, docinfo
+    declarations = [part.strip() for part in rule.group(1).split(';') if part.strip()]
+    assert declarations == ['content: "\\200B"', 'content: "\\200B" / ""'], declarations
 
 
 def test_style_scrolls_a_wide_table_in_its_box(_: None) -> None:

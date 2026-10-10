@@ -212,6 +212,10 @@ def check_pages(out: Path) -> None:
             assert banned not in lowered, (path, banned)
         assert FOOTER in page.text, path
         assert EM_DASH not in page.source, path
+        # A name breaks at an empty span.wbr, whose zero-width space the style generates, never
+        # at a <wbr>, after which WebKit paints a part twice at some widths, and never at a
+        # U+200B of the text, which a copy would carry.
+        assert '<wbr' not in lowered and '\u200b' not in page.source, path
         assert page.links and (path.parent / page.links[0]).resolve() == top.parent, (
             path, 'the brand links the site\'s index', page.links[:1])
         for href in page.links:
@@ -468,6 +472,16 @@ def test_unreadable_xml_exits_2(root: Path) -> None:
     assert f'cannot write {blocked}' in result.stderr, outcome(result)
 
 
+def test_breaks_are_generated_spaces_hidden_from_assistive_technology(_root: Path) -> None:
+    """A break of a name is an empty span.wbr, to which the style gives a zero-width space as
+    generated content, with empty alternative text, so that a screen reader reads the name
+    whole; an engine that does not know the alternative keeps the first declaration."""
+    rule = re.search(r'span\.wbr::after \{([^}]*)\}', pages.STYLE)
+    assert rule, pages.STYLE
+    declarations = [part.strip() for part in rule.group(1).split(';') if part.strip()]
+    assert declarations == ['content: "\\200B"', 'content: "\\200B" / ""'], declarations
+
+
 def test_nine_lanes_fit_the_content_width_at_desktop(_root: Path) -> None:
     """A budget on pages.STYLE, standing in for what a real Chrome measured at 1280px wide (the
     screenshots this change records): the lane header must be free to wrap at a hyphen, since
@@ -582,7 +596,8 @@ def test_an_own_lane_is_named_after_its_target_and_library(root: Path) -> None:
     assert title.endswith('or when a lane of its own runs it.'), title
     assert matrix(out / 'component_demo.html').verdict('answers', own) == 'pass'
     # Its header may wrap after each dot, as a lane's wraps at a hyphen.
-    assert 'wasip2.<wbr>component_demo.<wbr>served' in (out / 'index.html').read_text()
+    assert ('wasip2.<span class="wbr"></span>component_demo.<span class="wbr"></span>served'
+            in (out / 'index.html').read_text())
     check_pages(out)
     result = report(root / 'fails', (own, sample('wasip2-served-failure')))
     assert result.returncode == 1, outcome(result)
@@ -851,6 +866,7 @@ CASES = [
     test_a_library_the_lane_built_nothing_of_fails_it,
     test_two_lanes_merge_into_one_matrix,
     test_toolset_line_shown_only_when_it_differs_from_the_lane_name,
+    test_breaks_are_generated_spaces_hidden_from_assistive_technology,
     test_nine_lanes_fit_the_content_width_at_desktop,
     test_unreadable_xml_exits_2,
     test_a_lane_is_what_its_name_says,

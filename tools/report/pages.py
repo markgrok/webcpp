@@ -38,6 +38,12 @@ NOT_BUILT = ("Not built in this lane, as when it does not declare the lane's tar
 
 OUTSIDE = 'outside failure'
 
+# Where a long name may break: an empty element to which the style gives a zero-width space, with
+# empty alternative text, as the documentation's pages break a name (tools/doc/postprocess.mjs).
+# Not a <wbr>, after which WebKit paints a part of a name twice at some widths, and not a U+200B
+# in the text, which a reader would copy with the name.
+BREAK = '<span class="wbr"></span>'
+
 STYLE = """
 :root {
   --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --raised: #f6f8fa;
@@ -53,6 +59,7 @@ STYLE = """
   }
 }
 *, *::before, *::after { box-sizing: border-box; }
+span.wbr::after { content: "\\200B"; content: "\\200B" / ""; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--fg);
@@ -312,7 +319,7 @@ def lane_header(lane: Lane) -> str:
     # a hyphen; a version's dot, msvc-14.3, stays whole.
     shown = e(lane.name)
     if OWN_LANE.fullmatch(lane.name):
-        shown = '.<wbr>'.join(e(word) for word in lane.name.split('.'))
+        shown = f'.{BREAK}'.join(e(word) for word in lane.name.split('.'))
     return (f'<th scope="col" role="columnheader" class="{classes}"{titled} '
             f'data-lane="{e(lane.name)}">{shown}{toolset}</th>')
 
@@ -372,7 +379,7 @@ def lane_problems(lanes: list[Lane]) -> list[str]:
 
 def name_cell(text: str, link: str | None = None) -> str:
     # A long name breaks after an underscore first, as it does after a dash.
-    name = e(text).replace('_', '_<wbr>')
+    name = e(text).replace('_', f'_{BREAK}')
     inner = f'<a href="{href(link)}">{name}</a>' if link else f'<span>{name}</span>'
     return f'<th scope="row" role="rowheader" class="name">{inner}</th>'
 

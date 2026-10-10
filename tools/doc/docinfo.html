@@ -77,8 +77,10 @@ body, td.tableblock > .content, td.hdlist2, .admonitionblock > table td.content 
    holds such a word whole, a break of inline code is no box, and so is a break between two parts
    of a name in a heading or a URL, span.wbr.part: the name moves whole to the next line rather
    than break at the end of one, and a table's column keeps room for it. A heading's break after
-   a ::, a plain span.wbr, stays at every width. */
-span.wbr::after { content: "\200B"; }
+   a ::, a plain span.wbr, stays at every width. The space's alternative text is empty, so that
+   a screen reader reads the name whole; an engine that does not know it keeps the first
+   declaration. */
+span.wbr::after { content: "\200B"; content: "\200B" / ""; }
 @media screen and (min-width: 56.25em) {
   :not(pre):not([class^=L]) > code { white-space: nowrap; }
   :not(pre):not([class^=L]) > code.words { white-space: normal; }
