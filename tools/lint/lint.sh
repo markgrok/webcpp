@@ -15,8 +15,9 @@
 # runners lint with one version. Several rules have no clang-tidy check that expresses them and
 # are enforced here by pattern, each printing what it looked for when it fires: the ban on
 # io_context::run, run_one and run_for, the ban on fluent chains, the ban on a function other
-# than an assignment operator returning *this, and that no library header names a real clock,
-# a file, a socket, a process, a thread, the environment or the system's entropy. Others are
+# than an assignment operator, a prefix increment or decrement, or a function marked lint-std:
+# returning *this, and that no library header names a real clock, a file, a socket, a process,
+# a thread, the environment or the system's entropy. Others are
 # webcpp's own: the licence notice every source file opens with, the word that must never
 # appear, the em dash, the layout of JSON literals, that a library's test and example Jamfiles
 # declare their programs only with tools/webcpp.jam's rules, that a Doc Comment uses only the
@@ -352,36 +353,43 @@ else
     printf 'no fluent chains\n'
 fi
 
-# 3c. A function that returns *this is a fluent interface unless it is an assignment operator.
-#     An assignment operator's signature is followed from the line where operator=( opens it,
-#     over the lines clang-format splits it into, to the line that ends with the { opening its
-#     body; up to the } at the signature's indentation that closes it, a return of *this is the
-#     assignment's, though its body's calls hold parentheses as a signature does. A signature
-#     that ends with ; or } first (a declaration, = default, = delete, or a body on one line)
-#     opens no body to follow. Elsewhere, the nearest preceding line with a parenthesis, the
-#     signature of a function written on one line, decides. A // comment ends no line.
+# 3c. A function that returns *this is a fluent interface, unless it is an assignment operator,
+#     a prefix increment or decrement, which the iterator requirements make return *this, or a
+#     function whose head follows a line `// lint-std: <reason>`, the reason naming the member of
+#     the standard it reproduces (std::basic_regex::assign). The rule follows such a head from
+#     its first line to the brace that opens its body, and spares the body to the closing brace at
+#     the head's indentation, however clang-format splits it; elsewhere the nearest preceding line
+#     with a parenthesis decides.
 rule 'returns *this'
 # The program is awk's, and its $ are awk's fields.
 # shellcheck disable=SC2016
 self_returns="$(on_files "${work_directory}/sources" awk '
     function indent(line) { match(line, /^ */); return RLENGTH }
-    FNR == 1 { assigning = 0; pending = 0 }
+    function spared_head(line) {
+        return line ~ /operator[ ]*=[ ]*\(/ || line ~ /operator[ ]*(\+\+|--)[ ]*\([ ]*(\)|$)/
+    }
+    FNR == 1 { exempt = 0; pending = 0; marked = 0 }
     { code = $0; sub(/[ ]*\/\/.*$/, "", code) }
-    assigning && code ~ /^ *}/ && indent(code) == opened { assigning = 0 }
+    exempt && code ~ /^ *}/ && indent(code) == opened { exempt = 0 }
+    $0 ~ /^ *\/\/ lint-std: [^ ]/ { marked = 1; marked_at = indent($0); next }
     code ~ /\(/ { signature = code }
-    !assigning && !pending && code ~ /operator[ ]*=[ ]*\(/ { pending = 1; opened = indent(code) }
-    pending && code ~ /\{[ ]*$/ { pending = 0; assigning = 1 }
+    !exempt && !pending && (marked || spared_head(code)) {
+        pending = 1
+        opened = marked ? marked_at : indent(code)
+        marked = 0
+    }
+    pending && code ~ /\{[ ]*$/ { pending = 0; exempt = 1 }
     pending && code ~ /[;}][ ]*$/ { pending = 0 }
     /return \*this;/ {
-        if (!assigning && signature !~ /operator[ ]*=/) {
+        if (!exempt && !spared_head(signature)) {
             printf "%s:%d: %s\n", FILENAME, FNR, $0
         }
     }' || true)"
 if [ -n "${self_returns}" ]; then
     printf '%s\n' "${self_returns}"
-    fail 'a function other than an assignment operator returns *this'
+    fail 'a function returns *this outside an assignment, a prefix ++ or --, or lint-std'
 else
-    printf 'nothing returns *this outside an assignment operator\n'
+    printf 'nothing returns *this outside an assignment, a prefix ++ or --, or lint-std\n'
 fi
 
 # 4. The em dash is banned in every file, not only in C++.

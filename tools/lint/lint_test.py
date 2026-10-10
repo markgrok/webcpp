@@ -1139,6 +1139,64 @@ def test_returns_this(root):
                           at(root, path, '// after a chain')))
 
 
+def test_returns_this_spares_what_the_standard_specifies(root):
+    prepare(root)
+    # A prefix increment or decrement returns *this, as the iterator requirements make it, after a
+    # body that calls functions; so does a function whose head follows a line
+    # `// lint-std: <reason>`, the reason naming the standard's member it reproduces, which a Doc
+    # Comment above the line still documents. A postfix increment that returns *this, a function
+    # after a `// lint-std:` that gives no reason, and the function after a spared one are flagged.
+    path = 'libs/demo/test/stepper.cpp'
+    write(root, path, CPP + '\n'
+          'struct stepper {\n'
+          '    stepper& operator++() {\n'
+          '        advance();\n'
+          '        return *this;  // prefix increment\n'
+          '    }\n'
+          '\n'
+          '    stepper& operator--() noexcept {\n'
+          '        retreat();\n'
+          '        return *this;  // prefix decrement\n'
+          '    }\n'
+          '\n'
+          '    stepper operator++(int) {\n'
+          '        advance();\n'
+          '        return *this;  // postfix\n'
+          '    }\n'
+          '\n'
+          '    /** Assigns `count`, as std::basic_regex::assign does. */\n'
+          '    // lint-std: std::basic_regex::assign returns *this\n'
+          '    stepper& assign(int count) {\n'
+          '        position = count;\n'
+          '        advance();\n'
+          '        return *this;  // marked, with a reason\n'
+          '    }\n'
+          '\n'
+          '    stepper& after_marked() {\n'
+          '        advance();\n'
+          '        return *this;  // after a marked function\n'
+          '    }\n'
+          '\n'
+          '    // lint-std:\n'
+          '    stepper& unexplained() {\n'
+          '        advance();\n'
+          '        return *this;  // marked without a reason\n'
+          '    }\n'
+          '\n'
+          '    void advance() noexcept { ++position; }\n'
+          '\n'
+          '    void retreat() noexcept { --position; }\n'
+          '\n'
+          '    int position = 0;\n'
+          '};\n')
+    expect_alone(lint(root), 'returns *this',
+                 [at(root, path, '// postfix'), at(root, path, '// after a marked function'),
+                  at(root, path, '// marked without a reason')],
+                 spared=(at(root, path, '// prefix increment'),
+                         at(root, path, '// prefix decrement'),
+                         at(root, path, '// marked, with a reason')))
+
+
 def test_em_dash(root):
     prepare(root)
     write(root, 'libs/demo/README.md', f'# demo\n\nThe fixture {EM_DASH} a library.\n')
@@ -1802,6 +1860,7 @@ CASES = [
     test_blocking_io_context_call,
     test_fluent_chain,
     test_returns_this,
+    test_returns_this_spares_what_the_standard_specifies,
     test_em_dash,
     test_json_literals,
     test_licence_notice,
