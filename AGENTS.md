@@ -90,13 +90,16 @@ webcpp/
                       oracle and the lint once per lockfile, and its test
     report/           report.py, lanes.py, pages.py: the test matrix, and the CI verdict
     test/             the tests of the Jamroot, webcpp.jam, the oracle's rules, the component
-                      rules, the emscripten target and the doc build, their harness, and the
+                      rules, the emscripten target, the libraries webcpp does not build and
+                      the doc build, their harness, and the
                       fixture libraries demo, oracle_demo, component_demo and browser_demo
-    ci/               matrix.py (the lanes), assemble.py (the site), download.sh, wasi-sdk.jam
+    ci/               matrix.py (the lanes), assemble.py (the site), download.sh and
+                      helpers.sh (what the actions share), wasi-sdk.jam
                       and emsdk.jam (the lines that register the WASI and emscripten
                       toolsets), container/Dockerfile (the image of the container lanes),
                       and actions/{boost,wasi-sdk,wasmtime,wit-bindgen,wasi-wit,emsdk,
-                      secp256k1,libdatachannel,openssl,mrdocs,node}/ (chapter 9)
+                      secp256k1,libdatachannel,openssl,chrome,container,mrdocs,node}/
+                      (chapter 9)
   .github/            workflows/library.yml, workflows/ci.yml, actionlint.yaml (chapter 9)
   .local/             machine-local, git-ignored (below)
   bin/                b2's build directory, git-ignored
@@ -167,14 +170,19 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
   natively and, for emscripten, built with Emscripten; and, for its native
   backend, libdatachannel 0.24.6, built with the compiler and the standard
   library that build the programs, and OpenSSL 3. Each is found in the
-  directory of its `include/` and `lib/` that `SECP256K1_ROOT`,
-  `SECP256K1_EMSCRIPTEN_ROOT`, `LIBDATACHANNEL_ROOT` and `OPENSSL_ROOT`
-  name, else in `.local/secp256k1-native`, `.local/secp256k1-emscripten`,
+  directory of its `include/` and `lib/` that `-sSECP256K1_ROOT=<dir>`,
+  `-sSECP256K1_EMSCRIPTEN_ROOT=<dir>`, `-sLIBDATACHANNEL_ROOT=<dir>` and
+  `-sOPENSSL_ROOT=<dir>` on b2's command line name, never the environment,
+  else in `.local/secp256k1-native`, `.local/secp256k1-emscripten`,
   `.local/libdatachannel` and `.local/openssl` when it holds the library's
   header (below), else on the compiler's default search path, where a system
-  install is legitimate; the build stops, naming the library and every place
-  it looked, when none holds its header. trystero's page says how each is
-  built. The CI's actions build them so (chapter 9).
+  install is legitimate. When none holds a library's header, trystero is
+  left out, its programs skipped, with one line that names the library and
+  every place it looked, so that `b2 test` builds every other library; with
+  `webcpp-require-external=on` on b2's command line, as the CI builds, the
+  build stops instead (`webcpp.external-root` and `webcpp.external-found`,
+  chapter 9). trystero's page says how each is built. The CI's actions build
+  them so (chapter 9).
 
 Each toolchain is installed by hand and configured in `user-config.jam`,
 until webcpp bundles the toolchains (chapter 13). b2 reads
@@ -239,11 +247,11 @@ install of emsdk, or a link to one) with Emscripten's cache in
 `.local/libdatachannel` and `.local/openssl` (`include/openssl` and the two
 libraries of the system's OpenSSL 3, linked, as the CI's `openssl` action
 lays them out), where the CI's actions install them too (chapter 9). The
-build finds each of them there with no variable set: `b2 -a doc`, whose
-reference parses trystero's native backend, runs in a shell that has none.
-A shell may still source a `.local/env.sh` of its own that exports
-`SECP256K1_ROOT`, `SECP256K1_EMSCRIPTEN_ROOT`, `LIBDATACHANNEL_ROOT`,
-`OPENSSL_ROOT` and `EM_CACHE`, to name other directories. A tool the build looks up itself is
+build finds each of them there with no `-s`: `b2 -a doc`, whose reference
+parses trystero's native backend, runs as it is. Another directory is named
+with `-sSECP256K1_ROOT=<dir>` and its kin on b2's command line, never with
+the environment, as for the emsdk below: a variable a shell keeps from
+another day would replace `.local/` without a word. A tool the build looks up itself is
 taken from the path its `-s` option gives, else from `.local/`, else from
 `PATH`: MrDocs (`-sMRDOCS`), wit-bindgen and the WIT (above); wasi-sdk is
 where the `using clang` lines of `user-config.jam` name it, and, for a
@@ -292,7 +300,7 @@ when told: `b2 --user-config=.local/user-config.jam ...`.
 | `b2 libs/<name>/doc//reference` | one library's API reference alone, MrDocs strict |
 | `b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test libs/<name>/example` | the same for wasm32-wasip2; `clang-wasip3` for wasm32-wasip3; one toolset per command |
 | `b2 toolset=emscripten libs/<name>/test libs/<name>/example` | the same for emscripten, whose programs b2's toolset runs with node itself: never with a `testing.launcher` (chapter 9) |
-| `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/` |
+| `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/`, and its licence files, `LICENSE_1_0.txt` and a port's `LICENSE-<ORIGIN>.txt`, beside them in `<dir>/include/webcpp/<name>/` |
 | `b2 declared-targets -d0` | prints each `<library> <target>` pair the libraries declare: the CI's lanes |
 | `b2 declared-lanes -d0` | prints each `<library> <lane> <directory> <kind>` line of a library's own lanes, such as its oracle's, and `<library> <lane> <directory> <target> <kind>` once per target for a lane that names the targets it runs on; the kind is `original` for a lane that runs the original's language, else `programs` (chapters 5 and 9) |
 | `b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test//<lane>` | an own lane on wasip2, such as wasi's served tests, `libs/wasi/test//http` and `libs/wasi/example//http` (chapter 9) |
@@ -1279,6 +1287,25 @@ webcpp.drive driven : driven.cpp : : drive.mjs : --program ;
 webcpp.lane driver : driven : native emscripten ;
 ```
 
+**Libraries webcpp does not build** (`tools/webcpp.jam`), until it builds
+them from `third_party/` (chapter 13). A library's `build.jam` finds each with
+two rules, which share one computation of `.local/<directory>`:
+
+```
+webcpp.external-root <variable> : <directory> : <header> ;
+webcpp.external-found <owner> : <library> : <variable> : <directory> : <header> : <system> ? : <properties> * ;
+```
+
+| Rule | What it gives |
+| --- | --- |
+| `webcpp.external-root` | the directory its lib targets search: `-s<variable>=<dir>` on b2's command line, the last one, never the environment; else `.local/<directory>` of the superproject when that holds `include/<header>`; else nothing, the compiler's default search path |
+| `webcpp.external-found` | for the `<conditional>` of the owner's target: nothing when the library is there (the `-s`, `.local/<directory>`, or, with `system`, natively outside Windows, `/usr/include` or `/usr/local/include`); a `-s` that names a directory without the header stops the build, naming it; when no candidate holds it, `<build>no`, so that the owner's targets are skipped, and one line, once per owner and library, `webcpp: <owner> is left out: <library> was not found: ...`, naming every place it looked and how to give it, so that every other library builds; with `webcpp-require-external=on` (an incidental, propagated feature), as the CI builds, the build stops instead |
+
+`tools/test/external_test.py` pins both: the command line and `.local/`
+found, the environment never read, a wrong `-s` refused, a missing library
+left out once while another library builds, and the stop under
+`webcpp-require-external=on`.
+
 The rules of the doc Jamfiles are in chapter 8: `webcpp.doc <library> :
 <page>.adoc ;`, `webcpp.reference <library> : <requirements> * :
 <also-checked> * ;` (chapter 7) and, for the superproject's index,
@@ -1606,7 +1633,13 @@ jobs:
   built with the lane's compilers, its entry's `cc` and `cxx` (`gcc-14` and
   `g++-14`; Visual Studio for MSVC, CMake's own choice there). An entry on
   emscripten has neither OpenSSL nor libdatachannel, which only the native
-  backend needs.
+  backend needs. Its b2 command, the lane's or the own lane's, then has
+  `webcpp-require-external=on`, so that a library not found stops it rather
+  than leave the library out, and `-s<VARIABLE>=<dir>` for each variable the
+  actions exported (`EXTERNAL_VARIABLES`), on the command line, where a
+  library's `build.jam` reads them; the docs job gives its b2 the same when
+  the plan's `external` is `true`. A container lane passes no variable of
+  the environment into its container.
 - **own lanes,** one job per entry, named and placed as the entry says
   (`name`, `os`), which runs `matrix.py own-lane <entry>`: it registers the
   lane's toolset, prints its b2 command and runs it, on the lane in each of
@@ -1797,31 +1830,6 @@ wrapper each quoted as one word of Jam.
     `SECP256K1_EMSCRIPTEN_ROOT`. The emscripten build's cache key names the
     Emscripten version the emsdk action installs, read from its
     `install.sh`, so that a bump of emsdk builds it again.
-  - `chrome` installs Chrome for Testing's `chrome-headless-shell`
-    155.0.8059.39, the Stable channel of Google's
-    `last-known-good-versions-with-downloads.json` when it was pinned, from
-    the URL that JSON lists, checked against the SHA-256 recorded for each
-    build (Google publishes none: each is the digest of the archive
-    downloaded twice, which matched the MD5 Google's storage states for it),
-    into `.local/chrome-headless-shell`, on Linux x86-64 and arm64, and
-    exports `CHROME`, a wrapper that runs it with `--no-sandbox`, a decision
-    kept until it is measured on a runner: its sandbox needs unprivileged
-    user namespaces, which Ubuntu 24.04 grants through AppArmor only to
-    programs with a profile, and its archive has no setuid `chrome-sandbox`
-    (in an Ubuntu 24.04 container under Docker, as an unprivileged user, it
-    stops with "No usable sandbox!" without the flag, the symptom, though
-    Docker refuses those namespaces for a reason of its own). The threat
-    model: a sandbox confines a renderer against a hostile page, and the
-    shell loads only the interop driver's own pages, on 127.0.0.1, with
-    every other host unresolvable (the driver's `--host-resolver-rules`).
-    The options that keep the sandbox, to measure after the first CI run,
-    are an AppArmor profile granting `userns` to this shell alone, and
-    `CHROME_DEVEL_SANDBOX` naming the image's setuid helper,
-    `/opt/google/chrome/chrome-sandbox`.
-    The headless shell sends nothing to Google of its own (measured).
-  - `container` gives a job the container lanes' image (above): built from
-    `tools/ci/container/Dockerfile` when the cache does not hold it, saved
-    there under the Dockerfile's digest, and loaded from there otherwise.
   - `libdatachannel` clones the tag `v0.24.6`, fails unless `git rev-parse
     HEAD` is the tag's commit `6b1e2e6`, read with `gh api`, and only then
     fetches its submodules, at the commits that commit's gitlinks name, so a
@@ -1842,11 +1850,44 @@ wrapper each quoted as one word of Jam.
   `libsecp256k1.lib` there, and a program that links it statically defines
   `SECP256K1_STATIC`, which trystero's `build.jam` does on `msvc`, with
   OpenSSL's `libssl` and `libcrypto`.
+- `chrome` installs Chrome for Testing's `chrome-headless-shell`
+  155.0.8059.39, the Stable channel of Google's
+  `last-known-good-versions-with-downloads.json` when it was pinned, from
+  the URL that JSON lists, checked against the SHA-256 recorded for each
+  build (Google publishes none: each is the digest of the archive
+  downloaded twice, which matched the MD5 Google's storage states for it),
+  into `.local/chrome-headless-shell`, on Linux x86-64 and arm64, and
+  exports `CHROME`, a wrapper that runs it with `--no-sandbox`, a decision
+  kept until it is measured on a runner: its sandbox needs unprivileged
+  user namespaces, which Ubuntu 24.04 grants through AppArmor only to
+  programs with a profile, and its archive has no setuid `chrome-sandbox`
+  (in an Ubuntu 24.04 container under Docker, as an unprivileged user, it
+  stops with "No usable sandbox!" without the flag, the symptom, though
+  Docker refuses those namespaces for a reason of its own). The threat
+  model: a sandbox confines a renderer against a hostile page, and the
+  shell loads only the interop driver's own pages, on 127.0.0.1, with
+  every other host unresolvable (the driver's `--host-resolver-rules`).
+  The options that keep the sandbox, to measure after the first CI run,
+  are an AppArmor profile granting `userns` to this shell alone, and
+  `CHROME_DEVEL_SANDBOX` naming the image's setuid helper,
+  `/opt/google/chrome/chrome-sandbox`.
+  The headless shell sends nothing to Google of its own (measured).
+- `container` gives a job the container lanes' image (above): built from
+  `tools/ci/container/Dockerfile` when the cache does not hold it, saved
+  there under the Dockerfile's digest, and loaded from there otherwise.
 - `tools/ci/download.sh <url> <sha256> <file>` downloads each pinned file,
   and leaves no file and exits 1 when the download fails or the digest
   differs.
+- `tools/ci/helpers.sh` holds what the actions share, which each
+  `install.sh` sources beside `download.sh`: `digest`, the SHA-256 of files
+  one after the other; `mixed`, a path as Windows programs read it;
+  `configuration`, CMake's `Debug` on Windows and `Release` elsewhere; and
+  `compiler_identity`, the first line of the `--version` of each of `CC`
+  and `CXX` that is set, else the image. A cache key names it with the
+  action's own files.
 
-`tools/ci/actions_test.py` pins `download.sh`, the Boost action's prefix
+`tools/ci/actions_test.py` pins `download.sh` and `helpers.sh` (and that no
+action defines a function of its own that `helpers.sh` holds), the Boost action's prefix
 checks and the layouts it installs the headers and b2 in, and where the
 wit-bindgen, WASI WIT and emsdk actions install what they download, what
 they leave out, and their refusals: a runner no build of wit-bindgen or
@@ -1881,8 +1922,12 @@ not link a library's page, or when a link of any page names no file of the
 site or no anchor of its page: an index built without `-sWEBCPP_INDEX=site`
 links out of the site, and fails.
 
-Submodules are bumped by pull request, merged only when green; `main` is the
-only branch.
+A library's commits reach its own `main` first; then the superproject's
+commit that moves its submodule is pushed to the superproject's `main`, whose
+CI tests every library at the commits its submodules point to. What fails
+there is fixed with a test, in the library or in the superproject, by more
+commits on `main`; then each library's CI runs again, against the
+superproject's new `main`. `main` is the only branch.
 
 ## 10. Process
 
@@ -1909,7 +1954,8 @@ only branch.
   - the tests of the build and of the tools, when they or what they test
     changed: `tools/test/jamroot_test.py`, `tools/test/webcpp_jam_test.py`,
     `tools/test/oracle_jam_test.py`, `tools/test/component_jam_test.py`,
-    `tools/test/emscripten_test.py`, `tools/test/doc_test.py`,
+    `tools/test/emscripten_test.py`, `tools/test/external_test.py`,
+    `tools/test/doc_test.py`,
     `tools/test/harness_test.py`, `tools/lint/lint_test.py`,
     `tools/report/report_test.py`, `tools/doc/doc_check_test.py`,
     `tools/doc/doc_comments_test.py`, `tools/doc/extensions_test.py`,

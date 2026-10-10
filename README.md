@@ -15,7 +15,7 @@ model: this repository is the superproject, the equivalent of
 | --- | --- | --- |
 | [xactor](https://github.com/webcpporg/xactor) | A header-only, deterministic actor system: actors that handle one message at a time, with fuel per execution, timers and a lifecycle. | native, wasip2, wasip3 |
 | [xstate](https://github.com/webcpporg/xstate) | A header-only port of XState's state machines and actors: machines read from XState's JSON config, stepped by XState's pure functions or run as actors on xactor. Ports XState 5.33.2, and is proven against it. | native, wasip2, wasip3 |
-| [pratt](https://github.com/webcpporg/pratt) | A header-only Pratt parser engine, generic through concepts, with a calculator built on it, exact in decimal by default; a library of webcpp's own. | native, wasip2, wasip3 |
+| [pratt](https://github.com/webcpporg/pratt) | A header-only Pratt parser engine, generic through concepts, with a calculator built on it, exact in decimal by default; a library of webcpp's own. | native, emscripten, wasip2, wasip3 |
 | [wasi](https://github.com/webcpporg/wasi) | Header-only helpers for C++ built as WebAssembly components: the HTTP handler a component exports on wasip2 and wasip3, and the macros a program writes its main between; a library of webcpp's own. | wasip2, wasip3 (its response also natively) |
 | [trystero](https://github.com/webcpporg/trystero) | Serverless WebRTC rooms, wire compatible with Trystero: peers meet over public Nostr relays, natively over libdatachannel and in the browser over its own WebRTC. Ports Trystero 0.26.0, and is proven against it. | native, emscripten |
 
@@ -65,6 +65,13 @@ Clone the superproject with its libraries, and test them:
     cd webcpp
     b2 test
 
+On a machine without the three libraries trystero needs ("trystero's
+libraries", below), `b2 test` builds and runs every other library's tests and
+leaves trystero's out, saying so once for each library it did not find, with
+where it looked and how to give it:
+
+    webcpp: trystero is left out: libsecp256k1 was not found: -sSECP256K1_ROOT=<dir> was not given, and /path/to/webcpp/.local/secp256k1-native/include holds no secp256k1.h, nor does /usr/include or /usr/local/include. ...
+
 When Boost is not on the compiler's default include path, as with Homebrew's
 on macOS, the build stops at once and says what to configure:
 
@@ -85,8 +92,8 @@ line of its configuration checks,
 
     - Boost 1.92 or newer in /opt/homebrew/opt/boost/include (1.92.0) : yes [1]
 
-then builds and runs every library's tests: trystero's need its three
-libraries ("trystero's libraries", below).
+then builds and runs every library's tests, trystero's once its three
+libraries are found ("trystero's libraries", below).
 
 The other aggregates work the same way:
 
@@ -95,7 +102,7 @@ The other aggregates work the same way:
 | `b2 test` | builds and runs every library's tests |
 | `b2 example` | builds and runs every library's examples, and compares each one's output with the `.expected` file beside it |
 | `b2 doc` | builds the index page, `doc/html/index.html`, and each library's page, `libs/<name>/doc/html/index.html` |
-| `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/`, for CMake or a plain compiler |
+| `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/`, for CMake or a plain compiler, and its licence files beside them, in `<dir>/include/webcpp/<name>/` |
 | `b2 libs/<name>/test` | one library's tests; `libs/<name>/example` and `libs/<name>/doc` likewise |
 | `b2 libs/<name>/test/oracle//oracle` | a port's oracle lane: the original it ports runs the same cases and a twin of each example, and the results must be the port's |
 | `b2 -a ...` | the same, from scratch: b2 compares timestamps, so only a build from scratch is a result |
@@ -181,13 +188,18 @@ trystero needs three libraries that webcpp does not build yet: libsecp256k1
 0.8.0, natively and built with Emscripten, and, for its native backend,
 libdatachannel 0.24.6, built with the compiler and the standard library that
 build the programs, and OpenSSL 3. Its page says how each is built. The
-build finds each where `SECP256K1_ROOT`, `SECP256K1_EMSCRIPTEN_ROOT`,
-`LIBDATACHANNEL_ROOT` and `OPENSSL_ROOT` say, each the directory of its
-`include/` and `lib/`, else in `.local/secp256k1-native`,
-`.local/secp256k1-emscripten`, `.local/libdatachannel` and `.local/openssl`
-of the checkout, where the CI installs them, else on the compiler's default
-search path, where a system install is legitimate; when none holds a library's
-header, the build stops, naming the library and every place it looked.
+build finds each where `-sSECP256K1_ROOT=<dir>`,
+`-sSECP256K1_EMSCRIPTEN_ROOT=<dir>`, `-sLIBDATACHANNEL_ROOT=<dir>` and
+`-sOPENSSL_ROOT=<dir>` on b2's command line say, each the directory of its
+`include/` and `lib/`, never the environment, else in
+`.local/secp256k1-native`, `.local/secp256k1-emscripten`,
+`.local/libdatachannel` and `.local/openssl` of the checkout, where the CI
+installs them, else on the compiler's default search path, where a system
+install is legitimate. When none holds a library's header, trystero is left
+out, its tests and examples skipped, with one line that names the library and
+every place it looked, and every other library builds;
+`webcpp-require-external=on` on b2's command line, which the CI gives, stops
+the build instead.
 
 ## Documentation
 

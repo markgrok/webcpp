@@ -36,8 +36,10 @@ example of each library by lane, with the log of every failure.
 == Getting started
 
 With Boost 1.92 or newer and b2 installed, a checkout of the superproject
-builds and tests every library, trystero once the three libraries it needs
-are installed, as its page says:
+builds and tests every library. trystero needs three libraries that webcpp
+does not build yet, which its page says how to install: without them, `b2
+test` builds and tests every other library and leaves trystero out, saying
+so once for each library it did not find:
 
 [source,bash]
 ----
