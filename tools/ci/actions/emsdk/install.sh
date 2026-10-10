@@ -66,6 +66,9 @@ release=f6264d4a4dd9ba24a9f0a5702835a44d1463de13
 builds=https://storage.googleapis.com/webassembly/emscripten-releases-builds
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The functions every action shares: digest, mixed, configuration, compiler_identity.
+# shellcheck source=SCRIPTDIR/../../helpers.sh
+. "${here}/../../helpers.sh"
 
 # The system libraries em++ 6.0.11 links a program with, measured from the libraries a fresh cache
 # generates for a C++ program with <iostream> and <string> linked at -O2 and at -O0 -g, each
@@ -137,14 +140,6 @@ pinned() {
     esac
 }
 
-digest() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        cat "$@" | sha256sum | cut -d ' ' -f 1
-    else
-        cat "$@" | shasum -a 256 | cut -d ' ' -f 1
-    fi
-}
-
 # The action's input libraries, true unless it says false, and nothing else.
 libraries_wanted() {
     local wanted="${LIBRARIES:-true}"
@@ -162,7 +157,7 @@ key() {
     # A change to how the emsdk is installed or configured installs it again.
     local files
     files="$(digest "${here}/action.yml" "${here}/install.sh" "${here}/node.sh" \
-        "${here}/../../download.sh")"
+        "${here}/../../download.sh" "${here}/../../helpers.sh")"
     printf 'key=emsdk-%s-%s-%s-%s-%s\n' "${version}" "${RUNNER_OS}" "${RUNNER_ARCH}" \
         "${ImageOS:-image}" "${files:0:16}" >> "${GITHUB_OUTPUT}"
     printf 'libraries=%s\n' "${wanted}" >> "${GITHUB_OUTPUT}"

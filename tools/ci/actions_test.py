@@ -63,6 +63,7 @@ BOOST = CI / 'actions/boost/install.sh'
 WIT_BINDGEN = CI / 'actions/wit-bindgen/install.sh'
 WASI_WIT = CI / 'actions/wasi-wit/install.sh'
 EMSDK = CI / 'actions/emsdk/install.sh'
+HELPERS = CI / 'helpers.sh'
 
 # What the stand-in download.sh prints, and its exit status: install.sh got past its guards.
 CALLED = 'download.sh was called'
@@ -121,6 +122,7 @@ def boost_tree(scratch: Path) -> Path:
     action = scratch / 'tools/ci/actions/boost'
     action.mkdir(parents=True)
     shutil.copy2(BOOST, action / 'install.sh')
+    place_helpers(scratch)
     stand_in = scratch / 'tools/ci/download.sh'
     stand_in.write_text(f'#!/bin/sh\necho "{CALLED}" >&2\nexit {CALLED_STATUS}\n')
     stand_in.chmod(0o755)
@@ -236,6 +238,12 @@ def test_boost_install_fails_when_the_prefix_is_incomplete(scratch: Path) -> Non
         result.stderr)
 
 
+def place_helpers(scratch: Path) -> None:
+    """tools/ci/helpers.sh in the scratch superproject, where every action sources it."""
+    (scratch / 'tools/ci').mkdir(parents=True, exist_ok=True)
+    shutil.copy2(HELPERS, scratch / 'tools/ci/helpers.sh')
+
+
 def serving_tree(scratch: Path, action: str, script: Path, archives: dict[str, Path]) -> Path:
     """A copy of the action's install.sh where it lives, beside a download.sh that serves each
     archive by the URL it is downloaded from, and writes each URL and digest it is given to
@@ -243,6 +251,7 @@ def serving_tree(scratch: Path, action: str, script: Path, archives: dict[str, P
     directory = scratch / 'tools/ci/actions' / action
     directory.mkdir(parents=True)
     shutil.copy2(script, directory / 'install.sh')
+    place_helpers(scratch)
     cases = ''.join(f'    {url}) cp "{archive}" "$3" ;;\n' for url, archive in archives.items())
     stand_in = scratch / 'tools/ci/download.sh'
     stand_in.write_text('#!/bin/sh\n'
@@ -1075,6 +1084,7 @@ def libdatachannel_tree(scratch: Path, system: str = 'Linux', processor: str = '
     directory = scratch / 'tools/ci/actions/libdatachannel'
     directory.mkdir(parents=True)
     shutil.copy2(LIBDATACHANNEL, directory / 'install.sh')
+    place_helpers(scratch)
     shutil.copy2(LIBDATACHANNEL.parent / 'action.yml', directory / 'action.yml')
     tools = stand_ins(scratch, {'git': FAKE_CLONE, 'cmake': FAKE_CMAKE, 'gcc-14': FAKE_COMPILER,
                                 'g++-14': FAKE_COMPILER, 'clang-18': FAKE_COMPILER,
@@ -1179,6 +1189,7 @@ def openssl_tree(scratch: Path, system: str, processor: str,
     directory = scratch / 'tools/ci/actions/openssl'
     directory.mkdir(parents=True)
     shutil.copy2(OPENSSL, directory / 'install.sh')
+    place_helpers(scratch)
     download = scratch / 'tools/ci/download.sh'
     download.write_text(f'#!/bin/sh\nprintf \'%s %s\\n\' "$1" "$2" >> "{scratch}/downloads.log"\n'
                         f'echo "{CALLED}" >&2\nexit {CALLED_STATUS}\n')
@@ -1404,6 +1415,7 @@ def container_tree(scratch: Path) -> tuple[Path, dict[str, str]]:
     directory.mkdir(parents=True)
     for name in ('install.sh', 'action.yml'):
         shutil.copy2(CONTAINER.parent / name, directory / name)
+    place_helpers(scratch)
     (scratch / 'tools/ci/container').mkdir()
     shutil.copy2(CI / 'container/Dockerfile', scratch / 'tools/ci/container/Dockerfile')
     tools = stand_ins(scratch, {'docker': FAKE_IMAGE_DOCKER})
@@ -1442,7 +1454,52 @@ def test_container_builds_the_image_once_and_loads_it_after(scratch: Path) -> No
     assert f'install.sh: {archive} holds no image {tag}' in result.stderr, result.stderr
 
 
+def test_the_shared_helpers(scratch: Path) -> None:
+    # tools/ci/helpers.sh, which every action's install.sh sources beside download.sh: digest,
+    # the SHA-256 of its files one after the other; mixed, a path as Windows programs read it;
+    # configuration, CMake's Debug on Windows, for b2's /MDd, else Release; and
+    # compiler_identity, the first line of the --version of each of CC and CXX that is set, else
+    # the image.
+    one, two = scratch / 'one', scratch / 'two'
+    one.write_text('one\n')
+    two.write_text('two\n')
+    tools = stand_ins(scratch, {'cygpath': '#!/bin/sh\nprintf \'cygpath %s %s\\n\' "$1" "$2"\n',
+                                'gcc-14': FAKE_COMPILER, 'g++-14': FAKE_COMPILER})
+
+    def helper(call: str, **variables: str) -> str:
+        environment = {**os.environ, 'PATH': f'{tools}{os.pathsep}{os.environ["PATH"]}',
+                       **variables}
+        for name in ('CC', 'CXX'):
+            if name not in variables:
+                environment.pop(name, None)
+        result = subprocess.run(['bash', '-c', f'set -euo pipefail; . "{HELPERS}"; {call}'],
+                                capture_output=True, text=True, check=False, env=environment)
+        assert result.returncode == 0, (call, result.returncode, result.stderr)
+        return result.stdout
+
+    expected = hashlib.sha256(b'one\ntwo\n').hexdigest()
+    assert helper(f'digest "{one}" "{two}"') == f'{expected}\n'
+    single = hashlib.sha256(b'one\n').hexdigest()
+    assert helper(f'digest "{one}"') == f'{single}\n'
+    assert helper('mixed /a/b', RUNNER_OS='Linux') == '/a/b\n'
+    assert helper('mixed /a/b', RUNNER_OS='Windows') == 'cygpath -m /a/b\n'
+    assert helper('configuration', RUNNER_OS='Windows') == 'Debug\n'
+    assert helper('configuration', RUNNER_OS='macOS') == 'Release\n'
+    assert helper('compiler_identity', CC='gcc-14', CXX='g++-14') == (
+        'gcc-14 (stand-in) 14.2.0\ng++-14 (stand-in) 14.2.0\n')
+    assert helper('compiler_identity', CC='gcc-14') == 'gcc-14 (stand-in) 14.2.0\n'
+    assert helper('compiler_identity', ImageOS='win22', ImageVersion='1') == 'default win22 1\n'
+    # Each action sources it, and defines none of the four itself.
+    for script in sorted(CI.glob('actions/*/install.sh')):
+        text = script.read_text()
+        for name in ('digest', 'mixed', 'configuration', 'compiler_identity'):
+            assert f'\n{name}() {{' not in text, (script, name)
+        if re.search(r'\$\((digest|mixed|configuration|compiler_identity)\b', text):
+            assert '. "${here}/../../helpers.sh"' in text, script
+
+
 CASES: list[Callable[[Path], None]] = [
+    test_the_shared_helpers,
     test_a_pinned_download_is_kept,
     test_another_digest_leaves_no_file,
     test_a_failed_download_exits_1_and_leaves_no_file,

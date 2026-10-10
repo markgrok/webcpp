@@ -39,6 +39,9 @@ repository=https://github.com/paullouisageneau/libdatachannel.git
 commit=6b1e2e620f1e37f0eafeee702eaea0043cb305fd
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The functions every action shares: digest, mixed, configuration, compiler_identity.
+# shellcheck source=SCRIPTDIR/../../helpers.sh
+. "${here}/../../helpers.sh"
 
 # Stops, before anything is fetched, on a runner this action builds nothing for, or without the
 # OpenSSL it builds against.
@@ -60,46 +63,10 @@ check_runner() {
     fi
 }
 
-digest() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        cat "$@" | sha256sum | cut -d ' ' -f 1
-    else
-        cat "$@" | shasum -a 256 | cut -d ' ' -f 1
-    fi
-}
-
-# A path as Windows programs read it there, with slashes: D:/a/webcpp/webcpp/.local.
-mixed() {
-    if [ "${RUNNER_OS}" = Windows ]; then
-        cygpath -m "$1"
-    else
-        printf '%s\n' "$1"
-    fi
-}
-
-configuration() {
-    if [ "${RUNNER_OS}" = Windows ]; then
-        printf 'Debug\n'
-    else
-        printf 'Release\n'
-    fi
-}
-
-# What the compilers say they are, or, when the inputs name none, the image, whose default
-# compilers CMake takes.
-compiler_identity() {
-    if [ -n "${CC-}" ] || [ -n "${CXX-}" ]; then
-        "${CC:-cc}" --version 2>&1 | head -n 1
-        "${CXX:-c++}" --version 2>&1 | head -n 1
-    else
-        printf 'default %s %s\n' "${ImageOS:-image}" "${ImageVersion:-version}"
-    fi
-}
-
 key() {
     check_runner
     local files compiler openssl
-    files="$(digest "${here}/action.yml" "${here}/install.sh")"
+    files="$(digest "${here}/action.yml" "${here}/install.sh" "${here}/../../helpers.sh")"
     compiler="$(compiler_identity | digest)"
     openssl="$(grep -h 'OPENSSL_VERSION_TEXT\|OPENSSL_VERSION_STR' \
         "${OPENSSL_ROOT}/include/openssl/opensslv.h" | digest)"

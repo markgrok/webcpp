@@ -30,23 +30,9 @@ url="https://archives.boost.io/release/${version}/source/${archive}"
 sha256=c4a3b310ddd2472416e091067166b0713be97c63f38c212c484ada022fd296ce
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# A path as Windows programs and b2 read it there, with slashes: D:/a/_temp.
-mixed() {
-    if [ "${RUNNER_OS}" = Windows ]; then
-        cygpath -m "$1"
-    else
-        printf '%s\n' "$1"
-    fi
-}
-
-digest() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        cat "$@" | sha256sum | cut -d ' ' -f 1
-    else
-        cat "$@" | shasum -a 256 | cut -d ' ' -f 1
-    fi
-}
+# The functions every action shares: digest, mixed, configuration, compiler_identity.
+# shellcheck source=SCRIPTDIR/../../helpers.sh
+. "${here}/../../helpers.sh"
 
 key() {
     # The image is part of the key: b2 is a native program, and one built on a newer image need
@@ -61,7 +47,8 @@ key() {
         *) image="${ImageOS:-windows}" ;;
     esac
     local files
-    files="$(digest "${here}/action.yml" "${here}/install.sh" "${here}/../../download.sh")"
+    files="$(digest "${here}/action.yml" "${here}/install.sh" "${here}/../../download.sh" \
+        "${here}/../../helpers.sh")"
     printf 'prefix=%s\n' "$(mixed "${RUNNER_TEMP}")/boost-${version}" >> "${GITHUB_OUTPUT}"
     printf 'key=boost-%s-%s-%s-%s\n' "${version}" "${image}" "${RUNNER_ARCH}" \
         "${files:0:16}" >> "${GITHUB_OUTPUT}"

@@ -37,15 +37,9 @@ installer_url="https://slproweb.com/download/${installer}"
 installer_sha256=8b2fcf66088fa0d13fa5729ef374a182adf72edfffde89089b3b1bf48c3f257f
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# A path as Windows programs read it there, with slashes: C:/Program Files/OpenSSL.
-mixed() {
-    if [ "${RUNNER_OS}" = Windows ]; then
-        cygpath -m "$1"
-    else
-        printf '%s\n' "$1"
-    fi
-}
+# The functions every action shares: digest, mixed, configuration, compiler_identity.
+# shellcheck source=SCRIPTDIR/../../helpers.sh
+. "${here}/../../helpers.sh"
 
 # Fails the step, naming why, and leaves no .local/openssl.
 refuse() {

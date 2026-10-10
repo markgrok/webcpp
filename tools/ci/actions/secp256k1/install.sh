@@ -41,6 +41,9 @@ url="https://github.com/bitcoin-core/secp256k1/archive/${commit}.tar.gz"
 sha256=3fe9fd705f4fdf2fe90d6e04b6c1fedd7e8f244a119315886f6468f52c2dfc33
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The functions every action shares: digest, mixed, configuration, compiler_identity.
+# shellcheck source=SCRIPTDIR/../../helpers.sh
+. "${here}/../../helpers.sh"
 
 # The Emscripten version the emsdk action installs, its line version=, which the key of the
 # emscripten build names: a bump of emsdk builds libsecp256k1 again.
@@ -92,47 +95,12 @@ check_runner() {
     fi
 }
 
-digest() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        cat "$@" | sha256sum | cut -d ' ' -f 1
-    else
-        cat "$@" | shasum -a 256 | cut -d ' ' -f 1
-    fi
-}
-
-# A path as Windows programs read it there, with slashes: D:/a/webcpp/webcpp/.local.
-mixed() {
-    if [ "${RUNNER_OS}" = Windows ]; then
-        cygpath -m "$1"
-    else
-        printf '%s\n' "$1"
-    fi
-}
-
-# The configuration built: Debug on Windows, for the lanes' /MDd, Release elsewhere.
-configuration() {
-    if [ "${RUNNER_OS}" = Windows ]; then
-        printf 'Debug\n'
-    else
-        printf 'Release\n'
-    fi
-}
-
-# What the compiler says it is: the first line of its --version, or, when the input names none,
-# the image, whose default compiler CMake takes.
-compiler_identity() {
-    if [ -n "${CC-}" ]; then
-        "${CC}" --version 2>&1 | head -n 1
-    else
-        printf 'default %s %s\n' "${ImageOS:-image}" "${ImageVersion:-version}"
-    fi
-}
-
 key() {
     check_runner
     local wanted files compiler
     wanted="$(emscripten_wanted)"
-    files="$(digest "${here}/action.yml" "${here}/install.sh" "${here}/../../download.sh")"
+    files="$(digest "${here}/action.yml" "${here}/install.sh" "${here}/../../download.sh" \
+        "${here}/../../helpers.sh")"
     compiler="$(compiler_identity | digest)"
     local build=native
     if [ "${wanted}" = true ]; then

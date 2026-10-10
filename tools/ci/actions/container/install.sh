@@ -22,13 +22,10 @@ set -euo pipefail
 dockerfile=tools/ci/container/Dockerfile
 archive=.local/container/image.tar
 
-digest() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | cut -d ' ' -f 1
-    else
-        shasum -a 256 "$1" | cut -d ' ' -f 1
-    fi
-}
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The functions every action shares: digest, mixed, configuration, compiler_identity.
+# shellcheck source=SCRIPTDIR/../../helpers.sh
+. "${here}/../../helpers.sh"
 
 hash="$(digest "${dockerfile}")"
 tag="webcpp-lane:${hash:0:16}"
