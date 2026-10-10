@@ -74,7 +74,11 @@ run together by a passthrough, and one outside it of a span that did not close (
 keeps a + and a backtick MrDocs escaped as references, as Asciidoctor writes {cpp}); no escape of
 MrDocs's left undecoded and no U+2010, which MrDocs writes for an ASCII hyphen; no em dash, a
 character or a reference, which Asciidoctor writes for `--` in prose and in inline code alike,
-`xn--bcher` becoming `xn&#8212;bcher` (`\\--` keeps two hyphens); no link of a
+`xn--bcher` becoming `xn&#8212;bcher` (`\\--` keeps two hyphens); no link inside inline code,
+which Asciidoctor makes of a URL there, its text or a link nested in another (`\\http://` keeps
+it as text), but for MrDocs's, the whole of the code one link, to a section of the page,
+`<a href="#webcpp-x-f">webcpp::x::f</a>`, or to the line of the header where a symbol is
+declared, `&lt;<a href="...">webcpp/x.hpp</a>&gt;`; no link of a
 synopsis left as text in a block of code, which a highlighter that broke the link leaves; and no
 link to #index or #webcpp, the sections of MrDocs's reference that reference.py drops. With the
 library's `--repository` and `--library`, each reference of its files to another library's page,
@@ -202,6 +206,12 @@ MRDOCS_ESCAPE = re.compile(r'&(circ|lowbar|ast|grave|num|lsqb|rsqb|lcub|rcub|bso
 HYPHEN = '\u2010'
 # An em dash, which Asciidoctor writes for --, as a character or as a reference.
 EM_DASH = re.compile(r'\u2014|&#0*8212;|&#x0*2014;|&mdash;', re.I)
+# The inline code MrDocs writes for what it links, the whole of the code one link: a symbol's
+# name, to its section of the page, in a table of members, or the header where a symbol is
+# declared, between < and >, to its line; postprocess.mjs breaks either between its parts.
+LINK_TEXT = r'(?:[^<]|<wbr\b[^>]*>)*'
+MRDOCS_LINK = re.compile(rf'^(?:<a href="#[^"<>]*">{LINK_TEXT}</a>|'
+                         rf'&lt;<a href="[^"<>]*">{LINK_TEXT}</a>&gt;)$')
 # A link of a synopsis, which the macros substitution reads only when the highlighter keeps it.
 LINK_MACRO = re.compile(r'link:[^\s\[]*\[')
 # A link to the section of the global namespace or of webcpp, which tools/doc/reference.py
@@ -1075,7 +1085,7 @@ def completeness_faults(page: Path, sections: list[Path], library: Library,
 
 def rendered_faults(page: Path) -> list[str]:
     """Each cross-reference left as text, literal ++, stray backtick, escape of MrDocs's, U+2010,
-    em dash and link left as text in code of the rendered `page`."""
+    em dash, link inside inline code and link left as text in code of the rendered `page`."""
     html = page.read_text(encoding='utf-8')
     found = []
 
@@ -1104,6 +1114,9 @@ def rendered_faults(page: Path) -> list[str]:
     for match in CROSS_REFERENCE.finditer(words):
         report('a cross-reference left as text', words, match)
     for code in re.finditer(r'<code\b[^>]*>(.*?)</code>', text, flags=re.S):
+        if re.search(r'<a\b', code.group(1)) and not MRDOCS_LINK.match(code.group(1)):
+            report('a link inside inline code, a URL Asciidoctor linked (write \\http:// or '
+                   '+...+ to keep it as text)', text, code)
         inside = re.sub(r'<[^>]+>', ' ', code.group(1))
         for match in re.finditer('`', inside):
             report('a backtick inside inline code, two spans run together', inside, match)

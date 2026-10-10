@@ -217,6 +217,27 @@ def test_dashes_stay_as_written_when_escaped(_: None) -> None:
         assert kept in text, (kept, text)
 
 
+def test_urls_in_code_stay_as_written_when_escaped(_: None) -> None:
+    # Asciidoctor links a URL in inline code, which the check of the rendered page refuses: its
+    # text in brackets, or a link nested in another; \http:// keeps it as text, and so does a
+    # passthrough. MrDocs's links in code pass: a header where a symbol is declared, and a symbol.
+    for text in ('A query `http://a/?[x]`.\n', 'Mail `http://a@b@example.com/`.\n'):
+        result = rendered_check(convert(text))
+        assert result.returncode == 1 and 'a link inside inline code' in result.stdout, (
+            text, result.stdout)
+    page = convert('[#webcpp-demo-box]\n== box\n\n'
+                   'A query `\\http://a/?[x]` and mail `+http://a@b@example.com/+`.\n\n'
+                   'Declared in `&lt;https://github.com/webcpporg/demo/blob/main/include/webcpp/'
+                   'demo/box.hpp#L7[webcpp&sol;demo&sol;box&period;hpp]&gt;`\n\n'
+                   '|===\n| `link:#webcpp-demo-box[webcpp::demo::box]`\n|===\n')
+    result = rendered_check(page)
+    assert result.returncode == 0, result.stdout
+    text = unescape(re.sub(r'<[^>]+>', '', body(page)))
+    for kept in ('http://a/?[x]', 'http://a@b@example.com/', '<webcpp/demo/box.hpp>',
+                 'webcpp::demo::box'):
+        assert kept in text, (kept, text)
+
+
 def parts(html: str) -> str:
     """The html with each | written as the break between two parts of a name that only a phone's
     style keeps; a break after a :: is written as it is, <wbr>, which every style keeps."""
@@ -546,6 +567,7 @@ CASES: list[Callable[[None], None]] = [
     test_a_flag_keeps_its_leading_hyphen,
     test_wide_table_labels_its_cells,
     test_dashes_stay_as_written_when_escaped,
+    test_urls_in_code_stay_as_written_when_escaped,
     test_reference_headings_break_after_scopes,
     test_long_names_break_between_their_parts,
     test_names_break_only_where_they_part,

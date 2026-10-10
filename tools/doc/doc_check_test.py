@@ -444,8 +444,10 @@ def check_rendered(root: Path) -> None:
     kin, and the U+2010 the first stands for, are what postprocess.mjs decodes; a link of a
     synopsis left as text is a listing the highlighter broke; and a link to #index or #webcpp is
     one to a section reference.py drops. An em dash, in any of its spellings, is what Asciidoctor
-    writes for --, inside inline code too. The samples are what Asciidoctor.js and tools/doc's
-    extensions write."""
+    writes for --, inside inline code too; and a link inside inline code is a URL Asciidoctor
+    linked there, but for MrDocs's, the whole of the code one link: a symbol's, to its section,
+    or a header's, between < and >. The samples are what Asciidoctor.js and tools/doc's extensions
+    write."""
     rendered = root / 'html/index.html'
     page = ('<html><head><title>T</title><style>a::before { content: "++"; }</style></head>'
             '<body><h1>The C&#43;&#43; port</h1><p>See <a href="#x">X</a>.</p>'
@@ -457,8 +459,14 @@ def check_rendered(root: Path) -> None:
             # What MrDocs writes of a stream's operators, and of C++ in a comment.
             '<p><code>operator&lt;&lt;</code> and <code>operator&gt;&gt;</code> in C&#43;&#43;'
             ', and std::cout &lt;&lt; x &gt;&gt; y.</p>'
-            # Two hyphens kept, and a thin space and a zero-width one, which are no dash.
-            '<p><code>xn--bcher</code>, a&#8201;-&#8201;b&#8203;.</p>'
+            # The header MrDocs names where a symbol is declared, linked, and a symbol of a table
+            # of members; a link around code; two hyphens kept, and a thin space and a zero-width
+            # one, which are no dash.
+            '<p>Declared in <code>&lt;<a href="https://github.com/webcpporg/demo/blob/main/'
+            'include/webcpp/demo/box.hpp#L7">webcpp/<wbr class="part">demo/<wbr class="part">box.'
+            '<wbr class="part">hpp</a>&gt;</code>, <code><a href="#webcpp-demo-box">webcpp::<wbr>'
+            'demo::<wbr>box</a></code>, <a href="#box"><code>box</code></a>, '
+            '<code>xn--bcher</code>, a&#8201;-&#8201;b&#8203;.</p>'
             '%s</body></html>')
     for sample, fault in (
             ('', None),
@@ -491,7 +499,20 @@ def check_rendered(root: Path) -> None:
              'an em dash, which Asciidoctor writes for --: &mdash;'),
             ('<p>A pause&#x2014;here.</p>',
              'an em dash, which Asciidoctor writes for --: &#x2014;'),
-            ('<p>A pause\u2014here.</p>', 'an em dash, which Asciidoctor writes for --: \u2014')):
+            ('<p>A pause\u2014here.</p>', 'an em dash, which Asciidoctor writes for --: \u2014'),
+            # A URL in inline code, which Asciidoctor links: its text, the URL's, or nested links.
+            ('<p>Query <code class="whole"><a href="http://a/?">x</a></code> here.</p>',
+             'a link inside inline code, a URL Asciidoctor linked'),
+            ('<p>Mail <code class="whole"><a href="https://example.com/" class="bare">'
+             'https://example.com/</a></code> here.</p>',
+             'a link inside inline code, a URL Asciidoctor linked'),
+            ('<p>Mail <code><a href="http://a@<a href="mailto:b@example.com">b@example.com</a>/" '
+             'class="bare">http://a@<a href="mailto:b@example.com">b@example.com</a>/</a></code>'
+             '.</p>', 'a link inside inline code, a URL Asciidoctor linked'),
+            ('<p>Declared in <code>&lt;<a href="#a">a.hpp</a>&gt; and &lt;<a href="#b">b.hpp</a>'
+             '&gt;</code>.</p>', 'a link inside inline code, a URL Asciidoctor linked'),
+            ('<p>Members <code><a href="#a">a</a> and <a href="#b">b</a></code>.</p>',
+             'a link inside inline code, a URL Asciidoctor linked')):
         write(rendered, page % sample)
         result = run('--rendered', str(rendered))
         if fault is None:

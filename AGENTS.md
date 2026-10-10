@@ -1032,8 +1032,11 @@ build:
 - the rendered page has no cross-reference left as text, no stray `++` or
   backtick, no undecoded escape of MrDocs's, no U+2010, no em dash, which
   Asciidoctor writes for `--` even inside inline code (`xn\--bcher` keeps
-  the two hyphens), and no link to the dropped `#index` or `#webcpp`
-  sections.
+  the two hyphens), no link inside inline code, which Asciidoctor makes of a
+  URL there (`\http://a/?[x]` or `+http://a/?[x]+` keeps it as text), but
+  for MrDocs's, the whole of the code one link, to a symbol's section or to
+  the header where it is declared, and no link to the dropped `#index` or
+  `#webcpp` sections.
 
 ### Counts
 
