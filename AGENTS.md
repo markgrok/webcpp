@@ -1536,6 +1536,11 @@ jobs:
   `--library` it says whether any library of `libs/` needs them: the plan's
   output `lint-external`, on which the lint job, which analyses every
   library, installs them.
+- **container:** when the plan has a container lane (its output
+  `has-container`), the `container` action on ubuntu-24.04, which builds
+  the container lanes' image when the cache does not hold it and saves it
+  there, once per run; every lane's job waits for it (`needs: [plan,
+  container]`), and runs when it succeeded or was skipped.
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
@@ -1564,16 +1569,24 @@ jobs:
   every library's tests hold it, and trystero's guarantee 6 rests on it.
   The image is `tools/ci/container/Dockerfile`'s: Ubuntu 24.04, the
   runner's release, pinned by the digest of its image index, with `g++-14`,
-  `clang-18`, OpenSSL's development files and Python from Ubuntu's snapshot
-  of the archive at the date its `ARG SNAPSHOT` names (`Snapshot: yes` on the
-  sources, `apt-get --snapshot`), so that one Dockerfile is one set of
-  compilers; the snapshot service is HTTPS only, so `ca-certificates` comes
-  first from the archive as it is, and Ubuntu keeps no snapshot of
-  `ports.ubuntu.com`, so the image builds for x86-64 alone (measured: apt
-  2.8.3 refuses arm64's sources). It is tagged `webcpp-lane:<the first 16
-  hex digits of the Dockerfile's SHA-256>`, and the lanes job's `container`
-  action builds it once, saves it in the cache under that digest, and loads
-  it in every later lane; `matrix.py lane` builds it only when no image of
+  `clang-18`, OpenSSL's development files and Python, every package,
+  `ca-certificates` included, from Ubuntu's snapshot of the archive at the
+  date its `ARG SNAPSHOT` names (`Snapshot: yes` on the sources, `apt-get
+  --snapshot`), so that one Dockerfile is one set of packages. The snapshot
+  service is HTTPS only and the base image has no CA certificates, so apt
+  reaches it once without verifying the server's certificate, to install
+  `ca-certificates` from the snapshot, and verifies it from then on; apt
+  checks the signed `InRelease` and every index and package against it
+  whatever the transport. A `ca-certificates` from the live archive would
+  pull `libssl3t64` forward, and the snapshot's `libssl-dev`, which depends
+  on its own, would no longer install once Ubuntu updates OpenSSL (measured).
+  Ubuntu keeps no snapshot of `ports.ubuntu.com`, so the image builds for
+  x86-64 alone (measured: apt 2.8.3 refuses arm64's sources). It is tagged
+  `webcpp-lane:<the first 16 hex digits of the Dockerfile's SHA-256>`. The
+  `container` job, which every lane waits for, runs the `container` action
+  once per run, which builds it when the cache does not hold it and saves it
+  there under that digest; each container lane's job runs the action too,
+  which then loads it, and `matrix.py lane` builds it only when no image of
   that tag is there. Then it runs b2 by its path, `docker run --rm --network
   none`, as the runner's user, with the superproject and b2's prefix, where
   the Boost action installs Boost's headers too, mounted at their own paths,
@@ -1791,16 +1804,24 @@ wrapper each quoted as one word of Jam.
     build (Google publishes none: each is the digest of the archive
     downloaded twice, which matched the MD5 Google's storage states for it),
     into `.local/chrome-headless-shell`, on Linux x86-64 and arm64, and
-    exports `CHROME`, a wrapper that runs it with `--no-sandbox`: measured in
-    an Ubuntu 24.04 container as an unprivileged user, the shell stops ("No
-    usable sandbox!"), since its sandbox needs unprivileged user namespaces,
-    which Ubuntu 24.04 grants through AppArmor only to programs with a
-    profile, and its archive has no setuid `chrome-sandbox`; it loads only
-    the driver's own pages, on 127.0.0.1, with every other host unresolved.
+    exports `CHROME`, a wrapper that runs it with `--no-sandbox`, a decision
+    kept until it is measured on a runner: its sandbox needs unprivileged
+    user namespaces, which Ubuntu 24.04 grants through AppArmor only to
+    programs with a profile, and its archive has no setuid `chrome-sandbox`
+    (in an Ubuntu 24.04 container under Docker, as an unprivileged user, it
+    stops with "No usable sandbox!" without the flag, the symptom, though
+    Docker refuses those namespaces for a reason of its own). The threat
+    model: a sandbox confines a renderer against a hostile page, and the
+    shell loads only the interop driver's own pages, on 127.0.0.1, with
+    every other host unresolvable (the driver's `--host-resolver-rules`).
+    The options that keep the sandbox, to measure after the first CI run,
+    are an AppArmor profile granting `userns` to this shell alone, and
+    `CHROME_DEVEL_SANDBOX` naming the image's setuid helper,
+    `/opt/google/chrome/chrome-sandbox`.
     The headless shell sends nothing to Google of its own (measured).
-  - `container` gives a container lane its image (above): built once from
-    `tools/ci/container/Dockerfile`, saved in the cache under the
-    Dockerfile's digest, and loaded by every later lane.
+  - `container` gives a job the container lanes' image (above): built from
+    `tools/ci/container/Dockerfile` when the cache does not hold it, saved
+    there under the Dockerfile's digest, and loaded from there otherwise.
   - `libdatachannel` clones the tag `v0.24.6`, fails unless `git rev-parse
     HEAD` is the tag's commit `6b1e2e6`, read with `gh api`, and only then
     fetches its submodules, at the commits that commit's gitlinks name, so a

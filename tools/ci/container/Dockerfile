@@ -12,21 +12,27 @@
 # are the runner's, mounted at their own paths; the lane runs in it with no network but the
 # loopback, which the packages are installed before.
 #
-# The packages come from Ubuntu's snapshot of the archive at SNAPSHOT, so that one Dockerfile is
-# one set of compilers: apt reads the archive as it was then (Snapshot: yes on the sources, and
-# apt-get --snapshot). The snapshot service is HTTPS only, so ca-certificates, which apt needs to
-# reach it and nothing builds with, is installed first from the archive as it is. Ubuntu keeps no
-# snapshot of ports.ubuntu.com: the image builds for x86-64 alone, the container lanes' runners
-# (measured: apt 2.8.3 says "Snapshots not supported for http://ports.ubuntu.com/ubuntu-ports/" on
-# arm64).
+# Every package comes from Ubuntu's snapshot of the archive at SNAPSHOT, so that one Dockerfile is
+# one set of packages: apt reads the archive as it was then (Snapshot: yes on the sources, and
+# apt-get --snapshot). The snapshot service is HTTPS only, and the base image has no
+# ca-certificates, so apt reaches it the first time without verifying the server's certificate,
+# to install ca-certificates from the snapshot too, and verifies it from then on. That is no loss
+# of integrity: apt checks the snapshot's signed InRelease, and every index and package against
+# it, whatever the transport. Installing ca-certificates from the live archive instead pulls in
+# openssl and libssl3t64 as they are now, and the snapshot's libssl-dev, which depends on its own
+# libssl3t64, then cannot install once Ubuntu updates OpenSSL (measured at SNAPSHOT=20260915:
+# "libssl-dev : Depends: libssl3t64 (= 3.0.13-0ubuntu3.15) but 3.0.13-0ubuntu3.16 is to be
+# installed"). Ubuntu keeps no snapshot of ports.ubuntu.com: the image builds for x86-64 alone,
+# the container lanes' runners (measured: apt 2.8.3 says "Snapshots not supported for
+# http://ports.ubuntu.com/ubuntu-ports/" on arm64).
 FROM ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
 
 ARG SNAPSHOT=20261009T000000Z
 
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
-        ca-certificates \
-    && sed -i 's/^Signed-By: .*/&\nSnapshot: yes/' /etc/apt/sources.list.d/ubuntu.sources \
+RUN sed -i 's/^Signed-By: .*/&\nSnapshot: yes/' /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get -o Acquire::https::Verify-Peer=false update --snapshot "${SNAPSHOT}" \
+    && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::Verify-Peer=false install \
+        --yes --no-install-recommends --snapshot "${SNAPSHOT}" ca-certificates \
     && apt-get update --snapshot "${SNAPSHOT}" \
     && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
         --snapshot "${SNAPSHOT}" g++-14 clang-18 libssl-dev python3 \

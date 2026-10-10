@@ -1008,9 +1008,22 @@ def test_the_jobs_install_the_external_dependencies(_):
 
 
 def test_a_container_lane_has_its_image_from_the_cache(_):
-    # The lanes job's container action restores the image of this Dockerfile, built once and
-    # saved, before the lane runs, which then builds nothing.
-    steps = job_steps(workflow_jobs()['lanes'])
+    # The container job builds the image once per run, and caches it, before any lane: the lanes
+    # wait for it, and their container action restores the image of this Dockerfile before the
+    # lane runs, which then builds nothing. The plan says whether a container lane is planned.
+    jobs = workflow_jobs()
+    plan = jobs['plan']
+    assert 'has-container: ${{ steps.plan.outputs.has-container }}' in plan, plan
+    container_job = jobs['container']
+    assert re.search(r'^    needs: plan$', container_job, re.MULTILINE), container_job
+    assert "if: needs.plan.outputs.has-container == 'true'" in container_job, container_job
+    assert len([step for step in job_steps(container_job)
+                if 'uses: ./tools/ci/actions/container' in step]) == 1, container_job
+    lanes_job = jobs['lanes']
+    assert re.search(r'^    needs: \[plan, container\]$', lanes_job, re.MULTILINE), lanes_job
+    assert ("needs.container.result == 'success' || needs.container.result == 'skipped'"
+            in lanes_job), lanes_job
+    steps = job_steps(lanes_job)
     container = [index for index, step in enumerate(steps)
                  if 'uses: ./tools/ci/actions/container' in step]
     lane = next(index for index, step in enumerate(steps) if 'matrix.py lane "$LANE"' in step)
@@ -1076,7 +1089,15 @@ def test_a_container_lane_runs_b2_with_no_network(root):
         dockerfile)
     # Its packages from Ubuntu's snapshot at one date, and its tag that of this Dockerfile.
     assert re.search(r'^ARG SNAPSHOT=\d{8}T\d{6}Z$', dockerfile, re.MULTILINE), dockerfile
-    assert dockerfile.count('--snapshot "${SNAPSHOT}"') == 2, dockerfile
+    # Every package from the snapshot, ca-certificates included: each apt-get update and install
+    # names it, and none reads the live archive.
+    code = ''.join(line for line in dockerfile.splitlines(keepends=True)
+                   if not line.startswith('#'))
+    commands = re.findall(r'apt-get (?:-o \S+ )?(update|install)\b[^&]*', code)
+    assert len(commands) == 4, commands
+    calls = re.findall(r'apt-get[^&]*', code)
+    assert all('--snapshot "${SNAPSHOT}"' in call for call in calls), calls
+    assert re.search(r'install[^&]*--snapshot "\$\{SNAPSHOT\}" ca-certificates', code), code
     digest = hashlib.sha256(dockerfile.encode()).hexdigest()
     assert matrix.CONTAINER_IMAGE == f'webcpp-lane:{digest[:16]}', matrix.CONTAINER_IMAGE
     for package in ('g++-14', 'clang-18', 'libssl-dev', 'python3'):

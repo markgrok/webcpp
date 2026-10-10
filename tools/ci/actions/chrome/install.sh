@@ -21,14 +21,20 @@
 # (measured), and it is the same program on every run of a commit, never the image's Chrome,
 # which moves with the image.
 #
-# CHROME is a wrapper that runs the shell with --no-sandbox. Measured in an Ubuntu 24.04
-# container, as an unprivileged user: the shell stops ("No usable sandbox!"), since its sandbox
-# needs unprivileged user namespaces, which Ubuntu 24.04 restricts with AppArmor to programs that
-# have a profile (the image's own Chrome has one; a program under .local has none, and the
-# runner images do not lift the restriction), and the archive holds no setuid chrome-sandbox to
-# fall back on; with --no-sandbox it runs. The sandbox confines a page's renderer from hostile web
-# content; the shell here loads only the driver's own pages, served on 127.0.0.1, with every other
-# host unresolvable (the interop driver's --host-resolver-rules).
+# CHROME is a wrapper that runs the shell with --no-sandbox, a decision kept until it is measured on
+# a runner. The shell's sandbox needs unprivileged user namespaces, which Ubuntu 24.04 grants
+# through AppArmor only to programs that have a profile (the image's own Chrome has one, a program
+# under .local has none), and its archive holds no setuid chrome-sandbox to fall back on. Measured
+# in an Ubuntu 24.04 container under Docker, as an unprivileged user, the shell stops ("No usable
+# sandbox!") without the flag and runs with it; Docker refuses those namespaces for a reason of its
+# own, so this shows the symptom, not the runner's AppArmor, which no run has yet shown.
+#
+# The threat model: the sandbox confines a renderer against a hostile page. The shell here loads
+# only the interop driver's own pages, served on 127.0.0.1, and resolves no other host (the
+# driver's --host-resolver-rules map every name but 127.0.0.1 to nothing), so no page it can reach
+# is anyone else's. The two options that keep the sandbox, to measure after the first CI run, are
+# an AppArmor profile that grants userns to this shell alone (installed with sudo apparmor_parser),
+# and CHROME_DEVEL_SANDBOX naming the image's setuid helper, /opt/google/chrome/chrome-sandbox.
 set -euo pipefail
 
 version=155.0.8059.39
