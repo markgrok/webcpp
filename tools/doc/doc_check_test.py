@@ -741,6 +741,26 @@ def check_library_root(root: Path) -> None:
         write(root / 'doc/page.adoc',
               PAGE + f'\n[listing]\n----\ninclude::{{library-root}}/{included}\n----\n')
         expect(check(root, *given), 1, f'page.adoc:{line}: {fault}')
+    # A C++ block shows a tagged region of a test or an example of the library, which its
+    # Jamfiles compile, as it shows an example's; never a header, a Jamfile or a whole file.
+    code = '// tag::a[]\nint main() {}\n// end::a[]\n'
+    write(root / 'test/x_test.cpp', code)
+    write(root / 'example/nested/x.cpp', code)
+    write(root / 'include/webcpp/fixture/x.hpp', code)
+    for style, included in (('[source]\n', 'test/x_test.cpp[tag=a]'),
+                            ('', 'example/nested/x.cpp[tags=a,indent=0]'),
+                            ('[source,cpp]\n', 'test/x_test.cpp[tag=a]')):
+        write(root / 'doc/page.adoc',
+              PAGE + f'\n{style}----\ninclude::{{library-root}}/{included}\n----\n')
+        expect(check(root, '--complete', *given), 0, '')
+    for included in ('include/webcpp/fixture/x.hpp[tag=a]', 'build.jam[tag=flags]',
+                     'test/x_test.cpp[]', 'test/x_test.cpp[lines=1..2]'):
+        write(root / 'doc/page.adoc',
+              PAGE + f'\n[source]\n----\ninclude::{{library-root}}/{included}\n----\n')
+        expect(check(root, '--complete', *given), 1,
+               f'page.adoc:{NEXT}: C++ that is not included from an example')
+    for name in ('test/x_test.cpp', 'example/nested/x.cpp', 'include/webcpp/fixture/x.hpp'):
+        (root / name).unlink()
     # Without --library-root, which only a library's page is given.
     write(root / 'doc/page.adoc',
           PAGE + '\n[listing]\n----\ninclude::{library-root}/build.jam[tag=flags]\n----\n')

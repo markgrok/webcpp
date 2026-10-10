@@ -492,6 +492,18 @@ def test_page_includes_a_file_of_its_library(root):
     harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
     html = (root / PAGE).read_text()
     assert 'webcpp.headers-alone demo : ../include ;' in html and 'tag::alone' not in html, html
+    # And a C++ block shows a tagged region of a test, highlighted as an example's is.
+    edit(root, 'libs/demo/test/pass.cpp', '    BOOST_TEST_EQ(webcpp::demo::answer(), 42);\n',
+         '    // tag::answer[]\n    BOOST_TEST_EQ(webcpp::demo::answer(), 42);\n'
+         '    // end::answer[]\n')
+    subprocess.run(['git', 'add', 'test/pass.cpp'], cwd=root / 'libs/demo', check=True)
+    edit(root, 'libs/demo/doc/demo.adoc', '[#holds]\n',
+         '[source]\n----\ninclude::{library-root}/test/pass.cpp[tag=answer,indent=0]\n----\n\n'
+         '[#holds]\n')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
+    html = (root / PAGE).read_text()
+    listing = re.search(r'<pre\b[^>]*><code\b[^>]*>([^\n]*BOOST_TEST_EQ[^\n]*)</code></pre>', html)
+    assert listing is not None and 'class="hljs-number">42<' in listing.group(1), html
 
 
 def test_page_shows_the_counts_of_its_programs(root):

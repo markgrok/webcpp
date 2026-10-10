@@ -980,7 +980,9 @@ A listing of shell commands is `[source,bash]`; the only languages a page may
 use are C++ (the default), JavaScript (a twin's code), JSON and bash. A
 listing of anything else, a WIT world, a Jamfile's lines or a served test's
 requests, is a `[listing]` block, which stays plain: a `----` block with no
-style is C++, which must be an include of an example.
+style is C++, which must be an include of an example, or a tagged region of
+a file of the library's `test/` or `example/`, which its Jamfiles compile,
+`include::{library-root}/test/allocation_test.cpp[tag=bind_allocator]`.
 
 A page shows the build's own configuration as it is, never a copy: it
 includes a region of a file the superproject's git tracks,
@@ -1005,8 +1007,8 @@ build:
 
 - every `.adoc` under `doc/` is reached from the page's `include::` graph;
 - every example's code or output is shown, every block's language is allowed,
-  C++ is shown only as an include of an example, and the page includes the
-  reference;
+  C++ is shown only as an include of an example or of a tagged region of the
+  library's `test/` or `example/`, and the page includes the reference;
 - every program an example Jamfile links and never runs (`webcpp.link`),
   which `doc.jam` gives as `--linked <program.cpp>`, is shown by an include of
   its code, and an `.expected` beside one is a fault ("<program> is linked,

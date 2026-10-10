@@ -59,7 +59,8 @@ text, which no link checks. With `--readme`, each fenced block of the README tha
 `<!-- include::<file>[<attributes>] -->` opens is that file's region, as an include with those
 attributes would give it, and every C++ block of the README is one. With --complete, the page is
 whole: every block's language is one of the page's, C++, JavaScript, JSON or shell, as Asciidoctor
-reads it; its C++ is included from the example programs, the reference's synopses being MrDocs's;
+reads it; its C++ is included from the example programs, or by tag from a file of the library's
+test/ or example/ through `{library-root}`, the reference's synopses being MrDocs's;
 it shows JavaScript only as an include of a twin; it shows every example's code or output, and
 every output of a twin, each a difference from the original that the page explains; and it shows
 the reference, `include::{reference}[leveloffset=+1]`. Each `--linked <program.cpp>`, a program
@@ -126,6 +127,10 @@ OUTPUT = re.compile(rf'^\{{examples\}}/{NESTED}\.expected$')
 TWIN_OUTPUT = re.compile(rf'^\{{twins\}}/{NESTED}\.expected$')
 TWIN_SOURCE = re.compile(rf'^include::\{{twins\}}/{NESTED}\.mjs\[[^\]]*\]$')
 EXAMPLE_SOURCE = re.compile(rf'^include::\{{examples\}}/{NESTED}\.(cpp|hpp)\[[^\]]*\]$')
+# A tagged region of a test or an example of the library, which its Jamfiles compile, shown as an
+# example's code is: faults() holds the rest, a file its git tracks and a region it holds.
+LIBRARY_SOURCE = re.compile(rf'^include::\{{library-root\}}/(?:test|example)/{NESTED}\.(?:cpp|hpp)'
+                            r'\[[^\]]*\btags?=[^\]]+\]$')
 SHOWN = re.compile(rf'^include::\{{(examples|twins)\}}/{NESTED}\.(cpp|expected)\[')
 # An include of a file of the superproject, by its path there.
 SUPERPROJECT = re.compile(r'^\{webcpp-root\}/(.+)$')
@@ -906,11 +911,12 @@ def walk(lines: list[str]) -> list[Item]:
 
 def block_faults(section: Path) -> list[str]:
     """Each block of `section` in a language the page does not use, each C++ block that no
-    example holds, and each JavaScript block that no twin holds.
+    example, test or example region of the library holds, and each JavaScript block that no twin
+    holds.
 
     The reference's synopses are MrDocs's, in the file it writes at {reference}, which is no
-    section: everywhere in the page the C++ is an example program's, included by tag, and the
-    JavaScript a twin's.
+    section: everywhere in the page the C++ is an example program's, or a tagged region of a file
+    of the library's test/ or example/ through {library-root}, and the JavaScript a twin's.
     """
     found = []
     for kind, number, *rest in walk(section.read_text().split('\n')):
@@ -937,8 +943,10 @@ def block_faults(section: Path) -> list[str]:
         elif language == 'javascript' and (len(body) != 1 or TWIN_SOURCE.match(body[0]) is None):
             found.append(f'{section}:{number}: JavaScript that is not an include of a twin')
         elif language == DEFAULT_LANGUAGE and \
-                any(line.strip() and EXAMPLE_SOURCE.match(line.strip()) is None for line in body):
-            found.append(f'{section}:{number}: C++ that is not included from an example')
+                any(line.strip() and EXAMPLE_SOURCE.match(line.strip()) is None and
+                    LIBRARY_SOURCE.match(line.strip()) is None for line in body):
+            found.append(f'{section}:{number}: C++ that is not included from an example, or by '
+                         'tag from the library\'s test/ or example/ through {library-root}')
     return found
 
 
