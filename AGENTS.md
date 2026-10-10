@@ -574,8 +574,31 @@ than leave it green on the rest.
 
 - C++20, header-only. The Jamroot sets `<cxxstd>20`, `<warnings>extra` and
   `<warnings-as-errors>on` for everything.
-- Boost and the standard library before custom code. A third-party
-  dependency other than Boost needs the owner's decision.
+- **What a library builds on, in this order:** what webcpp already has; then
+  Boost (boost.org); then the C++ Alliance's libraries
+  ([cppalliance](https://github.com/cppalliance)), whose authors are Boost's;
+  then the standard library; and only then a library from outside, after the
+  owner's review, with the reason written in the library's documentation
+  (OpenSSL, for one, because it is the standard of its field). Code of the
+  library's own comes last. So a hash is Boost.Hash2's before anything else,
+  and a regular expression is webcpp::regex's.
+- **Within Boost, the newest library of a kind:** Boost.Coroutine2 rather
+  than Boost.Coroutine, Boost.Variant2 rather than Boost.Variant, Boost.Hash2
+  rather than Boost.ContainerHash for new hashing, Boost.Unordered's flat
+  maps rather than an older map, Boost.Charconv rather than a hand-written
+  conversion.
+- **A library from outside is wrapped,** behind an interface that follows its
+  counterpart in the standard library or in Boost as closely as it can, so
+  that the outside library is an implementation detail the user never names
+  and another implementation can replace it: as webcpp::regex hides SRELL
+  behind `std::regex`'s interface, with Boost.Regex and `std::regex` as other
+  backends.
+- **Types of a fixed meaning.** An integer whose width matters is one of the
+  fixed-width types of `<cstdint>` (`std::uint8_t`, `std::int64_t`,
+  `std::uint32_t`), as Boost.Config's `<boost/cstdint.hpp>` guidelines give
+  them; a size or an index is `std::size_t`, a difference
+  `std::ptrdiff_t`; plain `int`, `long`, `short` and `unsigned` appear only
+  where an interface of the standard library or of Boost asks for them.
 - **Errors as values.** An operation that can fail returns its error:
   `boost::system::result<T>`, with an error category of the library's own
   (`webcpp.<name>`) and fixed enumerator values that are never reused.
@@ -2151,8 +2174,11 @@ What webcpp does not have yet, and the chapters that mention it:
   target times every variant). `tools/ci/matrix.py` takes the level, and
   the fast set runs locally as one command (chapter 9).
 - **The review of the existing libraries.** Once the pending work is done,
-  every library is brought to the rules of exceptions, variants and
-  allocators (chapter 6).
+  every library is brought to the rules of exceptions, variants,
+  allocators, the order of what a library builds on, the newest Boost
+  library of a kind, wrapped outside libraries, and fixed-width types
+  (chapter 6); the lint then checks the last (no plain `int`, `long`,
+  `short` or `unsigned` in a public header where no interface asks for it).
 - **Asynchronous libraries on xactor with Boost.Asio and Boost.Cobalt.** An
   example library shows how a library built on xactor's scheduler meets
   Boost.Asio and Boost.Cobalt, so that asynchronous libraries are easy to

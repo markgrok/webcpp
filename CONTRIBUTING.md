@@ -30,8 +30,19 @@ the superproject, each library has a repository of its own under
 
 Each line is a rule of AGENTS.md, named by its chapter.
 
-- **Header-only C++20, Boost and the standard library first.** Any other
-  dependency needs the maintainer's decision (chapter 6).
+- **Header-only C++20, on solid ground.** A library builds on, in this
+  order: what webcpp already has, then Boost, then the C++ Alliance's
+  libraries, then the standard library, and only then a library from outside,
+  after the maintainer's review and with the reason in its documentation.
+  Within Boost, the newest library of a kind (Coroutine2, Variant2, Hash2).
+  A library from outside is wrapped behind an interface that follows its
+  standard or Boost counterpart, so that it can be replaced (webcpp::regex
+  hides SRELL behind `std::regex`'s interface). The aim is that every library
+  carries the quality and the peer review of Boost and the standard
+  (chapter 6).
+- **Types of a fixed meaning:** fixed-width integers from `<cstdint>`,
+  `std::size_t` for sizes and indices, and plain `int` or `long` only where
+  an interface asks for them (chapter 6).
 - **A port follows an exact version of its original,** under a licence
   compatible with the Boost Software License (MIT, BSD, Apache-2.0; not
   GPL), and keeps the original's notice in `LICENSE-<ORIGIN>.txt`; webcpp's
