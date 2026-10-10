@@ -920,12 +920,15 @@ local rule given ( variable )
 # directory, else .local/<directory>, else, natively outside Windows,
 # /usr/include or /usr/local/include, where a system install is legitimate.
 # A -s that names a directory without the header stops the build, naming it.
+# path.exists, b2's builtin, asks the system about the path as it is written,
+# so it is given each path in the system's form: on Windows b2's own form,
+# /D:/a/..., names no file.
 local rule missing ( library variable directory header : target )
 {
     local root = [ given $(variable) ] ;
     if $(root)
     {
-        if ! [ path.exists $(root)/include/$(header) ]
+        if ! [ path.exists [ path.native $(root)/include/$(header) ] ]
         {
             local named = [ path.native $(root) ] ;
             errors.user-error "-s$(variable)=$(named) holds no include/$(header): give"
@@ -936,7 +939,7 @@ local rule missing ( library variable directory header : target )
         return ;
     }
     local installed = [ local-root $(directory) ] ;
-    if [ path.exists $(installed)/include/$(header) ]
+    if [ path.exists [ path.native $(installed)/include/$(header) ] ]
     {
         return ;
     }
@@ -946,7 +949,7 @@ local rule missing ( library variable directory header : target )
         systems = /usr/include /usr/local/include ;
         for local system-include in $(systems)
         {
-            if [ path.exists $(system-include)/$(header) ]
+            if [ path.exists [ path.native $(system-include)/$(header) ] ]
             {
                 return ;
             }
@@ -977,7 +980,7 @@ rule external ( owner : library : variable : directory : header : target )
         return [ path.native $(root) ] ;
     }
     root = [ local-root $(directory) ] ;
-    if [ path.exists $(root)/include/$(header) ]
+    if [ path.exists [ path.native $(root)/include/$(header) ] ]
     {
         return [ path.native $(root) ] ;
     }
