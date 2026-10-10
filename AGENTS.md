@@ -629,7 +629,11 @@ than leave it green on the rest.
   with `-fno-exceptions` on any target, Boost.Config then defines
   `BOOST_NO_EXCEPTIONS`, and `webcpp.jam` links `tools/throw_exception.cpp`,
   a `boost::throw_exception` handler that prints and aborts; MSVC also gets
-  `_HAS_EXCEPTIONS=0`. webcpp builds no such variant of its own.
+  `_HAS_EXCEPTIONS=0`. Whether a build has exceptions is the user's choice
+  alone: every library supports both (below), the lint analyses every
+  program both ways, and a library proves what behaves otherwise without
+  exceptions by tests of its own that declare `<exception-handling>off`
+  (trystero's `browser_*_no_exceptions`).
 - **Each library has its own configuration macro,**
   `WEBCPP_<NAME>_NO_EXCEPTIONS`, as Boost.Asio has
   `BOOST_ASIO_NO_EXCEPTIONS`, in `<webcpp/<name>/config.hpp>`, which the

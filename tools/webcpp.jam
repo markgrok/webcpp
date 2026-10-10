@@ -97,8 +97,8 @@ feature.feature webcpp-require-external : on : optional incidental propagated ;
 
 # What links tools/throw_exception.cpp, the handler Boost calls in place of
 # a throw, into a program a user builds with exception-handling=off, on any
-# target. webcpp builds no variant of its own without exceptions, nor any
-# without RTTI.
+# target. Every library supports a build without exceptions; webcpp builds
+# none without RTTI.
 .handler = <exception-handling>off:<source>/webcpp//throw_exception ;
 
 # What a program that node runs on emscripten links with: webcpp.run's,
