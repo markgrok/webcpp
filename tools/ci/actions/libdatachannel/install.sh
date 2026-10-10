@@ -18,8 +18,8 @@
 #
 #   install.sh key        writes the cache key to GITHUB_OUTPUT: the version, the runner, the
 #                         compilers, OpenSSL's version and this action's files;
-#   install.sh install    clones the tag v0.24.6 with its submodules, checks that HEAD is the
-#                         tag's commit, and builds and installs it with CMake;
+#   install.sh install    clones the tag v0.24.6, checks that HEAD is the tag's commit, then
+#                         fetches its submodules, and builds and installs it with CMake;
 #   install.sh configure  checks the installed header and library, and gives the job's later
 #                         steps LIBDATACHANNEL_ROOT, and, on Windows, PATH its DLL's directory.
 #
@@ -120,12 +120,14 @@ install() {
     rm -rf .local/.build/libdatachannel .local/libdatachannel
     mkdir -p .local/.build
     local source=.local/.build/libdatachannel/source
-    git clone --quiet --depth 1 --branch "v${version}" --recurse-submodules --shallow-submodules \
-        "${repository}" "${source}"
+    git clone --quiet --depth 1 --branch "v${version}" "${repository}" "${source}"
     local head
     head="$(git -C "${source}" rev-parse HEAD)"
     [ "${head}" = "${commit}" ] \
         || refuse "${repository} at v${version} checked out ${head}, and ${commit} is pinned"
+    # Only now the submodules, at the commits the pinned commit's gitlinks name: a tag that moved
+    # never has git fetch from the URLs its own .gitmodules would name.
+    git -C "${source}" submodule update --quiet --init --recursive --depth 1
     local compilers=()
     if [ -n "${CC-}" ]; then
         compilers+=(-DCMAKE_C_COMPILER="${CC}")

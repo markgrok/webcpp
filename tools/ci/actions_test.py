@@ -53,6 +53,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -836,12 +837,17 @@ exec "$@"
 FAKE_COMPILER = '#!/bin/sh\necho "$(basename "$0") (stand-in) ${STAND_IN_VERSION:-14.2.0}"\n'
 
 # A stand-in of git for the libdatachannel action: `clone ... <repository> <dir>` logs its words
-# and makes the directory, and `-C <dir> rev-parse HEAD` prints STAND_IN_HEAD, else the pin.
+# and makes the directory, `-C <dir> submodule ...` logs its words, and `-C <dir> rev-parse HEAD`
+# prints STAND_IN_HEAD, else the pin.
 FAKE_CLONE = r"""#!/usr/bin/env bash
 set -euo pipefail
 if [ "$1" = clone ]; then
     printf '%s\n' "git $*" >> "${STAND_IN_LOG}"
     mkdir -p "${@: -1}"
+    exit 0
+fi
+if [ "$1 $3" = '-C submodule' ]; then
+    printf '%s\n' "git $*" >> "${STAND_IN_LOG}"
     exit 0
 fi
 if [ "$1 $3 $4" != '-C rev-parse HEAD' ]; then
@@ -912,6 +918,9 @@ def secp256k1_tree(scratch: Path, system: str = 'Linux', processor: str = 'X64',
     script = serving_tree(scratch, 'secp256k1', SECP256K1,
                           {SECP256K1_URL: secp256k1_archive(scratch)})
     shutil.copy2(SECP256K1.parent / 'action.yml', script.parent / 'action.yml')
+    # The emsdk action, whose version the emscripten build's key names.
+    (scratch / 'tools/ci/actions/emsdk').mkdir()
+    shutil.copy2(EMSDK, scratch / 'tools/ci/actions/emsdk/install.sh')
     emcmake = scratch / '.local/emsdk/upstream/emscripten/emcmake'
     emcmake.parent.mkdir(parents=True)
     emcmake.write_text(FAKE_EMCMAKE)
@@ -968,6 +977,17 @@ def test_secp256k1_builds_the_pinned_archive_natively_and_for_emscripten(scratch
         keys.append(key)
     assert len(set(keys)) == len(keys), keys
     assert '-native-emscripten-6.0.11-' in keys[0] and '-native-emscripten' not in keys[2], keys
+    # The Emscripten version is the emsdk action's, read from it: a bump of emsdk is another entry.
+    emsdk = scratch / 'tools/ci/actions/emsdk/install.sh'
+    emsdk.write_text(emsdk.read_text().replace('\nversion=6.0.11\n', '\nversion=6.0.12\n'))
+    (scratch / 'github-output').unlink()
+    result = dependency_step(scratch, script, runner, 'key')
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert '-native-emscripten-6.0.12-' in (scratch / 'github-output').read_text()
+    emsdk.write_text('# no version\n')
+    result = dependency_step(scratch, script, runner, 'key')
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert (f'install.sh: {emsdk.resolve()} names no version=') in result.stderr, result.stderr
 
 
 def test_secp256k1_on_windows_builds_debug_with_visual_studio(scratch: Path) -> None:
@@ -1073,8 +1093,11 @@ def test_libdatachannel_builds_the_pinned_tag_with_the_lanes_compilers(scratch: 
     work = '.local/.build/libdatachannel/build'
     prefix = f'{scratch.resolve()}/.local/libdatachannel'
     assert logged(scratch) == [
-        f'git clone --quiet --depth 1 --branch v0.24.6 --recurse-submodules --shallow-submodules '
-        f'{LIBDATACHANNEL_REPOSITORY} .local/.build/libdatachannel/source',
+        # The submodules are fetched only once HEAD is the pin, at the commits its gitlinks name.
+        f'git clone --quiet --depth 1 --branch v0.24.6 {LIBDATACHANNEL_REPOSITORY} '
+        '.local/.build/libdatachannel/source',
+        'git -C .local/.build/libdatachannel/source submodule update --quiet --init --recursive '
+        '--depth 1',
         f'cmake -S .local/.build/libdatachannel/source -B {work} -DCMAKE_C_COMPILER=gcc-14 '
         f'-DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Release '
         f'{" ".join(LIBDATACHANNEL_OPTIONS)} -DOPENSSL_ROOT_DIR={scratch}/openssl '
@@ -1108,8 +1131,8 @@ def test_libdatachannel_on_windows_builds_debug_and_puts_its_dll_on_path(scratch
     script, runner = libdatachannel_tree(scratch, 'Windows', 'X64')
     result = dependency_step(scratch, script, runner, 'install')
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
-    assert '-DCMAKE_C_COMPILER' not in logged(scratch)[1], logged(scratch)
-    assert '-DCMAKE_BUILD_TYPE=Debug ' in logged(scratch)[1], logged(scratch)
+    assert '-DCMAKE_C_COMPILER' not in logged(scratch)[2], logged(scratch)
+    assert '-DCMAKE_BUILD_TYPE=Debug ' in logged(scratch)[2], logged(scratch)
     result = dependency_step(scratch, script, runner, 'configure')
     assert result.returncode == 0, (result.returncode, result.stderr)
     assert (scratch / 'github-path').read_text() == (
@@ -1125,7 +1148,10 @@ def test_libdatachannel_refuses_another_commit(scratch: Path) -> None:
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
     assert (f'install.sh: {LIBDATACHANNEL_REPOSITORY} at v0.24.6 checked out {other}, and '
             f'{LIBDATACHANNEL_COMMIT} is pinned') in result.stderr, result.stderr
-    assert not any(line.startswith('cmake') for line in logged(scratch)), logged(scratch)
+    # Nothing but the clone ran: no submodule was fetched, and CMake never ran.
+    assert logged(scratch) == [
+        f'git clone --quiet --depth 1 --branch v0.24.6 {LIBDATACHANNEL_REPOSITORY} '
+        '.local/.build/libdatachannel/source'], logged(scratch)
     assert not (scratch / '.local/libdatachannel').exists()
     assert not (scratch / '.local/.build/libdatachannel').exists()
 
@@ -1247,6 +1273,175 @@ def test_openssl_refuses_one_that_is_not_3_or_a_runner_it_has_none_for(scratch: 
     assert downloads(root) == []
 
 
+def test_openssl_on_macos_installs_openssl_3_when_the_image_lacks_it(scratch: Path) -> None:
+    # Homebrew's openssl@3 is in the image today only as a dependency of other formulae: when it
+    # is not installed, the action installs it with brew (whose bottle Homebrew checks against its
+    # SHA-256), says so, and lays it out as it would the image's.
+    staged = openssl_root(scratch, 'staged')
+    for library in ('libssl', 'libcrypto'):
+        (staged / 'lib' / f'{library}.dylib').write_text(library)
+    prefix = scratch / 'homebrew/opt/openssl@3'
+    brew = ('#!/bin/sh\n'
+            f'printf \'%s\\n\' "brew $*" >> "{scratch}/stand-in.log"\n'
+            'case "$*" in\n'
+            f'    "--prefix openssl@3") echo "{prefix}" ;;\n'
+            f'    "install openssl@3") mkdir -p "{prefix.parent}" && '
+            f'cp -R "{staged}" "{prefix}" ;;\n'
+            '    *) exit 1 ;;\n'
+            'esac\n')
+    script, runner = openssl_tree(scratch, 'macOS', 'ARM64', {'brew': brew})
+    result = dependency_step(scratch, script, runner)
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    assert logged(scratch) == ['brew --prefix openssl@3', 'brew install openssl@3'], (
+        logged(scratch))
+    assert (f"install.sh: Homebrew's openssl@3 is not installed in {prefix}: installing it with "
+            'brew') in result.stdout, result.stdout
+    laid = scratch.resolve() / '.local/openssl'
+    assert (laid / 'include/openssl').resolve() == (prefix.resolve() / 'include/openssl')
+    # A brew that cannot install it fails the step, naming the formula.
+    (scratch / 'stand-in.log').unlink()
+    shutil.rmtree(prefix)
+    failing = brew.replace('cp -R', 'false && cp -R')
+    (scratch / 'tools-on-path/brew').write_text(failing)
+    result = dependency_step(scratch, script, runner)
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert 'install.sh: brew install openssl@3 failed' in result.stderr, result.stderr
+    assert not (scratch / '.local/openssl').exists()
+
+
+CHROME = CI / 'actions/chrome/install.sh'
+CHROME_VERSION = '155.0.8059.39'
+CHROME_BUILDS = {
+    'X64': ('linux64', '39dcb8c46550632a3d911850ab3b8af840b4e3f6d8622faa2018eb8756278786'),
+    'ARM64': ('linux-arm64', '9fb86f7c0b2734c5febc0bbb4e85f37da43553f3f8a7970949828c5713e87e94'),
+}
+
+
+def chrome_archive(scratch: Path, build: str) -> Path:
+    """A stand-in of the shell's zip: its top directory, a program that prints its arguments, and
+    the files beside it."""
+    archive = scratch / f'chrome-headless-shell-{build}.zip'
+    with zipfile.ZipFile(archive, 'w') as zipped:
+        program = zipfile.ZipInfo(f'chrome-headless-shell-{build}/chrome-headless-shell')
+        program.external_attr = 0o755 << 16
+        zipped.writestr(program, '#!/bin/sh\necho "shell $*"\n')
+        zipped.writestr(f'chrome-headless-shell-{build}/ABOUT', 'about\n')
+    return archive
+
+
+def test_chrome_installs_the_pinned_headless_shell(scratch: Path) -> None:
+    # Chrome for Testing's chrome-headless-shell at its pinned version, checked against the
+    # SHA-256 recorded for the runner's build, in .local/chrome-headless-shell, and CHROME its
+    # wrapper, which runs it with --no-sandbox and the arguments it is given.
+    for processor, (build, digest) in CHROME_BUILDS.items():
+        root = scratch / processor
+        root.mkdir()
+        url = (f'https://storage.googleapis.com/chrome-for-testing-public/{CHROME_VERSION}/{build}/'
+               f'chrome-headless-shell-{build}.zip')
+        script = serving_tree(root, 'chrome', CHROME, {url: chrome_archive(root, build)})
+        stale = root / '.local/chrome-headless-shell/stale'
+        stale.parent.mkdir(parents=True)
+        stale.write_text('stale\n')
+        runner = dependency_runner(root, 'Linux', processor, stand_ins(root, {}))
+        result = dependency_step(root, script, runner)
+        assert result.returncode == 0, (processor, result.returncode, result.stderr)
+        assert downloads(root) == [(url, digest)], downloads(root)
+        assert not stale.exists() and list((root / 'temp').iterdir()) == []
+        wrapper = root.resolve() / '.local/chrome-headless-shell/chrome'
+        assert (root / 'github-env').read_text() == f'CHROME={wrapper}\n'
+        ran = subprocess.run([str(wrapper), '--headless=new', 'x y'], capture_output=True,
+                             text=True, check=False)
+        assert (ran.returncode, ran.stdout) == (0, 'shell --no-sandbox --headless=new x y\n'), ran
+        assert f'chrome-headless-shell {CHROME_VERSION}' in result.stdout, result.stdout
+
+
+def test_chrome_refuses_a_shell_it_does_not_pin_or_a_runner_it_has_none_for(scratch: Path) -> None:
+    build, digest = CHROME_BUILDS['X64']
+    url = (f'https://storage.googleapis.com/chrome-for-testing-public/{CHROME_VERSION}/{build}/'
+           f'chrome-headless-shell-{build}.zip')
+    archive = chrome_archive(scratch, build)
+    script = serving_tree(scratch, 'chrome', CHROME, {url: archive})
+    # The real download.sh, given the stand-in: its SHA-256 is not the pinned one.
+    (scratch / 'tools/ci/download.sh').write_text(
+        f'#!/bin/sh\nexec bash "{DOWNLOAD}" "{archive.as_uri()}" "$2" "$3"\n')
+    runner = dependency_runner(scratch, 'Linux', 'X64', stand_ins(scratch, {}))
+    result = dependency_step(scratch, script, runner)
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert f'and {digest} is pinned' in result.stderr, result.stderr
+    assert not (scratch / '.local/chrome-headless-shell').exists()
+    assert not (scratch / 'github-env').exists()
+    for system, processor in (('macOS', 'ARM64'), ('Windows', 'X64'), ('Linux', 'ARM'), ('', '')):
+        result = dependency_step(scratch, script, {**runner, 'RUNNER_OS': system,
+                                                   'RUNNER_ARCH': processor})
+        assert result.returncode == 1, (system, processor, result.returncode)
+        assert (f'install.sh: no chrome-headless-shell {CHROME_VERSION} is pinned for {system} on '
+                f'{processor}') in result.stderr, result.stderr
+
+
+CONTAINER = CI / 'actions/container/install.sh'
+
+# A stand-in of docker for the container action: each call's words to stand-in.log; `save
+# --output <file> <tag>` writes the file, `load --input <file>` reads it and remembers the tag
+# it held, and `image inspect <tag>` succeeds when that tag was loaded or built.
+FAKE_IMAGE_DOCKER = r"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "docker $*" >> "${STAND_IN_LOG}"
+images="${STAND_IN_LOG}.images"
+case "$1" in
+    build) printf '%s\n' "$3" >> "${images}" ;;
+    save) printf '%s\n' "${@: -1}" > "$3" ;;
+    load) cat "$3" >> "${images}" ;;
+    image) grep -qx "$3" "${images}" 2>/dev/null ;;
+    *) exit 1 ;;
+esac
+"""
+
+
+def container_tree(scratch: Path) -> tuple[Path, dict[str, str]]:
+    """The container action where it lives, the Dockerfile beside it, a stand-in docker, and a
+    runner's variables."""
+    directory = scratch / 'tools/ci/actions/container'
+    directory.mkdir(parents=True)
+    for name in ('install.sh', 'action.yml'):
+        shutil.copy2(CONTAINER.parent / name, directory / name)
+    (scratch / 'tools/ci/container').mkdir()
+    shutil.copy2(CI / 'container/Dockerfile', scratch / 'tools/ci/container/Dockerfile')
+    tools = stand_ins(scratch, {'docker': FAKE_IMAGE_DOCKER})
+    return directory / 'install.sh', dependency_runner(scratch, 'Linux', 'X64', tools)
+
+
+def test_container_builds_the_image_once_and_loads_it_after(scratch: Path) -> None:
+    # The key and the tag are the Dockerfile's, as tools/ci/matrix.py tags the image; on a miss
+    # the image is built and saved where the action caches it, and on a hit loaded from there.
+    script, runner = container_tree(scratch)
+    result = dependency_step(scratch, script, runner, 'key')
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    digest = hashlib.sha256((CI / 'container/Dockerfile').read_bytes()).hexdigest()[:16]
+    tag = f'webcpp-lane:{digest}'
+    sys.path.insert(0, str(CI))
+    import matrix
+    assert matrix.CONTAINER_IMAGE == tag, (matrix.CONTAINER_IMAGE, tag)
+    assert (scratch / 'github-output').read_text() == (
+        f'tag={tag}\nkey=container-{digest}-ubuntu24-X64\n'), (
+            (scratch / 'github-output').read_text())
+    result = dependency_step(scratch, script, runner, 'build')
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    archive = '.local/container/image.tar'
+    assert logged(scratch) == [f'docker build --tag {tag} tools/ci/container',
+                               f'docker save --output {archive} {tag}'], logged(scratch)
+    (scratch / 'stand-in.log').unlink()
+    (scratch / 'stand-in.log.images').unlink()
+    result = dependency_step(scratch, script, runner, 'load')
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert logged(scratch) == [f'docker load --input {archive}', f'docker image inspect {tag}']
+    # An archive that holds another image fails the load, naming the tag it lacks.
+    (scratch / archive).write_text('webcpp-lane:0000000000000000\n')
+    (scratch / 'stand-in.log.images').unlink()
+    result = dependency_step(scratch, script, runner, 'load')
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert f'install.sh: {archive} holds no image {tag}' in result.stderr, result.stderr
+
+
 CASES: list[Callable[[Path], None]] = [
     test_a_pinned_download_is_kept,
     test_another_digest_leaves_no_file,
@@ -1278,9 +1473,13 @@ CASES: list[Callable[[Path], None]] = [
     test_libdatachannel_refuses_another_commit,
     test_libdatachannel_refuses_a_runner_or_no_openssl,
     test_openssl_lays_out_the_runners_own,
+    test_openssl_on_macos_installs_openssl_3_when_the_image_lacks_it,
     test_openssl_on_windows_copies_the_images_and_puts_its_dlls_on_path,
     test_openssl_on_windows_without_one_downloads_the_pinned_installer,
     test_openssl_refuses_one_that_is_not_3_or_a_runner_it_has_none_for,
+    test_container_builds_the_image_once_and_loads_it_after,
+    test_chrome_installs_the_pinned_headless_shell,
+    test_chrome_refuses_a_shell_it_does_not_pin_or_a_runner_it_has_none_for,
 ]
 
 

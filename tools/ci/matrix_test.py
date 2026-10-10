@@ -20,14 +20,17 @@ lanes and the own lanes on a target and fails, by name, a planned lane that wrot
 `declares emscripten` says whether any library of the superproject declares emscripten, which
 the docs and lint jobs install emsdk on, without its system libraries; a lane and an own lane of a
 library that needs libraries webcpp does not build say external, with the compilers to build them
-with, `external` says whether any library needs them, and every job installs them by the actions
-of their names; every own lane has the image's Chrome; and a container lane builds its image and
-runs its b2 there with no network, or fails when the image does not build. Each
+with, also through a library that uses one, `external` says whether a library needs them, or
+any library, and every job installs them by the actions of their names; an own lane whose driver
+meets a browser has the pinned chrome-headless-shell; and a container lane builds its image of
+the Dockerfile's tag unless it is there, which the container action restores, and runs its b2
+there with no network, or fails when the image does not build. Each
 case runs the scratch superproject's own copy of matrix.py, with the fixture library demo, and
 browser_demo where it says so. Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -253,15 +256,18 @@ def test_own_lanes_of_every_library_and_of_one(root):
     alpha = [{'library': 'alpha', 'lane': 'browser', 'directories': ['libs/alpha/example/browser'],
               'kind': 'programs', 'name': 'Own lane (alpha, browser)', 'os': 'ubuntu-24.04',
               'wasm': False, 'emsdk': False, 'node': False,
-              'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False},
+              'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False,
+              'chrome': False},
              {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
               'kind': 'programs', 'name': 'Own lane (alpha, http)', 'os': 'ubuntu-24.04',
               'wasm': False, 'emsdk': False, 'node': False,
-              'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False}]
+              'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False,
+              'chrome': False}]
     beta = [{'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
              'kind': 'original', 'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04',
              'wasm': False, 'emsdk': False, 'node': True,
-             'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False}]
+             'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False,
+             'chrome': False}]
     assert own_lanes(root) == alpha + beta
     assert own_lanes(root, '--library', 'beta') == beta
     assert own_lanes(root, '--library', 'demo') == []
@@ -316,26 +322,31 @@ def test_own_lanes_on_targets(root):
               'platform': 'native', 'id': 'native.alpha.http', 'kind': 'programs',
               'name': 'Own lane (alpha, http, native)', 'os': 'ubuntu-24.04', 'wasm': False,
               'emsdk': False, 'node': False,
-              'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False},
+              'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False,
+              'chrome': False},
              {'library': 'alpha', 'lane': 'http',
               'directories': ['libs/alpha/example', 'libs/alpha/test'], 'platform': 'wasip2',
               'id': 'wasip2.alpha.http', 'kind': 'programs', 'name': 'Own lane (alpha, http, '
               'wasip2)', 'os': 'ubuntu-24.04', 'wasm': True, 'emsdk': False, 'node': False,
-              'cc': '', 'cxx': '', 'external': False},
+              'cc': '', 'cxx': '', 'external': False,
+              'chrome': False},
              {'library': 'alpha', 'lane': 'http', 'directories': ['libs/alpha/test'],
               'platform': 'wasip3', 'id': 'wasip3.alpha.http', 'kind': 'programs',
               'name': 'Own lane (alpha, http, wasip3)', 'os': 'ubuntu-24.04', 'wasm': True,
-              'emsdk': False, 'node': False, 'cc': '', 'cxx': '', 'external': False}]
+              'emsdk': False, 'node': False, 'cc': '', 'cxx': '', 'external': False,
+              'chrome': False}]
     beta = {'library': 'beta', 'lane': 'oracle', 'directories': ['libs/beta/test/oracle'],
             'kind': 'original', 'name': 'Own lane (beta, oracle)', 'os': 'ubuntu-24.04',
             'wasm': False, 'emsdk': False, 'node': True,
-            'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False}
+            'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False,
+            'chrome': False}
     assert own_lanes(root) == [*alpha, beta]
     assert own_lanes(root, '--library', 'alpha') == alpha
     assert run(root, 'own-lanes', '--library', 'beta').stdout == (
         '{"include":[{"library":"beta","lane":"oracle","directories":["libs/beta/test/oracle"],'
         '"kind":"original","name":"Own lane (beta, oracle)","os":"ubuntu-24.04","wasm":false,'
-        '"emsdk":false,"node":true,"cc":"clang-18","cxx":"clang++-18","external":false}]}\n')
+        '"emsdk":false,"node":true,"cc":"clang-18","cxx":"clang++-18","external":false,'
+        '"chrome":false}]}\n')
     # Each entry is read back as the lane it is, and runs in each of its directories.
     for entry in alpha:
         own = matrix.parsed_own_lane(json.dumps(entry))
@@ -357,16 +368,19 @@ def test_own_lanes_on_targets(root):
     gamma = [{'library': 'gamma', 'lane': 'browser', 'directories': ['libs/gamma/test'],
               'platform': 'emscripten', 'id': 'emscripten.gamma.browser', 'kind': 'programs',
               'name': 'Own lane (gamma, browser, emscripten)', 'os': 'ubuntu-24.04',
-              'wasm': False, 'emsdk': True, 'node': True, 'cc': '', 'cxx': '', 'external': False},
+              'wasm': False, 'emsdk': True, 'node': True, 'cc': '', 'cxx': '', 'external': False,
+              'chrome': False},
              {'library': 'gamma', 'lane': 'driver', 'directories': ['libs/gamma/test'],
               'platform': 'emscripten', 'id': 'emscripten.gamma.driver', 'kind': 'original',
               'name': 'Own lane (gamma, driver, emscripten)', 'os': 'ubuntu-24.04',
-              'wasm': False, 'emsdk': True, 'node': True, 'cc': '', 'cxx': '', 'external': False},
+              'wasm': False, 'emsdk': True, 'node': True, 'cc': '', 'cxx': '', 'external': False,
+              'chrome': False},
              {'library': 'gamma', 'lane': 'driver', 'directories': ['libs/gamma/test'],
               'platform': 'native', 'id': 'native.gamma.driver', 'kind': 'original',
               'name': 'Own lane (gamma, driver, native)', 'os': 'ubuntu-24.04', 'wasm': False,
               'emsdk': False, 'node': True,
-              'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False}]
+              'cc': 'clang-18', 'cxx': 'clang++-18', 'external': False,
+              'chrome': False}]
     assert own_lanes(root) == [*alpha, beta, *gamma]
     assert own_lanes(root, '--library', 'gamma') == gamma
     for entry in gamma:
@@ -900,19 +914,34 @@ def test_a_lane_of_a_library_with_external_dependencies_says_so(root):
 
 
 def test_whether_a_library_has_external_dependencies(root):
-    # The docs and lint jobs install them when some library of the superproject has them,
-    # whatever library the CI runs for: the lint analyses every library, and a page builds the
-    # page of each library it links.
+    # With --library, whether that library needs them, itself or through a library of libs/ its
+    # Jamfiles use (/webcpp/<name>), which the docs job installs them on: its page parses its
+    # headers and those of the libraries it uses. Without, whether any library of libs/ does,
+    # which the lint job, which analyses every library, installs them on.
     boost_only(root)
     for arguments in ((), ('--library', 'demo')):
         result = run(root, 'external', *arguments)
         assert (result.returncode, result.stdout) == (0, 'false\n'), (result.returncode,
                                                                    result.stdout, result.stderr)
     external_library(root)
-    for arguments in ((), ('--library', 'demo'), ('--library', 'trystero')):
+    harness.add_library(root, 'user',
+                        'import webcpp ;\nwebcpp.run plain : plain.cpp\n'
+                        '  : <library>/webcpp/trystero//trystero ;\n',
+                        {'plain.cpp': 'int main() {}\n'})
+    harness.add_library(root, 'user_of_user', 'import webcpp ;\n', {})
+    (root / 'libs/user_of_user/build.jam').write_text(
+        'project /webcpp/user_of_user ;\n'
+        'alias user_of_user : : : : <library>/webcpp/user//user ;\n')
+    for arguments, expected in (((), 'true'), (('--library', 'trystero'), 'true'),
+                                (('--library', 'user'), 'true'),
+                                (('--library', 'user_of_user'), 'true'),
+                                (('--library', 'demo'), 'false')):
         result = run(root, 'external', *arguments)
-        assert (result.returncode, result.stdout) == (0, 'true\n'), (result.returncode,
-                                                                  result.stdout, result.stderr)
+        assert (result.returncode, result.stdout) == (0, f'{expected}\n'), (
+            arguments, result.returncode, result.stdout, result.stderr)
+    # A lane of a library that uses one says external too.
+    assert {lane['id']: lane['external'] for lane in planned(root, '--library', 'user')} == {
+        name: True for name in NATIVE}
     result = run(root, 'external', '--library', 'nothing')
     assert result.returncode == 2 and result.stdout == '', (result.returncode, result.stdout)
     assert 'libs/nothing is no library of libs/' in result.stderr, result.stderr
@@ -941,7 +970,9 @@ def test_the_jobs_install_the_external_dependencies(_):
     jobs = workflow_jobs()
     plan = jobs['plan']
     assert 'external: ${{ steps.plan.outputs.external }}' in plan, plan
+    assert 'lint-external: ${{ steps.plan.outputs.lint-external }}' in plan, plan
     assert 'python3 tools/ci/matrix.py external "${arguments[@]}"' in plan, plan
+    assert 'lint_external="$(python3 tools/ci/matrix.py external)"' in plan, plan
     actions = ('emsdk', 'openssl', 'secp256k1', 'libdatachannel')
     steps = job_steps(jobs['lanes'])
     uses = [next((action for action in actions if f'./tools/ci/actions/{action}' in step), None)
@@ -960,12 +991,12 @@ def test_the_jobs_install_the_external_dependencies(_):
     firsts = [step.strip().splitlines()[0] for step in job_steps(jobs['own-lanes'])]
     aliases = [first for first in firsts if first in {f'- *{action}' for action in actions}]
     assert aliases == [f'- *{action}' for action in actions], aliases
-    for name in ('docs', 'lint'):
+    for name, output in (('docs', 'external'), ('lint', 'lint-external')):
         steps = job_steps(jobs[name])
         for action in ('openssl', 'secp256k1', 'libdatachannel'):
             found = [step for step in steps if f'uses: ./tools/ci/actions/{action}' in step]
             assert len(found) == 1, (name, action, found)
-            assert "if: needs.plan.outputs.external == 'true'" in found[0], (name, found)
+            assert f"if: needs.plan.outputs.{output} == 'true'" in found[0], (name, found)
             if action != 'openssl':
                 assert 'cc: clang-18' in found[0], (name, found)
         emsdk = next(index for index, step in enumerate(steps) if 'actions/emsdk' in step)
@@ -976,21 +1007,54 @@ def test_the_jobs_install_the_external_dependencies(_):
     assert 'emscripten: ${{ needs.plan.outputs.has-emscripten }}' in lint_secp256k1
 
 
-def test_an_own_lane_has_the_images_chrome(_):
-    # A driven test whose driver meets a browser, as trystero's interop, runs the image's
-    # Chrome, which CHROME names on ubuntu-24.04, where every own lane runs.
-    lane = next(step for step in job_steps(workflow_jobs()['own-lanes'])
-                if 'matrix.py own-lane "$LANE"' in step)
-    assert 'CHROME: /usr/bin/google-chrome' in lane, lane
-    assert {matrix.own_lane_base(target).os for target in matrix.OWN_LANE_BASES} == {
-        'ubuntu-24.04'}
+def test_a_container_lane_has_its_image_from_the_cache(_):
+    # The lanes job's container action restores the image of this Dockerfile, built once and
+    # saved, before the lane runs, which then builds nothing.
+    steps = job_steps(workflow_jobs()['lanes'])
+    container = [index for index, step in enumerate(steps)
+                 if 'uses: ./tools/ci/actions/container' in step]
+    lane = next(index for index, step in enumerate(steps) if 'matrix.py lane "$LANE"' in step)
+    assert len(container) == 1 and container[0] < lane, (container, lane)
+    assert 'if: matrix.container\n' in steps[container[0]], steps[container[0]]
+
+
+def test_a_browser_lane_has_the_pinned_chrome(root):
+    # An own lane whose driver meets a browser, trystero's interop (CHROME_LANES), says chrome,
+    # on every target it runs on, and its job installs the pinned chrome-headless-shell, which
+    # gives CHROME; no other own lane does, and no job names the image's Chrome.
+    assert matrix.CHROME_LANES == {('trystero', 'interop')}, matrix.CHROME_LANES
+    boost_only(root)
+    external_library(root)
+    oracle_library(root, 'beta')
+    assert {entry.get('id', entry['lane']): entry['chrome'] for entry in own_lanes(root)} == {
+        'oracle': False, 'emscripten.trystero.interop': True,
+        'native.trystero.interop': True}, own_lanes(root)
+    steps = job_steps(workflow_jobs()['own-lanes'])
+    chrome = [step for step in steps if 'uses: ./tools/ci/actions/chrome' in step]
+    assert len(chrome) == 1 and 'if: matrix.chrome\n' in chrome[0], chrome
+    workflow = (harness.ROOT / '.github/workflows/library.yml').read_text()
+    assert '/usr/bin/google-chrome' not in workflow
+    # AGENTS.md names the shell's version once, the action's.
+    pinned = re.search(r'^version=(\S+)$',
+                       (matrix.ROOT / 'tools/ci/actions/chrome/install.sh').read_text(),
+                       re.MULTILINE)
+    agents = (matrix.ROOT / 'AGENTS.md').read_text()
+    assert pinned and agents.count(pinned.group(1)) == 1, pinned
+    assert 'Chrome 154' not in agents and 'google-chrome' not in agents
+    action = (matrix.ROOT / 'tools/ci/actions/chrome/action.yml').read_text()
+    assert set(re.findall(r'\d+\.\d+\.\d+\.\d+', action)) == {pinned.group(1)}, action
 
 
 # A stand-in of docker: each call's words to docker.log, quoted as a shell reads them, one line
-# each; `build` builds nothing, and `run` runs, on the host, the command after the image.
+# each; `image inspect` succeeds when STAND_IN_IMAGE_PRESENT is set, `build` builds nothing, and
+# `run` runs, on the host, the command after the image.
 FAKE_DOCKER = r"""#!/usr/bin/env bash
 set -euo pipefail
 { printf '%q ' docker "$@"; printf '\n'; } >> "${STAND_IN_DOCKER_LOG}"
+if [ "$1 $2" = 'image inspect' ]; then
+    [ -n "${STAND_IN_IMAGE_PRESENT-}" ]
+    exit
+fi
 [ "$1" = run ] || exit 0
 shift
 while [ "$1" != "${STAND_IN_IMAGE}" ]; do
@@ -1010,6 +1074,11 @@ def test_a_container_lane_runs_b2_with_no_network(root):
     dockerfile = (matrix.ROOT / 'tools/ci/container/Dockerfile').read_text()
     assert re.search(r'^FROM ubuntu:24\.04@sha256:[0-9a-f]{64}$', dockerfile, re.MULTILINE), (
         dockerfile)
+    # Its packages from Ubuntu's snapshot at one date, and its tag that of this Dockerfile.
+    assert re.search(r'^ARG SNAPSHOT=\d{8}T\d{6}Z$', dockerfile, re.MULTILINE), dockerfile
+    assert dockerfile.count('--snapshot "${SNAPSHOT}"') == 2, dockerfile
+    digest = hashlib.sha256(dockerfile.encode()).hexdigest()
+    assert matrix.CONTAINER_IMAGE == f'webcpp-lane:{digest[:16]}', matrix.CONTAINER_IMAGE
     for package in ('g++-14', 'clang-18', 'libssl-dev', 'python3'):
         assert f' {package}' in dockerfile, (package, dockerfile)
     entry = host_lane(root)
@@ -1033,10 +1102,12 @@ def test_a_container_lane_runs_b2_with_no_network(root):
     b2 = Path(shutil.which('b2', path=environment['PATH']) or 'b2').resolve()
     resolved = root.resolve()
     calls = [shlex.split(line) for line in log.read_text().splitlines()]
-    assert calls[0] == ['docker', 'build', '--tag', matrix.CONTAINER_IMAGE,
+    # The image is built only when no image of this Dockerfile's tag is there.
+    assert calls[0] == ['docker', 'image', 'inspect', matrix.CONTAINER_IMAGE], calls
+    assert calls[1] == ['docker', 'build', '--tag', matrix.CONTAINER_IMAGE,
                         f'{resolved}/tools/ci/container'], calls
-    assert len(calls) == 2 and calls[1][0] == 'docker', calls
-    run_words = calls[1][1:]
+    assert len(calls) == 3 and calls[2][0] == 'docker', calls
+    run_words = calls[2][1:]
     image = run_words.index(matrix.CONTAINER_IMAGE)
     options, command = run_words[:image], run_words[image + 1:]
     assert options[:4] == ['run', '--rm', '--network', 'none'], options
@@ -1053,6 +1124,15 @@ def test_a_container_lane_runs_b2_with_no_network(root):
     version = matrix.major_version('clang++')
     system = 'darwin' if sys.platform == 'darwin' else 'linux'
     assert (resolved / f'bin/ci/clang-{system}-{version}.xml').is_file()
+    # With the image there, as the container action loads it from its cache, nothing is built.
+    log.unlink()
+    result = subprocess.run([sys.executable, str(root / 'tools/ci/matrix.py'), 'lane',
+                             json.dumps(entry), '--', '--build-dir=bin/lane'], cwd=root,
+                            env={**environment, 'STAND_IN_IMAGE_PRESENT': '1'},
+                            capture_output=True, text=True, check=False, timeout=harness.TIMEOUT)
+    assert result.returncode == 0, (result.returncode, result.stdout[-4000:], result.stderr)
+    calls = [shlex.split(line) for line in log.read_text().splitlines()]
+    assert [call[:2] for call in calls] == [['docker', 'image'], ['docker', 'run']], calls
     # A lane outside a container runs b2 as it is.
     log.unlink()
     entry['container'] = False
@@ -1070,7 +1150,8 @@ def test_a_container_lane_whose_image_does_not_build_fails(root):
     boost_only(root)
     tools = root / 'stand-ins'
     tools.mkdir()
-    (tools / 'docker').write_text('#!/bin/sh\necho "no daemon" >&2\nexit 1\n')
+    (tools / 'docker').write_text('#!/bin/sh\n[ "$1" = image ] && exit 1\n'
+                                  'echo "no daemon" >&2\nexit 1\n')
     (tools / 'docker').chmod(0o755)
     environment = harness.b2_environment()
     environment.pop('GITHUB_OUTPUT', None)
@@ -1113,7 +1194,8 @@ CASES = [
     test_a_lane_of_a_library_with_external_dependencies_says_so,
     test_whether_a_library_has_external_dependencies,
     test_the_jobs_install_the_external_dependencies,
-    test_an_own_lane_has_the_images_chrome,
+    test_a_container_lane_has_its_image_from_the_cache,
+    test_a_browser_lane_has_the_pinned_chrome,
     test_a_container_lane_runs_b2_with_no_network,
     test_a_container_lane_whose_image_does_not_build_fails,
 ]

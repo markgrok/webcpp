@@ -39,9 +39,22 @@ version=0.8.0
 commit=6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d
 url="https://github.com/bitcoin-core/secp256k1/archive/${commit}.tar.gz"
 sha256=3fe9fd705f4fdf2fe90d6e04b6c1fedd7e8f244a119315886f6468f52c2dfc33
-emscripten_version=6.0.11
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The Emscripten version the emsdk action installs, its line version=, which the key of the
+# emscripten build names: a bump of emsdk builds libsecp256k1 again.
+emscripten_version() {
+    local emsdk
+    emsdk="$(cd "${here}/../emsdk" 2>/dev/null && pwd -P)/install.sh"
+    local found
+    found="$(sed -n 's/^version=\([0-9][0-9.]*\)$/\1/p' "${emsdk}" 2>/dev/null | head -n 1)"
+    if [ -z "${found}" ]; then
+        printf 'install.sh: %s names no version=\n' "${emsdk}" >&2
+        exit 1
+    fi
+    printf '%s\n' "${found}"
+}
 
 options=(
     -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_INSTALL_LIBDIR=lib
@@ -123,7 +136,7 @@ key() {
     compiler="$(compiler_identity | digest)"
     local build=native
     if [ "${wanted}" = true ]; then
-        build="native-emscripten-${emscripten_version}"
+        build="native-emscripten-$(emscripten_version)"
     fi
     printf 'key=secp256k1-%s-%s-%s-%s-%s-%s-%s\n' "${version}" "${RUNNER_OS}" "${RUNNER_ARCH}" \
         "${ImageOS:-image}" "${compiler:0:16}" "${build}" "${files:0:16}" >> "${GITHUB_OUTPUT}"

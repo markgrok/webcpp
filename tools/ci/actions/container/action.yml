@@ -1,0 +1,44 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: Container image
+description: >-
+  Gives the job the image of the container lanes, tools/ci/container/Dockerfile's, tagged with the
+  start of its SHA-256: built once, from Ubuntu's snapshot of the archive that the Dockerfile
+  names, and saved in the cache under the Dockerfile's digest, then loaded from there by every
+  later lane, which then builds none. On Linux x86-64.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache key
+      id: key
+      shell: bash
+      run: bash tools/ci/actions/container/install.sh key
+
+    - name: Restore the image
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .local/container/image.tar
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Load the image
+      if: steps.restore.outputs.cache-hit == 'true'
+      shell: bash
+      run: bash tools/ci/actions/container/install.sh load
+
+    - name: Build the image
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: bash tools/ci/actions/container/install.sh build
+
+    - name: Save the image
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .local/container/image.tar
+        key: ${{ steps.key.outputs.key }}

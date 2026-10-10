@@ -1,0 +1,19 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: Chrome
+description: >-
+  Installs Chrome for Testing's chrome-headless-shell 155.0.8059.39 in .local/chrome-headless-shell,
+  checked against its SHA-256, and gives the later steps CHROME, a wrapper that runs it without
+  its sandbox (install.sh says why): the Chrome a driven test runs when its driver meets a browser,
+  as trystero's interop lane does. On Linux.
+
+runs:
+  using: composite
+  steps:
+    - name: chrome-headless-shell 155.0.8059.39
+      shell: bash
+      run: bash tools/ci/actions/chrome/install.sh

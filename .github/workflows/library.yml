@@ -33,8 +33,9 @@
 #               wasip3 lane installs wasi-sdk, wasmtime, wit-bindgen and the WASI WIT first, the
 #               emscripten lane emsdk and Node, which runs its programs, and a lane whose entry
 #               says external the libraries its libraries need, built with the lane's compilers.
-#               GCC 14 and Clang 18 run their b2 in a container with no network but the loopback
-#               (tools/ci/container/Dockerfile).
+#               GCC 14 and Clang 18 run their b2 in a container with no network but the loopback,
+#               whose image (tools/ci/container/Dockerfile) the container action builds once and
+#               caches.
 #   own-lanes   one job per own lane of a library and target it runs on, which runs the lane
 #               in every directory that declares it there. One that names no target, as an
 #               oracle, runs on Linux x86-64 with Clang 18, and with Node when it runs the
@@ -42,9 +43,9 @@
 #               names a target, as wasi's served tests and examples on wasip2, or a driven test on
 #               emscripten, is set up as that target's lane is, with Node when it runs the
 #               original, runs b2 -a --dump-tests --out-xml with its toolset, and uploads the
-#               XML, which the report reads as a lane's. Each has the image's Chrome, which a
-#               driven test that meets a browser runs (CHROME), and the external libraries when
-#               its entry says so. A library that declares none, as xactor, has no such job.
+#               XML, which the report reads as a lane's. One whose driver meets a browser has
+#               the pinned chrome-headless-shell (CHROME), and one whose library needs them the
+#               external libraries, as its entry says. A library that declares none, as xactor, has no such job.
 #   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64,
 #               wit-bindgen and the WASI WIT, for a reference that parses a component's
 #               bindings, and, when a library declares emscripten (the plan's has-emscripten),
@@ -103,6 +104,7 @@ jobs:
       has-own-lanes: ${{ steps.plan.outputs.has-own-lanes }}
       has-emscripten: ${{ steps.plan.outputs.has-emscripten }}
       external: ${{ steps.plan.outputs.external }}
+      lint-external: ${{ steps.plan.outputs.lint-external }}
     steps:
       # The superproject is the caller's commit when it calls this workflow itself, and main
       # when a library does, the branch this workflow is called at.
@@ -166,10 +168,13 @@ jobs:
           # Whether any library declares emscripten, whose headers the docs and the lint read.
           has_emscripten="$(python3 tools/ci/matrix.py declares emscripten "${arguments[@]}")"
           echo "has-emscripten=$has_emscripten" >> "$GITHUB_OUTPUT"
-          # Whether any library needs libraries webcpp does not build, which the docs and the
-          # lint install then.
+          # Whether the library, or one it uses, needs libraries webcpp does not build, which the
+          # docs job installs then; and whether any library does, which the lint job, which
+          # analyses every library, installs them on.
           external="$(python3 tools/ci/matrix.py external "${arguments[@]}")"
           echo "external=$external" >> "$GITHUB_OUTPUT"
+          lint_external="$(python3 tools/ci/matrix.py external)"
+          echo "lint-external=$lint_external" >> "$GITHUB_OUTPUT"
 
   lanes:
     name: ${{ matrix.name }}
@@ -244,6 +249,11 @@ jobs:
           cc: ${{ matrix.cc }}
           cxx: ${{ matrix.cxx }}
 
+      # The image a container lane runs b2 in (its entry's container), built once from
+      # tools/ci/container/Dockerfile and restored from the cache, so that the lane builds none.
+      - if: matrix.container
+        uses: ./tools/ci/actions/container
+
       # The lane registers its toolset in .local/user-config.jam, prints its b2 command and runs
       # it; Windows's Python is python.
       - name: Lane
@@ -300,14 +310,16 @@ jobs:
       - *secp256k1
       - *libdatachannel
 
+      # The pinned chrome-headless-shell, as CHROME, for a lane whose driver meets a browser
+      # (its entry's chrome), as trystero's interop does.
+      - if: matrix.chrome
+        uses: ./tools/ci/actions/chrome
+
       # It registers its toolset in .local/user-config.jam, prints its b2 command and runs it.
-      # CHROME is the image's Chrome, the one a driven test runs when its driver meets a browser,
-      # as trystero's interop lane does (ubuntu-24.04, where every own lane runs).
       - name: Own lane
         id: lane
         env:
           LANE: ${{ toJSON(matrix) }}
-          CHROME: /usr/bin/google-chrome
         run: python3 tools/ci/matrix.py own-lane "$LANE"
 
       - name: Upload the lane's XML
@@ -350,8 +362,8 @@ jobs:
         with:
           libraries: 'false'
 
-      # The libraries a library needs and webcpp does not build yet, when one does (the plan's
-      # external), whose headers its reference parses with the native backend's: with Clang 18,
+      # The libraries the library, or one it uses, needs and webcpp does not build yet (the
+      # plan's external), whose headers its reference parses with the native backend's: with Clang 18,
       # the compiler that parses them.
       - if: needs.plan.outputs.external == 'true'
         uses: ./tools/ci/actions/openssl
@@ -461,20 +473,20 @@ jobs:
         with:
           libraries: 'false'
 
-      # The libraries a library needs and webcpp does not build yet, when one does (the plan's
-      # external), which the dry runs name and clang-tidy reads, built with Clang 18; and
+      # The libraries a library needs and webcpp does not build yet, when any does (the plan's
+      # lint-external), which the dry runs name and clang-tidy reads, built with Clang 18; and
       # libsecp256k1's emscripten build too when a library declares emscripten, for the commands
       # of that target.
-      - if: needs.plan.outputs.external == 'true'
+      - if: needs.plan.outputs.lint-external == 'true'
         uses: ./tools/ci/actions/openssl
 
-      - if: needs.plan.outputs.external == 'true'
+      - if: needs.plan.outputs.lint-external == 'true'
         uses: ./tools/ci/actions/secp256k1
         with:
           cc: clang-18
           emscripten: ${{ needs.plan.outputs.has-emscripten }}
 
-      - if: needs.plan.outputs.external == 'true'
+      - if: needs.plan.outputs.lint-external == 'true'
         uses: ./tools/ci/actions/libdatachannel
         with:
           cc: clang-18

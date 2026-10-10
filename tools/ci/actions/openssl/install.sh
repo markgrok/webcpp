@@ -8,9 +8,10 @@
 # The step of tools/ci/actions/openssl: the runner's own OpenSSL 3, laid out in .local/openssl as
 # include/openssl and lib/, where trystero's build.jam looks for it when OPENSSL_ROOT names no
 # other directory, and OPENSSL_ROOT given to the job's later steps, until webcpp builds it from
-# third_party/. On Linux, the system's, which pkg-config names; on macOS, Homebrew's openssl@3;
-# on Windows on X64, the one the image installs in %ProgramFiles%\OpenSSL, else the installer
-# pinned here, checked against its SHA-256.
+# third_party/. On Linux, the system's, which pkg-config names; on macOS, Homebrew's openssl@3,
+# installed with brew when the image lacks it; on Windows on X64, the one the image installs in
+# %ProgramFiles%\OpenSSL, always preferred, else the installer pinned here, checked against its
+# SHA-256.
 #
 # Usage, from the superproject's root, with the variables a runner sets (RUNNER_OS, RUNNER_ARCH,
 # RUNNER_TEMP, GITHUB_ENV, GITHUB_PATH, and ProgramFiles on Windows): install.sh
@@ -25,9 +26,12 @@
 # are in the installation's bin, which is put on PATH.
 set -euo pipefail
 
-# The installer of Shining Light Productions that the image installs from, when it has none, as
+# The installer of Shining Light Productions that the image installs from, as
 # slproweb/opensslhashes's win32_openssl_hashes.json names it (gh api
-# repos/slproweb/opensslhashes/contents/win32_openssl_hashes.json).
+# repos/slproweb/opensslhashes/contents/win32_openssl_hashes.json): a fallback for an image without
+# OpenSSL alone. Shining Light removes a superseded installer from /download/, so once 3.6.5 is
+# superseded this URL answers 404 and the fallback fails at download.sh, naming the URL: the pin
+# is then moved to the release the JSON lists, with its SHA-256.
 installer=Win64OpenSSL-3_6_5.exe
 installer_url="https://slproweb.com/download/${installer}"
 installer_sha256=8b2fcf66088fa0d13fa5729ef374a182adf72edfffde89089b3b1bf48c3f257f
@@ -98,6 +102,14 @@ macos() {
     command -v brew >/dev/null 2>&1 || refuse 'brew, which names openssl@3, is not on PATH'
     local prefix
     prefix="$(brew --prefix openssl@3)"
+    # The macOS images have openssl@3 only as a dependency of other formulae, which Homebrew moves
+    # to openssl@4 one by one: when it is gone, it is installed, its bottle checked by Homebrew
+    # against the SHA-256 its formula records, at the version Homebrew has then.
+    if [ ! -d "${prefix}" ]; then
+        printf "install.sh: Homebrew's openssl@3 is not installed in %s: " "${prefix}"
+        printf 'installing it with brew\n'
+        brew install openssl@3 || refuse 'brew install openssl@3 failed'
+    fi
     [ -d "${prefix}" ] || refuse "Homebrew's openssl@3 is not installed in ${prefix}"
     link "${prefix}/include" "${prefix}/lib" dylib
 }

@@ -186,7 +186,8 @@ build finds each where `SECP256K1_ROOT`, `SECP256K1_EMSCRIPTEN_ROOT`,
 `include/` and `lib/`, else in `.local/secp256k1-native`,
 `.local/secp256k1-emscripten`, `.local/libdatachannel` and `.local/openssl`
 of the checkout, where the CI installs them, else on the compiler's default
-search path.
+search path, where a system install is legitimate; when none holds a library's
+header, the build stops, naming the library and every place it looked.
 
 ## Documentation
 

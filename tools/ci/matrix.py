@@ -21,7 +21,10 @@ the lanes to run, {"include": [LANE, ...]}: one lane per compiler of LANES for e
 library declares, of the library --library names, else of every library. A lane builds the tests
 and examples of the libraries that declare its target, and no other: a lane of a target no
 library declares would build nothing. A target the CI has no lane for is a failure, never a lane
-left out.
+left out. A lane says "external" when one of its libraries needs a library that webcpp does not
+build (see external, below), which the CI's actions of that name install before it runs, built
+with its "cc" and "cxx", the lane's own compilers, and "container" when its b2 runs in a Linux
+container with no network but the loopback.
 
 own-lanes runs `b2 -d0 declared-lanes` and prints the JSON matrix of the libraries' own lanes, of
 the library --library names, else of every library; empty, {"include":[]}, when none declares one,
@@ -33,14 +36,17 @@ it runs on, in every directory D that declares it there: the entry {"library": L
 says, "name", what the CI shows for the job, Own lane (L, N) or Own lane (L, N, T), the "os", "wasm"
 and "emsdk" of the lane whose setup it shares, and "node", true for a lane of the kind original,
 whose original runs with the CI's Node, and for one whose shared lane has Node, the emscripten
-lane's, which runs its programs; a served lane on wasip2 or wasip3 has none. One that names no
-target runs as `b2 -a toolset=clang-18 D//N ...`, whose exit status is its verdict: it writes no
-XML, so it is no column of the report. One that names targets is an entry per target T, which adds
-"platform": T and the "id" <T>.<L>.<N> (wasip2.wasi.http), and shares T's own lane, or the oracle's
-Clang 18 for native. It runs as that lane runs, with --dump-tests and --out-xml, and its XML,
-<id>.xml, is a column of the report under its id, which tools/report/report.py checks against the
-toolset it was built with and the library whose tests it lists. A target the CI has no lane to set
-up an own lane on fails the listing by name: an own lane is never run natively in its place.
+lane's, which runs its programs; a served lane on wasip2 or wasip3 has none; "cc" and "cxx", the
+compilers of the lane it shares; "external", as a lane's; and "chrome", true for a lane of
+CHROME_LANES, whose driver meets a browser, which its job gives the pinned chrome-headless-shell as
+CHROME. One that names no target runs as `b2 -a toolset=clang-18 D//N ...`, whose exit status is its
+verdict: it writes no XML, so it is no column of the report. One that names targets is an entry per
+target T, which adds "platform": T and the "id" <T>.<L>.<N> (wasip2.wasi.http), and shares T's own
+lane, or the oracle's Clang 18 for native. It runs as that lane runs, with --dump-tests and
+--out-xml, and its XML, <id>.xml, is a column of the report under its id, which
+tools/report/report.py checks against the toolset it was built with and the library whose tests it
+lists. A target the CI has no lane to set up an own lane on fails the listing by name: an own lane
+is never run natively in its place.
 
 declares runs `b2 -d0 declared-targets` and prints true when some library of the superproject
 declares TARGET, else false: every library's, whatever --library names, which must be a library
@@ -48,10 +54,12 @@ of libs/ as plan's must. The plan job writes it for emscripten as has-emscripten
 docs and lint jobs install emsdk: the lint analyses every library, and a page builds the page of
 each library it links, with its reference.
 
-external prints true when some library of the superproject, a directory of libs/ with a build.jam,
-needs a library that webcpp does not build (EXTERNAL_DEPENDENCIES), else false: every library's,
-whatever --library names, which must be a library of libs/. The plan job writes it as external,
-on which the docs and lint jobs install those libraries, for the same reasons.
+external prints true when the library --library names, which must be a library of libs/, needs a
+library that webcpp does not build: it is in EXTERNAL_DEPENDENCIES, or a library of libs/ its
+build.jam or Jamfiles use (/webcpp/<name>), at any depth, is; else false. Without --library, it
+says whether any library of libs/ does. The plan job writes the first as external, on which the
+docs job installs those libraries, a page parsing its library's headers and those it uses, and the
+second as lint-external, on which the lint job, which analyses every library, installs them.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -65,7 +73,12 @@ builds it in, which tools/report/report.py checks: gcc-14, clang-linux-18, msvc-
 Apple Clang's version is the image's, so its lane reads it from `clang++ -dumpversion` and
 registers clang under it: clang-darwin-17. With --out-xml, b2 exits 0 even when a test fails;
 the report is the verdict. B2-ARGUMENT is for a local run beside others, such as
---build-dir=bin/lane-gcc-15; the CI passes none.
+--build-dir=bin/lane-gcc-15; the CI passes none. A container lane, on Linux x86-64, first builds
+the image of tools/ci/container/Dockerfile, unless an image of its tag (the start of the
+Dockerfile's SHA-256) is there, as the CI's container action loads it, then runs that b2, by its
+path, in it, with `docker run --network none`, as the user who runs the lane, with the superproject
+and b2's prefix mounted at their own paths, and the variables of EXTERNAL_VARIABLES that are set
+passed on: no test it runs can reach beyond the loopback.
 
 own-lane runs one own lane, OWN-LANE being one entry of the own-lanes matrix as JSON: it registers
 the toolset of the lane it shares (Clang 18 when it names no target), prints its b2 command and runs
@@ -102,6 +115,7 @@ register.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -149,9 +163,27 @@ EXTERNAL_DEPENDENCIES = {'trystero': ('secp256k1', 'libdatachannel', 'openssl')}
 EXTERNAL_VARIABLES = ('SECP256K1_ROOT', 'SECP256K1_EMSCRIPTEN_ROOT', 'LIBDATACHANNEL_ROOT',
                       'OPENSSL_ROOT')
 
-# The image a container lane runs b2 in, and the directory of the Dockerfile it is built from.
-CONTAINER_IMAGE = 'webcpp-lane:ubuntu-24.04'
+# The directory of the Dockerfile a container lane's image is built from, and the image, tagged
+# with the start of the Dockerfile's SHA-256: an image of another Dockerfile is never taken for it.
+# tools/ci/actions/container/install.sh tags the image it caches the same way.
 CONTAINER_CONTEXT = ROOT / 'tools/ci/container'
+
+
+def container_tag() -> str:
+    """The tag of the container lanes' image: webcpp-lane:<16 hex digits>, or the bare name when
+    the Dockerfile cannot be read, which then fails the build that needs it."""
+    try:
+        digest = hashlib.sha256((CONTAINER_CONTEXT / 'Dockerfile').read_bytes()).hexdigest()
+    except OSError:
+        return 'webcpp-lane'
+    return f'webcpp-lane:{digest[:16]}'
+
+
+CONTAINER_IMAGE = container_tag()
+
+# The own lanes whose driver meets a browser, (library, lane), which the CI's chrome action gives
+# its pinned chrome-headless-shell, as CHROME: trystero's interop, natively and on emscripten.
+CHROME_LANES = {('trystero', 'interop')}
 
 # MSVC's lanes build 64-bit programs, embed their manifest with the linker and abbreviate b2's
 # paths against Windows's MAX_PATH, as xstate-cpp's green Windows jobs did. b2 abbreviates each
@@ -383,17 +415,55 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
         if libraries:
             projects = tuple(f'libs/{name}/{part}' for name in libraries
                              for part in ('test', 'example'))
-            external = any(name in EXTERNAL_DEPENDENCIES for name in libraries)
+            external = any(needs_external(name) for name in libraries)
             lanes.append(replace(lane, projects=projects, external=external))
     return lanes
 
 
+# A library of libs/ that a Jamfile uses: <library>/webcpp/<name>//<target>, or a project path
+# /webcpp/<name>.
+USES = re.compile(r'/webcpp/([a-z][a-z0-9_]*)(?=//|[\s;:]|$)', re.MULTILINE)
+
+
+def used(library: str) -> set[str]:
+    """The libraries of libs/ that library's build.jam and Jamfiles name, itself left out."""
+    directory = ROOT / 'libs' / library
+    files = [directory / 'build.jam', *directory.rglob('Jamfile')]
+    names: set[str] = set()
+    for file in files:
+        try:
+            names.update(USES.findall(file.read_text()))
+        except OSError:
+            continue
+    return {name for name in names
+            if name != library and (ROOT / 'libs' / name / 'build.jam').is_file()}
+
+
+def needs_external(library: str) -> bool:
+    """Whether library needs a library webcpp does not build: it is in EXTERNAL_DEPENDENCIES, or
+    a library it uses, at any depth, is."""
+    seen: set[str] = set()
+    pending = [library]
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        if name in EXTERNAL_DEPENDENCIES:
+            return True
+        seen.add(name)
+        pending.extend(used(name))
+    return False
+
+
 def has_external(library: str | None) -> bool:
-    """Whether some library of libs/ needs a library webcpp does not build, whatever library,
-    which must be a library of libs/, names."""
-    if library is not None and not (ROOT / 'libs' / library / 'build.jam').is_file():
-        raise Failure(f'libs/{library} is no library of libs/ (a directory with a build.jam)', 2)
-    return any((ROOT / 'libs' / name / 'build.jam').is_file() for name in EXTERNAL_DEPENDENCIES)
+    """Whether library, which must be a library of libs/, needs a library webcpp does not build,
+    itself or through one it uses; without one, whether any library of libs/ does."""
+    if library is not None:
+        if not (ROOT / 'libs' / library / 'build.jam').is_file():
+            raise Failure(f'libs/{library} is no library of libs/ (a directory with a build.jam)',
+                          2)
+        return needs_external(library)
+    return any(needs_external(build.parent.name) for build in ROOT.glob('libs/*/build.jam'))
 
 
 # A line of `b2 declared-lanes`: a library, the name of one of its lanes, the directory of the
@@ -505,8 +575,8 @@ def own_lane_entry(own: OwnLane) -> dict[str, object]:
     # image's own, another version. A lane of programs alone, a served one, needs none.
     node = base.node or own.kind == 'original'
     entry.update(kind=own.kind, name=own.name, os=base.os, wasm=base.wasm, emsdk=base.emsdk,
-                 node=node, cc=base.cc, cxx=base.cxx,
-                 external=own.library in EXTERNAL_DEPENDENCIES)
+                 node=node, cc=base.cc, cxx=base.cxx, external=needs_external(own.library),
+                 chrome=(own.library, own.lane) in CHROME_LANES)
     return entry
 
 
@@ -686,7 +756,16 @@ def fresh_xml(out_dir: Path, name: str) -> Path:
 
 def container_image() -> None:
     """Builds the image a container lane runs in, from CONTAINER_CONTEXT, with the network its
-    packages are installed from."""
+    packages are installed from, unless an image of that tag is there: the CI's container action
+    loads the one it built once and cached."""
+    try:
+        present = subprocess.run(['docker', 'image', 'inspect', CONTAINER_IMAGE],
+                                 capture_output=True, check=False).returncode == 0
+    except OSError as error:
+        raise Failure(f'cannot run docker: {error.strerror}') from error
+    if present:
+        print(f'container: {CONTAINER_IMAGE} is there', flush=True)
+        return
     command = ['docker', 'build', '--tag', CONTAINER_IMAGE, str(CONTAINER_CONTEXT)]
     print(f'container: {shlex.join(command)}', flush=True)
     try:

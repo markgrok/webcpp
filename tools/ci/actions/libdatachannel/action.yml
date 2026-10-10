@@ -7,9 +7,9 @@
 name: libdatachannel
 description: >-
   Builds libdatachannel 0.24.6, shared, without its WebSocket, examples and tests and with its
-  media transport, from its tag cloned with its submodules and checked against the tag's commit,
-  with CMake, the lane's compilers and the OpenSSL that OPENSSL_ROOT names (the openssl action
-  runs first), in .local/libdatachannel; cached per version, runner, compilers and OpenSSL; and
+  media transport, from its tag, checked against the tag's commit before its submodules are
+  fetched, with CMake, the lane's compilers and the OpenSSL that OPENSSL_ROOT names (the openssl
+  action runs first), in .local/libdatachannel; cached per version, runner, compilers and OpenSSL; and
   gives the later steps LIBDATACHANNEL_ROOT, and on Windows PATH its DLL. On Linux, macOS and
   Windows. trystero's native backend needs it, until webcpp builds it from third_party/.
 

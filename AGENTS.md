@@ -171,8 +171,10 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
   `SECP256K1_EMSCRIPTEN_ROOT`, `LIBDATACHANNEL_ROOT` and `OPENSSL_ROOT`
   name, else in `.local/secp256k1-native`, `.local/secp256k1-emscripten`,
   `.local/libdatachannel` and `.local/openssl` when it holds the library's
-  header (below), else on the compiler's default search path; trystero's page
-  says how each is built. The CI's actions build them so (chapter 9).
+  header (below), else on the compiler's default search path, where a system
+  install is legitimate; the build stops, naming the library and every place
+  it looked, when none holds its header. trystero's page says how each is
+  built. The CI's actions build them so (chapter 9).
 
 Each toolchain is installed by hand and configured in `user-config.jam`,
 until webcpp bundles the toolchains (chapter 13). b2 reads
@@ -1525,11 +1527,15 @@ jobs:
   the CI runs for, else `false`: the plan's output `has-emscripten`, on
   which the docs and lint jobs install emsdk (the lint analyses every
   library, and a page builds the page of each library it links, with its
-  reference). And `matrix.py external [--library <name>]` prints `true` when
-  any library of `libs/` needs libraries webcpp does not build
-  (`EXTERNAL_DEPENDENCIES`, below), else `false`: the plan's output
-  `external`, on which the docs and lint jobs install them, for the same
-  reasons.
+  reference). And `matrix.py external --library <name>` prints `true` when
+  that library needs libraries webcpp does not build: it is in
+  `EXTERNAL_DEPENDENCIES` (below), or a library of `libs/` that its
+  `build.jam` or Jamfiles use (`/webcpp/<name>`), at any depth, is; else
+  `false`: the plan's output `external`, on which the docs job installs
+  them, since a page parses its library's headers and those it uses. Without
+  `--library` it says whether any library of `libs/` needs them: the plan's
+  output `lint-external`, on which the lint job, which analyses every
+  library, installs them.
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
@@ -1556,22 +1562,32 @@ jobs:
   `container`), run the lane's b2 in a Linux container with no network but
   the loopback, so that a test that reaches beyond the machine fails there:
   every library's tests hold it, and trystero's guarantee 6 rests on it.
-  `matrix.py lane` builds the image of `tools/ci/container/Dockerfile`, with
-  the network: Ubuntu 24.04, the runner's release, pinned by the digest of
-  its image index, with `g++-14`, `clang-18`, OpenSSL's development files
-  and Python from Ubuntu's archive. Then it runs b2 by its path, `docker run
-  --rm --network none`, as the runner's user, with the superproject and b2's
-  prefix, where the Boost action installs Boost's headers too, mounted at
-  their own paths, and the variables of the external libraries passed on;
-  the XML is the lane's, as outside a container. A lane run so needs Linux
-  and docker.
+  The image is `tools/ci/container/Dockerfile`'s: Ubuntu 24.04, the
+  runner's release, pinned by the digest of its image index, with `g++-14`,
+  `clang-18`, OpenSSL's development files and Python from Ubuntu's snapshot
+  of the archive at the date its `ARG SNAPSHOT` names (`Snapshot: yes` on the
+  sources, `apt-get --snapshot`), so that one Dockerfile is one set of
+  compilers; the snapshot service is HTTPS only, so `ca-certificates` comes
+  first from the archive as it is, and Ubuntu keeps no snapshot of
+  `ports.ubuntu.com`, so the image builds for x86-64 alone (measured: apt
+  2.8.3 refuses arm64's sources). It is tagged `webcpp-lane:<the first 16
+  hex digits of the Dockerfile's SHA-256>`, and the lanes job's `container`
+  action builds it once, saves it in the cache under that digest, and loads
+  it in every later lane; `matrix.py lane` builds it only when no image of
+  that tag is there. Then it runs b2 by its path, `docker run --rm --network
+  none`, as the runner's user, with the superproject and b2's prefix, where
+  the Boost action installs Boost's headers too, mounted at their own paths,
+  and the variables of the external libraries passed on; the XML is the
+  lane's, as outside a container. A lane run so needs Linux x86-64 and
+  docker; the external libraries it runs against are built before, on the
+  runner, with the same compilers.
 
   **External libraries.** A library may need libraries webcpp does not build
   yet: `EXTERNAL_DEPENDENCIES` in `tools/ci/matrix.py` names them, trystero's
   `secp256k1`, `libdatachannel` and `openssl`, each the CI's action of that
   name, until webcpp builds them from `third_party/` (chapter 13). A lane
-  that builds such a library has `external` in its entry, and so does an own
-  lane of it; such a job runs the actions after the lane's own setup, by
+  that builds such a library, or one that uses it, has `external` in its
+  entry, and so does an own lane of it; such a job runs the actions after the lane's own setup, by
   their YAML anchors in both jobs: `openssl`, then `secp256k1`, with
   `emscripten: true` on an entry that has emsdk, then `libdatachannel`,
   built with the lane's compilers, its entry's `cc` and `cxx` (`gcc-14` and
@@ -1602,11 +1618,12 @@ jobs:
     the emscripten lane does, which runs its programs with it; one of the
     kind `programs` on any other target, such as wasi's served lanes, has
     none.
-  - Every own lane has `CHROME=/usr/bin/google-chrome`, the image's Google
-    Chrome, which a driven test runs when its driver meets a browser, as
-    trystero's `interop` lane does natively and on emscripten; its version
-    is the image's, which the image's manifest records (Google Chrome 154 on
-    ubuntu-24.04 in October 2026).
+  - An own lane whose driver meets a browser, one of `CHROME_LANES` in
+    `tools/ci/matrix.py` (trystero's `interop`, natively and on emscripten),
+    has its entry's `chrome`, and its job runs the `chrome` action, which
+    gives it `CHROME`, a pinned Chrome rather than the image's, which moves
+    with the image, so that a red interop lane is never a browser nobody
+    chose.
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
   Intel macOS), `clang++-18`, Node, wit-bindgen and the WASI WIT (wasi's
   reference parses its bindings), `b2 -a libs/<library>/doc`, or for the
@@ -1615,8 +1632,8 @@ jobs:
   without its system libraries (`libraries: 'false'`), whose headers
   `/webcpp//emscripten-headers` gives a reference that parses a header built
   for emscripten alone; and, when the plan's `external` is `true`, the
-  external libraries, built with Clang 18, whose headers a reference of
-  their users parses.
+  external libraries, built with Clang 18, whose headers the reference of
+  the library, or of a library it uses, parses.
 - **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
   with wasi-sdk's clang-format and clang-tidy, Node, Clang 18 as b2's default
   toolset and the wasip2 and wasip3 toolsets after it (`matrix.py register
@@ -1625,8 +1642,8 @@ jobs:
   is `true`, the emscripten toolset after them and emsdk, without its system
   libraries (`libraries: 'false'`), whose `em++` the emscripten dry run
   names and whose cache holds the sysroot an emscripten command is analysed
-  with; when the plan's `external` is `true`, the external libraries, built
-  with Clang 18, libsecp256k1 for emscripten too when `has-emscripten` is;
+  with; when the plan's `lint-external` is `true`, the external libraries,
+  built with Clang 18, libsecp256k1 for emscripten too when `has-emscripten` is;
   and the full history
   (`fetch-depth: 0`) of the superproject and of the library, since the
   banned-word rule reads every commit.
@@ -1749,9 +1766,14 @@ wrapper each quoted as one word of Jam.
     libraries `libssl.lib` and `libcrypto.lib` of the image's installation in
     `%ProgramFiles%\OpenSSL` (from the first of `lib/VC/x64/MD`,
     `lib/VC/x64/MDd` and `lib` that holds both), whose `bin`, with the DLLs,
-    it puts on `PATH`; an image without one has the installer of Shining
-    Light Productions pinned by the SHA-256 that `slproweb/opensslhashes`
-    records. It fails, naming it, on one that is not OpenSSL 3.
+    it puts on `PATH`. The image's is always preferred; only an image without
+    one has the installer of Shining Light Productions, pinned by the SHA-256
+    that `slproweb/opensslhashes` records, which Shining Light removes once
+    superseded, so that fallback then fails at `download.sh`, naming the URL,
+    until the pin moves. On macOS, when the image lacks `openssl@3`, which it
+    has today only as a dependency of other formulae, the action installs it
+    with `brew`, which checks its bottle against its formula's SHA-256, and
+    says so in its log. It fails, naming it, on one that is not OpenSSL 3.
   - `secp256k1` builds libsecp256k1 0.8.0 from GitHub's archive of its
     commit `6e2c8bc`, checked against its SHA-256, with CMake, static, with
     its `schnorrsig` and `extrakeys` modules and the small tables trystero's
@@ -1759,10 +1781,31 @@ wrapper each quoted as one word of Jam.
     `cc` (the lane's C compiler, else CMake's own), and with `emscripten:
     true` also with Emscripten's `emcmake`, after the emsdk action, into
     `.local/secp256k1-emscripten`; it exports `SECP256K1_ROOT` and
-    `SECP256K1_EMSCRIPTEN_ROOT`.
-  - `libdatachannel` clones the tag `v0.24.6` with its submodules, fails
-    unless `git rev-parse HEAD` is the tag's commit `6b1e2e6`, read with
-    `gh api`, and builds it shared, `NO_WEBSOCKET`, `NO_EXAMPLES` and
+    `SECP256K1_EMSCRIPTEN_ROOT`. The emscripten build's cache key names the
+    Emscripten version the emsdk action installs, read from its
+    `install.sh`, so that a bump of emsdk builds it again.
+  - `chrome` installs Chrome for Testing's `chrome-headless-shell`
+    155.0.8059.39, the Stable channel of Google's
+    `last-known-good-versions-with-downloads.json` when it was pinned, from
+    the URL that JSON lists, checked against the SHA-256 recorded for each
+    build (Google publishes none: each is the digest of the archive
+    downloaded twice, which matched the MD5 Google's storage states for it),
+    into `.local/chrome-headless-shell`, on Linux x86-64 and arm64, and
+    exports `CHROME`, a wrapper that runs it with `--no-sandbox`: measured in
+    an Ubuntu 24.04 container as an unprivileged user, the shell stops ("No
+    usable sandbox!"), since its sandbox needs unprivileged user namespaces,
+    which Ubuntu 24.04 grants through AppArmor only to programs with a
+    profile, and its archive has no setuid `chrome-sandbox`; it loads only
+    the driver's own pages, on 127.0.0.1, with every other host unresolved.
+    The headless shell sends nothing to Google of its own (measured).
+  - `container` gives a container lane its image (above): built once from
+    `tools/ci/container/Dockerfile`, saved in the cache under the
+    Dockerfile's digest, and loaded by every later lane.
+  - `libdatachannel` clones the tag `v0.24.6`, fails unless `git rev-parse
+    HEAD` is the tag's commit `6b1e2e6`, read with `gh api`, and only then
+    fetches its submodules, at the commits that commit's gitlinks name, so a
+    tag that moved never has git fetch from the URLs its `.gitmodules` would
+    name; it builds it shared, `NO_WEBSOCKET`, `NO_EXAMPLES` and
     `NO_TESTS` on and `NO_MEDIA` off, against the OpenSSL `OPENSSL_ROOT`
     names (the `openssl` action runs first), with the inputs `cc` and `cxx`,
     into `.local/libdatachannel`; it exports `LIBDATACHANNEL_ROOT`, and on
@@ -1789,11 +1832,16 @@ they leave out, and their refusals: a runner no build of wit-bindgen or
 emsdk is pinned for, a crate that holds no WIT, an emsdk at another commit,
 a release without its `node_modules`, an archive emsdk would download
 unpinned, and an emcc that is not 6.0.11; the emsdk action's node wrapper,
-`EM_CACHE`, warmed cache and system libraries; and, for the external
+`EM_CACHE`, warmed cache and system libraries; for the external
 libraries, the commands each action builds with, where it installs, what it
-exports and its cache key, and their refusals: an archive of libsecp256k1
+exports and its cache key (the emscripten build's from the emsdk action's
+version), libdatachannel's submodules fetched only after its commit is
+checked, and macOS's `openssl@3` installed with `brew` when absent; the
+chrome action's shell and its `--no-sandbox` wrapper; the container action's
+image, built and saved once, then loaded; and their refusals: an archive of libsecp256k1
 whose SHA-256 is not the pinned one, a libdatachannel at another commit,
-libdatachannel without `OPENSSL_ROOT`, an OpenSSL that is not 3, and a
+libdatachannel without `OPENSSL_ROOT`, an OpenSSL that is not 3, a
+chrome-headless-shell whose SHA-256 is not the pinned one, and a
 runner none of them builds for.
 
 **The site.** On every run of the superproject's CI, `tools/ci/assemble.py`
