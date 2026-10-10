@@ -184,9 +184,15 @@ def test_a_relative_user_config_is_found(root):
 
 
 def test_install_copies_headers_to_prefix(root):
-    # Every file of include/webcpp/**, a header or not, but no hidden file such as Finder's.
+    # Every file of include/webcpp/**, a header or not, but no hidden file such as Finder's; and
+    # the library's licence files, LICENSE_1_0.txt and the original's LICENSE-<ORIGIN>.txt of a
+    # port that derives from its code, beside its headers in include/webcpp/<name>/, so that an
+    # installed copy carries the notices the repository does.
     source = root / 'libs/demo/include'
     (source / 'webcpp/.DS_Store').write_bytes(b'Finder')
+    licences = {'LICENSE_1_0.txt': 'Boost Software License\n', 'LICENSE-DEMO.txt': 'MIT\n'}
+    for name, text in licences.items():
+        (root / 'libs/demo' / name).write_text(text)
     prefix = Path(tempfile.mkdtemp(prefix='webcpp prefix '))
     try:
         harness.expect(harness.run_b2(root, 'install', f'--prefix={prefix}'), True)
@@ -194,7 +200,10 @@ def test_install_copies_headers_to_prefix(root):
                        if path.is_file() and not path.name.startswith('.'))
         installed = sorted(path.relative_to(prefix / 'include')
                            for path in (prefix / 'include').rglob('*') if path.is_file())
-        assert installed == files, (installed, files)
+        expected = sorted([*files, *(Path('webcpp/demo') / name for name in licences)])
+        assert installed == expected, (installed, expected)
+        for name, text in licences.items():
+            assert (prefix / 'include/webcpp/demo' / name).read_text() == text, name
         assert Path('webcpp/demo.hpp') in installed, installed
         assert Path('webcpp/demo/answer.hpp') in installed, installed
         assert Path('webcpp/demo/data/answer.txt') in installed, installed

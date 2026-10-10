@@ -403,7 +403,10 @@ rule files-under ( directory )
 # A library is a directory of libs/ with a build.jam (a submodule not
 # checked out has none), registered as /webcpp/<name>. Its test, example and
 # doc directories join the aggregates, and every file of its
-# include/webcpp/** the installation, which keeps their tree.
+# include/webcpp/** the installation, which keeps their tree, with its
+# licence files beside its headers, in include/webcpp/<name>/:
+# LICENSE_1_0.txt, and the original's LICENSE-<ORIGIN>.txt of a port that
+# derives from its code, so that an installed copy keeps both notices.
 for local build in [ glob libs/*/build.jam ]
 {
     local library = $(build:D) ;
@@ -416,7 +419,10 @@ for local build in [ glob libs/*/build.jam ]
     install install-$(name)
       : [ files-under $(library)/include/webcpp ]
       : <location>$(.includedir) <install-source-root>$(library)/include ;
-    .install += install-$(name) ;
+    install install-$(name)-licences
+      : [ glob $(library)/LICENSE_1_0.txt $(library)/LICENSE-*.txt ]
+      : <location>$(.includedir)/webcpp/$(name) ;
+    .install += install-$(name) install-$(name)-licences ;
 }
 
 alias test : $(.test) ;
