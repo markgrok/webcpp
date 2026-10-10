@@ -27,7 +27,8 @@ include::{libraries}[]
 == Test matrix
 
 Every library is tested on every target it declares, natively and for
-WebAssembly, on wasm32-wasip2 and wasm32-wasip3 with wasmtime. The
+WebAssembly: on wasm32-wasip2 and wasm32-wasip3 with wasmtime, and with
+Emscripten, whose programs node runs. The
 https://webcpporg.github.io/webcpp/report/[test matrix] shows each test and
 example of each library by lane, with the log of every failure.
 
@@ -35,7 +36,8 @@ example of each library by lane, with the log of every failure.
 == Getting started
 
 With Boost 1.92 or newer and b2 installed, a checkout of the superproject
-builds and tests every library:
+builds and tests every library, trystero once the three libraries it needs
+are installed, as its page says:
 
 [source,bash]
 ----

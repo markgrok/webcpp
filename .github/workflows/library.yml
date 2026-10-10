@@ -23,12 +23,18 @@
 #               a lane per compiler for each target the library declares. The CI never lists a
 #               library's targets by hand, and a target without a lane fails the plan. It also
 #               runs b2 declared-lanes and writes the matrix of own lanes, those a library
-#               declares with webcpp.lane, such as its oracle's.
+#               declares with webcpp.lane, such as its oracle's, and says whether a library
+#               needs libraries that webcpp does not build yet (external), trystero's
+#               libsecp256k1, libdatachannel and OpenSSL, which the CI's actions of those names
+#               install, until webcpp builds them from third_party/.
 #   lanes       one job per lane, which runs the lane command, b2 -a --dump-tests
 #               --out-xml=<lane>.xml for one toolset, and uploads the XML. With --out-xml, b2
 #               exits 0 even when a test fails: the report gives the verdict. A wasip2 or
-#               wasip3 lane installs wasi-sdk, wasmtime, wit-bindgen and the WASI WIT first, and
-#               the emscripten lane emsdk and Node, which runs its programs.
+#               wasip3 lane installs wasi-sdk, wasmtime, wit-bindgen and the WASI WIT first, the
+#               emscripten lane emsdk and Node, which runs its programs, and a lane whose entry
+#               says external the libraries its libraries need, built with the lane's compilers.
+#               GCC 14 and Clang 18 run their b2 in a container with no network but the loopback
+#               (tools/ci/container/Dockerfile).
 #   own-lanes   one job per own lane of a library and target it runs on, which runs the lane
 #               in every directory that declares it there. One that names no target, as an
 #               oracle, runs on Linux x86-64 with Clang 18, and with Node when it runs the
@@ -36,13 +42,16 @@
 #               names a target, as wasi's served tests and examples on wasip2, or a driven test on
 #               emscripten, is set up as that target's lane is, with Node when it runs the
 #               original, runs b2 -a --dump-tests --out-xml with its toolset, and uploads the
-#               XML, which the report reads as a lane's. A library that declares none, as xactor,
-#               has no such job.
+#               XML, which the report reads as a lane's. Each has the image's Chrome, which a
+#               driven test that meets a browser runs (CHROME), and the external libraries when
+#               its entry says so. A library that declares none, as xactor, has no such job.
 #   docs        the library's page, or every page and the index, with MrDocs on Linux x86-64,
 #               wit-bindgen and the WASI WIT, for a reference that parses a component's
 #               bindings, and, when a library declares emscripten (the plan's has-emscripten),
 #               emsdk without its system libraries, for one that parses a header built for
-#               emscripten alone; the index is built with -sWEBCPP_INDEX=site, its links where
+#               emscripten alone, and, when a library needs them (the plan's external), the
+#               external libraries, which a reference of their headers' users parses; the index
+#               is built with -sWEBCPP_INDEX=site, its links where
 #               the site serves each page (libs/<name>/), and the pages are the artifact ci.yml
 #               publishes.
 #   tools       for the superproject only: every tools/**/*_test.py, the tests of the build,
@@ -52,7 +61,8 @@
 #               clang-tidy and running every other rule; with the full history, which the
 #               banned-word rule reads, and the toolsets and tools of the WASI lanes, whose
 #               commands it analyses, and of the emscripten lane, without its system libraries,
-#               when a library declares emscripten.
+#               when a library declares emscripten; and the external libraries when a library
+#               needs them.
 #   actionlint  every workflow of the superproject and of the libraries.
 #   report      merges the XML of every lane and every own lane on a target with
 #               tools/report/report.py into the test matrix. Its exit status is the verdict, and it
@@ -92,6 +102,7 @@ jobs:
       own-lanes: ${{ steps.plan.outputs.own-lanes }}
       has-own-lanes: ${{ steps.plan.outputs.has-own-lanes }}
       has-emscripten: ${{ steps.plan.outputs.has-emscripten }}
+      external: ${{ steps.plan.outputs.external }}
     steps:
       # The superproject is the caller's commit when it calls this workflow itself, and main
       # when a library does, the branch this workflow is called at.
@@ -155,6 +166,10 @@ jobs:
           # Whether any library declares emscripten, whose headers the docs and the lint read.
           has_emscripten="$(python3 tools/ci/matrix.py declares emscripten "${arguments[@]}")"
           echo "has-emscripten=$has_emscripten" >> "$GITHUB_OUTPUT"
+          # Whether any library needs libraries webcpp does not build, which the docs and the
+          # lint install then.
+          external="$(python3 tools/ci/matrix.py external "${arguments[@]}")"
+          echo "external=$external" >> "$GITHUB_OUTPUT"
 
   lanes:
     name: ${{ matrix.name }}
@@ -204,6 +219,30 @@ jobs:
       - &node
         if: matrix.node
         uses: ./tools/ci/actions/node
+
+      # The libraries a library of the lane needs and webcpp does not build yet, for an entry
+      # that says external, which the own-lanes job installs too, by these anchors: OpenSSL
+      # first, which libdatachannel is built against; libsecp256k1, for emscripten too, after
+      # emsdk, on an entry that has it; and libdatachannel, with the lane's compilers, since a
+      # program shares the types of its C++ API. Only the native backend needs OpenSSL and
+      # libdatachannel, so an entry on emscripten has neither.
+      - &openssl
+        if: matrix.external && !matrix.emsdk
+        uses: ./tools/ci/actions/openssl
+
+      - &secp256k1
+        if: matrix.external
+        uses: ./tools/ci/actions/secp256k1
+        with:
+          cc: ${{ matrix.cc }}
+          emscripten: ${{ matrix.emsdk }}
+
+      - &libdatachannel
+        if: matrix.external && !matrix.emsdk
+        uses: ./tools/ci/actions/libdatachannel
+        with:
+          cc: ${{ matrix.cc }}
+          cxx: ${{ matrix.cxx }}
 
       # The lane registers its toolset in .local/user-config.jam, prints its b2 command and runs
       # it; Windows's Python is python.
@@ -257,12 +296,18 @@ jobs:
       - *wasi-wit
       - *emsdk
       - *node
+      - *openssl
+      - *secp256k1
+      - *libdatachannel
 
       # It registers its toolset in .local/user-config.jam, prints its b2 command and runs it.
+      # CHROME is the image's Chrome, the one a driven test runs when its driver meets a browser,
+      # as trystero's interop lane does (ubuntu-24.04, where every own lane runs).
       - name: Own lane
         id: lane
         env:
           LANE: ${{ toJSON(matrix) }}
+          CHROME: /usr/bin/google-chrome
         run: python3 tools/ci/matrix.py own-lane "$LANE"
 
       - name: Upload the lane's XML
@@ -304,6 +349,23 @@ jobs:
         uses: ./tools/ci/actions/emsdk
         with:
           libraries: 'false'
+
+      # The libraries a library needs and webcpp does not build yet, when one does (the plan's
+      # external), whose headers its reference parses with the native backend's: with Clang 18,
+      # the compiler that parses them.
+      - if: needs.plan.outputs.external == 'true'
+        uses: ./tools/ci/actions/openssl
+
+      - if: needs.plan.outputs.external == 'true'
+        uses: ./tools/ci/actions/secp256k1
+        with:
+          cc: clang-18
+
+      - if: needs.plan.outputs.external == 'true'
+        uses: ./tools/ci/actions/libdatachannel
+        with:
+          cc: clang-18
+          cxx: clang++-18
 
       # clang++ reads the headers for tools/doc/doc_comments.py; the Boost check compiles with
       # the same Clang. The index links each library's page where the site serves it.
@@ -398,6 +460,25 @@ jobs:
         uses: ./tools/ci/actions/emsdk
         with:
           libraries: 'false'
+
+      # The libraries a library needs and webcpp does not build yet, when one does (the plan's
+      # external), which the dry runs name and clang-tidy reads, built with Clang 18; and
+      # libsecp256k1's emscripten build too when a library declares emscripten, for the commands
+      # of that target.
+      - if: needs.plan.outputs.external == 'true'
+        uses: ./tools/ci/actions/openssl
+
+      - if: needs.plan.outputs.external == 'true'
+        uses: ./tools/ci/actions/secp256k1
+        with:
+          cc: clang-18
+          emscripten: ${{ needs.plan.outputs.has-emscripten }}
+
+      - if: needs.plan.outputs.external == 'true'
+        uses: ./tools/ci/actions/libdatachannel
+        with:
+          cc: clang-18
+          cxx: clang++-18
 
       # The compilation database is what b2 compiles with its default toolset, the first that
       # user-config.jam registers, Clang 18, and, for what only a WASI target or emscripten

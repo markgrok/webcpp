@@ -17,8 +17,8 @@ model: this repository is the superproject, the equivalent of
 | [xstate](https://github.com/webcpporg/xstate) | A header-only port of XState's state machines and actors: machines read from XState's JSON config, stepped by XState's pure functions or run as actors on xactor. Ports XState 5.33.2, and is proven against it. | native, wasip2, wasip3 |
 | [pratt](https://github.com/webcpporg/pratt) | A header-only Pratt parser engine, generic through concepts, with a calculator built on it, exact in decimal by default; a library of webcpp's own. | native, wasip2, wasip3 |
 | [wasi](https://github.com/webcpporg/wasi) | Header-only helpers for C++ built as WebAssembly components: the HTTP handler a component exports on wasip2 and wasip3, and the macros a program writes its main between; a library of webcpp's own. | wasip2, wasip3 (its response also natively) |
+| [trystero](https://github.com/webcpporg/trystero) | Serverless WebRTC rooms, wire compatible with Trystero: peers meet over public Nostr relays, natively over libdatachannel and in the browser over its own WebRTC. Ports Trystero 0.26.0, and is proven against it. | native, emscripten |
 
-trystero (a port of Trystero's serverless WebRTC rooms) is being moved here.
 Each library's page, with its API reference, and the test matrix of every
 library on every target are published at <https://webcpporg.github.io/webcpp/>.
 
@@ -31,18 +31,25 @@ library on every target are published at <https://webcpporg.github.io/webcpp/>.
   and runs the tests of the build itself;
 - for WebAssembly, wasi-sdk 34, whose clang builds for wasm32-wasip2 and
   wasm32-wasip3, and wasmtime 47, which runs what it builds;
+- for emscripten, Emscripten 6.0.11 from emsdk, and Node, which runs what it
+  builds;
+- for trystero, libsecp256k1 0.8.0, natively and built with Emscripten, and,
+  for its native backend, libdatachannel 0.24.6 and OpenSSL 3 (below);
 - for WebAssembly components, such as wasi's, wit-bindgen 0.62.0, which
   generates the C bindings of a component's world, and the `wasi:http` WIT
   of WASI 0.2.12 and 0.3.0, against which a world resolves its packages; and
   wasmtime, which serves the components;
 - for the documentation, Node, which runs Asciidoctor.js, MrDocs 2026.9.29,
-  which writes each library's API reference, and clang++; and wit-bindgen
-  and the WIT, since wasi's reference reads its bindings;
+  which writes each library's API reference, and clang++; wit-bindgen and
+  the WIT, since wasi's reference reads its bindings; and emsdk's headers and
+  trystero's libraries, since trystero's reference reads its browser and
+  native backends;
 - for a library's oracle lane, which runs the original it ports against the
   same cases and examples, Node and npm;
 - for the lint, wasi-sdk 34, whose clang-format and clang-tidy it runs, the
-  wasip2 and wasip3 toolsets below, wit-bindgen and the WIT, since it reads
-  what those toolsets compile, and Node, with which it installs Pyright.
+  wasip2, wasip3 and emscripten toolsets below, wit-bindgen, the WIT and
+  trystero's libraries, since it reads what those toolsets compile, and Node,
+  with which it installs Pyright.
 
 b2 refuses to run while `CPATH`, `CPLUS_INCLUDE_PATH` or `C_INCLUDE_PATH` is
 set, since the compiler would read another Boost from them before the
@@ -78,7 +85,8 @@ line of its configuration checks,
 
     - Boost 1.92 or newer in /opt/homebrew/opt/boost/include (1.92.0) : yes [1]
 
-then builds and runs every library's tests.
+then builds and runs every library's tests: trystero's need its three
+libraries ("trystero's libraries", below).
 
 The other aggregates work the same way:
 
@@ -148,6 +156,37 @@ else in `.local/wasi-wit/p2` and `.local/wasi-wit/p3`; and the wasmtime that
 serves a component where `-sWASMTIME=<path>` says, else on `PATH`. When one
 is needed and not there, the build stops, naming it and every place it
 looked.
+
+### Emscripten
+
+A library that declares emscripten, as trystero does, is built for it with
+b2's `emscripten` toolset, registered against Emscripten 6.0.11 from emsdk in
+`~/user-config.jam`, where `/path/to/emsdk` is the emsdk's directory and
+`/path/to/node` the node that runs a program:
+
+    local emsdk = /path/to/emsdk ;
+    local node = /path/to/node ;
+    using emscripten : : $(emsdk)/upstream/emscripten/em++ : <nodejs>$(node) ;
+
+It builds wasm32, single-threaded and static, and runs each test and example
+with node itself, so it takes no `testing.launcher`:
+
+    b2 toolset=emscripten libs/trystero/test libs/trystero/example
+
+A program for a browser, which node cannot run, is linked and never run.
+
+### trystero's libraries
+
+trystero needs three libraries that webcpp does not build yet: libsecp256k1
+0.8.0, natively and built with Emscripten, and, for its native backend,
+libdatachannel 0.24.6, built with the compiler and the standard library that
+build the programs, and OpenSSL 3. Its page says how each is built. The
+build finds each where `SECP256K1_ROOT`, `SECP256K1_EMSCRIPTEN_ROOT`,
+`LIBDATACHANNEL_ROOT` and `OPENSSL_ROOT` say, each the directory of its
+`include/` and `lib/`, else in `.local/secp256k1-native`,
+`.local/secp256k1-emscripten`, `.local/libdatachannel` and `.local/openssl`
+of the checkout, where the CI installs them, else on the compiler's default
+search path.
 
 ## Documentation
 

@@ -1,0 +1,20 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: OpenSSL
+description: >-
+  Lays out the runner's own OpenSSL 3 in .local/openssl, its headers and its libraries, and gives
+  the later steps OPENSSL_ROOT: the system's on Linux, Homebrew's openssl@3 on macOS, and on
+  Windows the image's, else a pinned installer checked against its SHA-256, whose DLLs it puts on
+  PATH. trystero's native backend and libdatachannel need it, until webcpp builds it from
+  third_party/.
+
+runs:
+  using: composite
+  steps:
+    - name: OpenSSL 3
+      shell: bash
+      run: bash tools/ci/actions/openssl/install.sh

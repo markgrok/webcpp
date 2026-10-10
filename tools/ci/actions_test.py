@@ -27,7 +27,17 @@ probe of --experimental-wasm-threads without a word, gives the jobs EM_CACHE by 
 outside the emsdk, and warms that cache, so that no b2 meets Emscripten's sanity check; and its
 libraries step builds the system libraries the lanes link into that cache, or, for a job that
 only parses (the input libraries: 'false', under the same key), the sysroot alone, a cache the
-action never saves. Nothing is fetched
+action never saves. The actions of trystero's external libraries: secp256k1 downloads the archive
+of its pinned commit, refuses one whose SHA-256 is not the pin before CMake runs, builds it with
+the lane's C compiler, natively and with emcmake, Debug on Windows, installs it in
+.local/secp256k1-native and .local/secp256k1-emscripten, exports their variables, and keys its
+cache on the compiler and the emscripten build; libdatachannel clones the tag, refuses another
+commit before CMake runs, builds it with the lane's compilers against OPENSSL_ROOT, which it
+refuses without, Debug on Windows, where it puts its DLL on PATH, and keys its cache on the
+compilers and OpenSSL's version; openssl lays out the system's OpenSSL 3 as links on Linux and
+macOS, copies the image's on Windows, from lib/VC/x64/MD first, downloads the pinned installer
+when the image has none, and refuses one that is not OpenSSL 3; and each refuses a runner it
+builds nothing for. Nothing is fetched
 from the network: the downloads are file:// URLs, git is a stand-in, and install.sh runs against
 a download.sh that only says it was called, or that hands it a stand-in archive. Run with the
 names of some cases to run only those."""
@@ -775,6 +785,468 @@ def test_emsdk_refuses_a_runner_it_pins_nothing_for(scratch: Path) -> None:
         assert not (root / '.local').exists()
 
 
+# The external dependencies, which the lanes of a library that needs them build or lay out in
+# .local/, until webcpp builds them from third_party/.
+SECP256K1 = CI / 'actions/secp256k1/install.sh'
+LIBDATACHANNEL = CI / 'actions/libdatachannel/install.sh'
+OPENSSL = CI / 'actions/openssl/install.sh'
+
+SECP256K1_COMMIT = '6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d'
+SECP256K1_URL = f'https://github.com/bitcoin-core/secp256k1/archive/{SECP256K1_COMMIT}.tar.gz'
+SECP256K1_SHA256 = '3fe9fd705f4fdf2fe90d6e04b6c1fedd7e8f244a119315886f6468f52c2dfc33'
+LIBDATACHANNEL_COMMIT = '6b1e2e620f1e37f0eafeee702eaea0043cb305fd'
+LIBDATACHANNEL_REPOSITORY = 'https://github.com/paullouisageneau/libdatachannel.git'
+OPENSSL_INSTALLER = 'https://slproweb.com/download/Win64OpenSSL-3_6_5.exe'
+OPENSSL_INSTALLER_SHA256 = '8b2fcf66088fa0d13fa5729ef374a182adf72edfffde89089b3b1bf48c3f257f'
+
+# The options each build is configured with, as trystero's page builds it.
+SECP256K1_OPTIONS = [
+    '-DBUILD_SHARED_LIBS=OFF', '-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-DCMAKE_INSTALL_LIBDIR=lib',
+    '-DSECP256K1_ENABLE_MODULE_SCHNORRSIG=ON', '-DSECP256K1_ENABLE_MODULE_EXTRAKEYS=ON',
+    '-DSECP256K1_ECMULT_WINDOW_SIZE=4', '-DSECP256K1_ECMULT_GEN_KB=2',
+    '-DSECP256K1_BUILD_TESTS=OFF', '-DSECP256K1_BUILD_EXHAUSTIVE_TESTS=OFF',
+    '-DSECP256K1_BUILD_BENCHMARK=OFF', '-DSECP256K1_BUILD_CTIME_TESTS=OFF',
+]
+LIBDATACHANNEL_OPTIONS = ['-DCMAKE_INSTALL_LIBDIR=lib', '-DBUILD_SHARED_LIBS=ON',
+                          '-DNO_WEBSOCKET=ON', '-DNO_EXAMPLES=ON', '-DNO_TESTS=ON',
+                          '-DNO_MEDIA=OFF']
+
+# A stand-in of cmake: each call's words to cmake.log, one line each; --install <work> --config
+# <config> --prefix <prefix> also writes every file STAND_IN_INSTALLS names, relative to the
+# prefix.
+FAKE_CMAKE = r"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "cmake $*" >> "${STAND_IN_LOG}"
+if [ "$1" = --install ]; then
+    prefix="${@: -1}"
+    for file in ${STAND_IN_INSTALLS-}; do
+        mkdir -p "$(dirname "${prefix}/${file}")"
+        echo installed > "${prefix}/${file}"
+    done
+fi
+"""
+
+# A stand-in of Emscripten's emcmake, which says it ran, then runs what it wraps.
+FAKE_EMCMAKE = r"""#!/usr/bin/env bash
+printf '%s\n' "emcmake $*" >> "${STAND_IN_LOG}"
+exec "$@"
+"""
+
+# A stand-in of a compiler, which says what it is as gcc's --version's first line does.
+FAKE_COMPILER = '#!/bin/sh\necho "$(basename "$0") (stand-in) ${STAND_IN_VERSION:-14.2.0}"\n'
+
+# A stand-in of git for the libdatachannel action: `clone ... <repository> <dir>` logs its words
+# and makes the directory, and `-C <dir> rev-parse HEAD` prints STAND_IN_HEAD, else the pin.
+FAKE_CLONE = r"""#!/usr/bin/env bash
+set -euo pipefail
+if [ "$1" = clone ]; then
+    printf '%s\n' "git $*" >> "${STAND_IN_LOG}"
+    mkdir -p "${@: -1}"
+    exit 0
+fi
+if [ "$1 $3 $4" != '-C rev-parse HEAD' ]; then
+    echo "git: not a command of the stand-in: $*" >&2
+    exit 1
+fi
+echo "${STAND_IN_HEAD:-""" + LIBDATACHANNEL_COMMIT + r"""}"
+"""
+
+# A stand-in of cygpath, which a Windows runner's Git Bash has: the path as it is.
+FAKE_CYGPATH = '#!/bin/sh\nprintf \'%s\\n\' "$2"\n'
+
+
+def stand_ins(scratch: Path, tools: dict[str, str]) -> Path:
+    """A directory of the stand-in programs tools names, each by its text."""
+    directory = scratch / 'tools-on-path'
+    directory.mkdir(exist_ok=True)
+    for name, text in tools.items():
+        (directory / name).write_text(text)
+        (directory / name).chmod(0o755)
+    return directory
+
+
+def logged(scratch: Path) -> list[str]:
+    """The lines the stand-ins wrote, in order."""
+    log = scratch / 'stand-in.log'
+    return log.read_text().splitlines() if log.exists() else []
+
+
+def dependency_runner(scratch: Path, system: str, processor: str, tools: Path,
+                      **extra: str) -> dict[str, str]:
+    """A runner's variables, with the stand-ins first on PATH."""
+    return {'RUNNER_OS': system, 'RUNNER_ARCH': processor, 'RUNNER_TEMP': str(scratch / 'temp'),
+            'ImageOS': 'ubuntu24', 'ImageVersion': '20261004.327.1',
+            'GITHUB_OUTPUT': str(scratch / 'github-output'),
+            'GITHUB_ENV': str(scratch / 'github-env'), 'GITHUB_PATH': str(scratch / 'github-path'),
+            'PATH': f'{tools}{os.pathsep}{os.environ["PATH"]}',
+            'STAND_IN_LOG': str(scratch / 'stand-in.log'), **extra}
+
+
+def dependency_step(scratch: Path, script: Path, runner: dict[str, str],
+                    *arguments: str) -> subprocess.CompletedProcess:
+    """Runs the action's script from the scratch superproject, as the action does."""
+    environment = {**os.environ, **runner}
+    for name in ('CC', 'CXX', 'EMSCRIPTEN', 'OPENSSL_ROOT'):
+        if name not in runner:
+            environment.pop(name, None)
+    return subprocess.run(['bash', str(script), *arguments], capture_output=True, text=True,
+                          check=False, cwd=scratch, env=environment)
+
+
+def secp256k1_archive(scratch: Path) -> Path:
+    """A stand-in of the archive of the pinned commit: its top directory and a CMakeLists.txt."""
+    tree = scratch / 'archive/secp256k1'
+    tree.mkdir(parents=True)
+    (tree / 'CMakeLists.txt').write_text('project(secp256k1)\n')
+    return tar_gz(scratch / 'secp256k1.tar.gz', tree, f'secp256k1-{SECP256K1_COMMIT}')
+
+
+SECP256K1_FILES = 'include/secp256k1.h include/secp256k1_schnorrsig.h lib/libsecp256k1.a'
+
+
+def secp256k1_tree(scratch: Path, system: str = 'Linux', processor: str = 'X64',
+                   **extra: str) -> tuple[Path, dict[str, str]]:
+    """The secp256k1 action where it lives, beside a download.sh that serves the stand-in
+    archive, with stand-ins of cmake, Emscripten's emcmake and the compilers, and a runner's
+    variables."""
+    script = serving_tree(scratch, 'secp256k1', SECP256K1,
+                          {SECP256K1_URL: secp256k1_archive(scratch)})
+    shutil.copy2(SECP256K1.parent / 'action.yml', script.parent / 'action.yml')
+    emcmake = scratch / '.local/emsdk/upstream/emscripten/emcmake'
+    emcmake.parent.mkdir(parents=True)
+    emcmake.write_text(FAKE_EMCMAKE)
+    emcmake.chmod(0o755)
+    tools = stand_ins(scratch, {'cmake': FAKE_CMAKE, 'gcc-14': FAKE_COMPILER,
+                                'clang-18': FAKE_COMPILER, 'cygpath': FAKE_CYGPATH})
+    return script, dependency_runner(scratch, system, processor, tools,
+                                     **{'STAND_IN_INSTALLS': SECP256K1_FILES, **extra})
+
+
+def test_secp256k1_builds_the_pinned_archive_natively_and_for_emscripten(scratch: Path) -> None:
+    script, runner = secp256k1_tree(scratch, CC='gcc-14', EMSCRIPTEN='true')
+    # What an earlier install left is not kept.
+    stale = scratch / '.local/secp256k1-native/stale'
+    stale.parent.mkdir(parents=True)
+    stale.write_text('stale\n')
+    result = dependency_step(scratch, script, runner, 'install')
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    assert downloads(scratch) == [(SECP256K1_URL, SECP256K1_SHA256)], downloads(scratch)
+    source = f'.local/.build/secp256k1/secp256k1-{SECP256K1_COMMIT}'
+    # The prefixes by the resolved path of the directory the step runs in, as $PWD has it.
+    native = f'{scratch.resolve()}/.local/secp256k1-native'
+    emscripten = f'{scratch.resolve()}/.local/secp256k1-emscripten'
+    assert logged(scratch) == [
+        f'cmake -DCMAKE_C_COMPILER=gcc-14 -S {source} -B .local/.build/secp256k1/native '
+        f'-DCMAKE_BUILD_TYPE=Release {" ".join(SECP256K1_OPTIONS)} '
+        f'-DCMAKE_INSTALL_PREFIX={native}',
+        'cmake --build .local/.build/secp256k1/native --config Release --parallel',
+        f'cmake --install .local/.build/secp256k1/native --config Release --prefix {native}',
+        f'emcmake cmake -S {source} -B .local/.build/secp256k1/emscripten '
+        f'-DCMAKE_BUILD_TYPE=Release {" ".join(SECP256K1_OPTIONS)} '
+        f'-DCMAKE_INSTALL_PREFIX={emscripten}',
+        'cmake -S {0} -B .local/.build/secp256k1/emscripten -DCMAKE_BUILD_TYPE=Release {1} '
+        '-DCMAKE_INSTALL_PREFIX={2}'.format(source, ' '.join(SECP256K1_OPTIONS), emscripten),
+        'cmake --build .local/.build/secp256k1/emscripten --config Release --parallel',
+        f'cmake --install .local/.build/secp256k1/emscripten --config Release --prefix '
+        f'{emscripten}'], logged(scratch)
+    assert not stale.exists() and not (scratch / '.local/.build/secp256k1').exists()
+    result = dependency_step(scratch, script, runner, 'configure')
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert (scratch / 'github-env').read_text() == (f'SECP256K1_ROOT={native}\n'
+                                                   f'SECP256K1_EMSCRIPTEN_ROOT={emscripten}\n')
+    # The key names the version, the runner, the build and the compiler: another compiler, or the
+    # emscripten build left out, is another entry of the cache.
+    keys = []
+    for extra in ({'CC': 'gcc-14', 'EMSCRIPTEN': 'true'}, {'CC': 'clang-18', 'EMSCRIPTEN': 'true'},
+                  {'CC': 'gcc-14', 'EMSCRIPTEN': 'false'}, {'CC': 'gcc-14', 'EMSCRIPTEN': 'true',
+                                                            'STAND_IN_VERSION': '14.3.0'}):
+        (scratch / 'github-output').unlink(missing_ok=True)
+        result = dependency_step(scratch, script, {**runner, **extra}, 'key')
+        assert result.returncode == 0, (result.returncode, result.stderr)
+        key = (scratch / 'github-output').read_text()
+        assert key.startswith('key=secp256k1-0.8.0-Linux-X64-ubuntu24-'), key
+        keys.append(key)
+    assert len(set(keys)) == len(keys), keys
+    assert '-native-emscripten-6.0.11-' in keys[0] and '-native-emscripten' not in keys[2], keys
+
+
+def test_secp256k1_on_windows_builds_debug_with_visual_studio(scratch: Path) -> None:
+    # No compiler named: CMake's own, Visual Studio's; the Debug configuration, whose /MDd the
+    # lanes' debug variant links with; and the library CMake names libsecp256k1.lib there.
+    script, runner = secp256k1_tree(scratch, 'Windows', 'X64',
+                                    STAND_IN_INSTALLS=SECP256K1_FILES.replace('.a', '.lib'))
+    result = dependency_step(scratch, script, runner, 'install')
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    assert logged(scratch)[0].startswith('cmake -S '), logged(scratch)
+    assert '-DCMAKE_BUILD_TYPE=Debug ' in logged(scratch)[0], logged(scratch)
+    assert logged(scratch)[1].endswith('--config Debug --parallel'), logged(scratch)
+    assert not any('emcmake' in line for line in logged(scratch)), logged(scratch)
+    result = dependency_step(scratch, script, runner, 'configure')
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert (scratch / 'github-env').read_text() == (
+        f'SECP256K1_ROOT={scratch.resolve()}/.local/secp256k1-native\n'), (
+            (scratch / 'github-env').read_text())
+    # A build without its library is no install.
+    (scratch / '.local/secp256k1-native/lib/libsecp256k1.lib').unlink()
+    result = dependency_step(scratch, script, runner, 'configure')
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert 'holds no include/secp256k1.h, include/secp256k1_schnorrsig.h or ' in result.stderr
+    assert 'lib/libsecp256k1.lib' in result.stderr, result.stderr
+
+
+def test_secp256k1_refuses_an_archive_it_does_not_pin(scratch: Path) -> None:
+    # The download is checked by download.sh itself: an archive whose SHA-256 is not the pinned
+    # one fails the install before CMake runs, and leaves nothing to be cached.
+    script, runner = secp256k1_tree(scratch, CC='gcc-14')
+    archive = scratch / 'secp256k1.tar.gz'
+    (scratch / 'tools/ci/download.sh').write_text(
+        f'#!/bin/sh\nexec bash "{DOWNLOAD}" "{archive.as_uri()}" "$2" "$3"\n')
+    result = dependency_step(scratch, script, runner, 'install')
+    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
+    actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+    assert f'has SHA-256 {actual}, and {SECP256K1_SHA256} is pinned' in result.stderr, (
+        result.stderr)
+    assert f'install.sh: {SECP256K1_URL} could not be downloaded as pinned' in result.stderr
+    assert logged(scratch) == [], logged(scratch)
+    assert not (scratch / '.local/secp256k1-native').exists()
+    assert not (scratch / '.local/.build/secp256k1').exists()
+
+
+def test_secp256k1_refuses_a_runner_it_builds_nothing_for(scratch: Path) -> None:
+    script, runner = secp256k1_tree(scratch)
+    for system, processor, emscripten in (('Linux', 'ARM', 'false'), ('', '', 'false'),
+                                          ('Windows', 'ARM64', 'false'),
+                                          ('Windows', 'X64', 'true')):
+        for step in ('key', 'install', 'configure'):
+            result = dependency_step(scratch, script, {**runner, 'RUNNER_OS': system,
+                                                       'RUNNER_ARCH': processor,
+                                                       'EMSCRIPTEN': emscripten}, step)
+            assert result.returncode == 1, (system, processor, step, result.returncode)
+            if emscripten == 'true':
+                assert ('install.sh: the emscripten build of libsecp256k1 is made on Linux and '
+                        'macOS') in result.stderr, result.stderr
+            else:
+                assert (f'and Windows on X64, not for {system} on {processor}'
+                        in result.stderr), result.stderr
+    result = dependency_step(scratch, script, {**runner, 'EMSCRIPTEN': 'yes'}, 'install')
+    assert result.returncode == 2, (result.returncode, result.stderr)
+    assert "the input emscripten is 'true' or 'false', not 'yes'" in result.stderr
+    assert downloads(scratch) == [] and logged(scratch) == []
+    assert not (scratch / '.local/secp256k1-native').exists()
+
+
+def openssl_root(scratch: Path, name: str = 'openssl', major: str | None = '3') -> Path:
+    """A stand-in installation of OpenSSL: include/openssl/ssl.h and opensslv.h, which states
+    major as its OPENSSL_VERSION_MAJOR, or none, as OpenSSL 1.1's."""
+    root = scratch / name
+    (root / 'include/openssl').mkdir(parents=True)
+    (root / 'include/openssl/ssl.h').write_text('/* ssl.h */\n')
+    version = f'# define OPENSSL_VERSION_MAJOR  {major}\n' if major else ''
+    (root / 'include/openssl/opensslv.h').write_text(
+        f'{version}# define OPENSSL_VERSION_TEXT "OpenSSL {major or "1.1"}.0.13"\n')
+    (root / 'lib').mkdir()
+    return root
+
+
+def libdatachannel_tree(scratch: Path, system: str = 'Linux', processor: str = 'X64',
+                        **extra: str) -> tuple[Path, dict[str, str]]:
+    """The libdatachannel action where it lives, with stand-ins of git, cmake and the compilers,
+    an OpenSSL where OPENSSL_ROOT names it, and a runner's variables."""
+    directory = scratch / 'tools/ci/actions/libdatachannel'
+    directory.mkdir(parents=True)
+    shutil.copy2(LIBDATACHANNEL, directory / 'install.sh')
+    shutil.copy2(LIBDATACHANNEL.parent / 'action.yml', directory / 'action.yml')
+    tools = stand_ins(scratch, {'git': FAKE_CLONE, 'cmake': FAKE_CMAKE, 'gcc-14': FAKE_COMPILER,
+                                'g++-14': FAKE_COMPILER, 'clang-18': FAKE_COMPILER,
+                                'clang++-18': FAKE_COMPILER, 'cygpath': FAKE_CYGPATH})
+    installs = {'Linux': 'lib/libdatachannel.so', 'macOS': 'lib/libdatachannel.dylib',
+                'Windows': 'lib/datachannel.lib bin/datachannel.dll'}.get(system, '')
+    return directory / 'install.sh', dependency_runner(
+        scratch, system, processor, tools, OPENSSL_ROOT=str(openssl_root(scratch)),
+        STAND_IN_INSTALLS=f'include/rtc/rtc.hpp {installs}', **extra)
+
+
+def test_libdatachannel_builds_the_pinned_tag_with_the_lanes_compilers(scratch: Path) -> None:
+    script, runner = libdatachannel_tree(scratch, CC='gcc-14', CXX='g++-14')
+    result = dependency_step(scratch, script, runner, 'install')
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    work = '.local/.build/libdatachannel/build'
+    prefix = f'{scratch.resolve()}/.local/libdatachannel'
+    assert logged(scratch) == [
+        f'git clone --quiet --depth 1 --branch v0.24.6 --recurse-submodules --shallow-submodules '
+        f'{LIBDATACHANNEL_REPOSITORY} .local/.build/libdatachannel/source',
+        f'cmake -S .local/.build/libdatachannel/source -B {work} -DCMAKE_C_COMPILER=gcc-14 '
+        f'-DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Release '
+        f'{" ".join(LIBDATACHANNEL_OPTIONS)} -DOPENSSL_ROOT_DIR={scratch}/openssl '
+        f'-DCMAKE_INSTALL_PREFIX={prefix}',
+        f'cmake --build {work} --config Release --parallel',
+        f'cmake --install {work} --config Release --prefix {prefix}'], logged(scratch)
+    assert not (scratch / '.local/.build/libdatachannel').exists()
+    result = dependency_step(scratch, script, runner, 'configure')
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert (scratch / 'github-env').read_text() == f'LIBDATACHANNEL_ROOT={prefix}\n'
+    assert not (scratch / 'github-path').exists()
+    # The key names the compilers and the OpenSSL it is built against.
+    keys = []
+    for extra in ({'CC': 'gcc-14', 'CXX': 'g++-14'}, {'CC': 'clang-18', 'CXX': 'clang++-18'},
+                  {'CC': 'gcc-14', 'CXX': 'g++-14', 'STAND_IN_VERSION': '14.3.0'},
+                  {'CC': '', 'CXX': ''}):
+        (scratch / 'github-output').unlink(missing_ok=True)
+        result = dependency_step(scratch, script, {**runner, **extra}, 'key')
+        assert result.returncode == 0, (result.returncode, result.stderr)
+        keys.append((scratch / 'github-output').read_text())
+    (scratch / 'openssl/include/openssl/opensslv.h').write_text(
+        '# define OPENSSL_VERSION_MAJOR  3\n# define OPENSSL_VERSION_TEXT "OpenSSL 3.5.5"\n')
+    (scratch / 'github-output').unlink()
+    dependency_step(scratch, script, runner, 'key')
+    keys.append((scratch / 'github-output').read_text())
+    assert all(key.startswith('key=libdatachannel-0.24.6-Linux-X64-ubuntu24-') for key in keys)
+    assert len(set(keys)) == len(keys), keys
+
+
+def test_libdatachannel_on_windows_builds_debug_and_puts_its_dll_on_path(scratch: Path) -> None:
+    script, runner = libdatachannel_tree(scratch, 'Windows', 'X64')
+    result = dependency_step(scratch, script, runner, 'install')
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    assert '-DCMAKE_C_COMPILER' not in logged(scratch)[1], logged(scratch)
+    assert '-DCMAKE_BUILD_TYPE=Debug ' in logged(scratch)[1], logged(scratch)
+    result = dependency_step(scratch, script, runner, 'configure')
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert (scratch / 'github-path').read_text() == (
+        f'{scratch.resolve()}/.local/libdatachannel/bin\n'), (scratch / 'github-path').read_text()
+
+
+def test_libdatachannel_refuses_another_commit(scratch: Path) -> None:
+    # The tag's commit is the pin: a clone that checks out another fails, naming both, before
+    # CMake runs, and leaves nothing to be cached.
+    script, runner = libdatachannel_tree(scratch, CC='gcc-14', CXX='g++-14')
+    other = '1' * 40
+    result = dependency_step(scratch, script, {**runner, 'STAND_IN_HEAD': other}, 'install')
+    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
+    assert (f'install.sh: {LIBDATACHANNEL_REPOSITORY} at v0.24.6 checked out {other}, and '
+            f'{LIBDATACHANNEL_COMMIT} is pinned') in result.stderr, result.stderr
+    assert not any(line.startswith('cmake') for line in logged(scratch)), logged(scratch)
+    assert not (scratch / '.local/libdatachannel').exists()
+    assert not (scratch / '.local/.build/libdatachannel').exists()
+
+
+def test_libdatachannel_refuses_a_runner_or_no_openssl(scratch: Path) -> None:
+    script, runner = libdatachannel_tree(scratch)
+    for system, processor in (('Linux', 'ARM'), ('Windows', 'ARM64'), ('', '')):
+        result = dependency_step(scratch, script, {**runner, 'RUNNER_OS': system,
+                                                   'RUNNER_ARCH': processor}, 'install')
+        assert result.returncode == 1, (system, processor, result.returncode)
+        assert f'and Windows on X64, not for {system} on {processor}' in result.stderr, (
+            result.stderr)
+    for openssl in ('', str(scratch / 'nothing')):
+        result = dependency_step(scratch, script, {**runner, 'OPENSSL_ROOT': openssl}, 'install')
+        assert result.returncode == 1, (openssl, result.returncode)
+        assert (f'install.sh: OPENSSL_ROOT names no OpenSSL ({openssl}): the openssl action runs '
+                'first') in result.stderr, result.stderr
+    assert logged(scratch) == []
+
+
+def openssl_tree(scratch: Path, system: str, processor: str,
+                 tools: dict[str, str]) -> tuple[Path, dict[str, str]]:
+    """The openssl action where it lives, beside a download.sh that only says it was called, with
+    the stand-ins tools names, and a runner's variables."""
+    directory = scratch / 'tools/ci/actions/openssl'
+    directory.mkdir(parents=True)
+    shutil.copy2(OPENSSL, directory / 'install.sh')
+    download = scratch / 'tools/ci/download.sh'
+    download.write_text(f'#!/bin/sh\nprintf \'%s %s\\n\' "$1" "$2" >> "{scratch}/downloads.log"\n'
+                        f'echo "{CALLED}" >&2\nexit {CALLED_STATUS}\n')
+    download.chmod(0o755)
+    (scratch / 'temp').mkdir()
+    return directory / 'install.sh', dependency_runner(
+        scratch, system, processor, stand_ins(scratch, {'cygpath': FAKE_CYGPATH, **tools}))
+
+
+def test_openssl_lays_out_the_runners_own(scratch: Path) -> None:
+    # On Linux the system's, which pkg-config names; on macOS Homebrew's openssl@3: links to its
+    # headers and its two libraries, in a directory of their own, and OPENSSL_ROOT.
+    for system, tool, extension in (('Linux', 'pkg-config', 'so'), ('macOS', 'brew', 'dylib')):
+        root = scratch / system
+        root.mkdir()
+        system_openssl = openssl_root(root, 'system openssl')
+        for library in ('libssl', 'libcrypto'):
+            (system_openssl / 'lib' / f'{library}.{extension}').write_text(library)
+        answers = {'pkg-config': '#!/bin/sh\ncase "$1" in\n'
+                                 f'    --variable=includedir) echo "{system_openssl}/include" ;;\n'
+                                 f'    --variable=libdir) echo "{system_openssl}/lib" ;;\n'
+                                 '    *) exit 1 ;;\nesac\n',
+                   'brew': '#!/bin/sh\n[ "$*" = "--prefix openssl@3" ] && '
+                           f'echo "{system_openssl}"\n'}
+        script, runner = openssl_tree(root, system, 'ARM64', {tool: answers[tool]})
+        result = dependency_step(root, script, runner)
+        assert result.returncode == 0, (system, result.returncode, result.stderr)
+        laid = root.resolve() / '.local/openssl'
+        assert (laid / 'include/openssl').resolve() == (
+            system_openssl.resolve() / 'include/openssl'), system
+        assert sorted(p.name for p in (laid / 'lib').iterdir()) == [
+            f'libcrypto.{extension}', f'libssl.{extension}'], system
+        assert (laid / f'lib/libssl.{extension}').resolve() == (
+            system_openssl.resolve() / f'lib/libssl.{extension}'), system
+        assert (root / 'github-env').read_text() == f'OPENSSL_ROOT={laid}\n', (
+            system, (root / 'github-env').read_text())
+        assert 'install.sh: OpenSSL 3 in .local/openssl' in result.stdout, result.stdout
+        assert downloads(root) == [], system
+
+
+def test_openssl_on_windows_copies_the_images_and_puts_its_dlls_on_path(scratch: Path) -> None:
+    # The image's, in %ProgramFiles%\OpenSSL: its headers, and the import libraries of the first
+    # of lib/VC/x64/MD, lib/VC/x64/MDd and lib that holds both.
+    programs = scratch / 'Program Files'
+    installed = openssl_root(programs, 'OpenSSL')
+    (installed / 'lib/VC/x64/MD').mkdir(parents=True)
+    for library in ('libssl.lib', 'libcrypto.lib'):
+        (installed / 'lib/VC/x64/MD' / library).write_text(f'MD {library}')
+        (installed / 'lib' / library).write_text(f'top {library}')
+    script, runner = openssl_tree(scratch, 'Windows', 'X64', {})
+    runner['ProgramFiles'] = str(programs)
+    result = dependency_step(scratch, script, runner)
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    laid = scratch.resolve() / '.local/openssl'
+    assert (laid / 'include/openssl/ssl.h').is_file()
+    assert not (laid / 'include/openssl').is_symlink()
+    assert (laid / 'lib/libssl.lib').read_text() == 'MD libssl.lib'
+    assert (laid / 'lib/libcrypto.lib').read_text() == 'MD libcrypto.lib'
+    assert (scratch / 'github-path').read_text() == f'{installed}/bin\n', (
+        (scratch / 'github-path').read_text())
+    assert (scratch / 'github-env').read_text() == f'OPENSSL_ROOT={laid}\n'
+    assert downloads(scratch) == []
+
+
+def test_openssl_on_windows_without_one_downloads_the_pinned_installer(scratch: Path) -> None:
+    script, runner = openssl_tree(scratch, 'Windows', 'X64', {})
+    runner['ProgramFiles'] = str(scratch / 'Program Files')
+    result = dependency_step(scratch, script, runner)
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert CALLED in result.stderr, result.stderr
+    assert downloads(scratch) == [(OPENSSL_INSTALLER, OPENSSL_INSTALLER_SHA256)]
+    assert not (scratch / '.local/openssl').exists()
+
+
+def test_openssl_refuses_one_that_is_not_3_or_a_runner_it_has_none_for(scratch: Path) -> None:
+    root = scratch / 'old'
+    root.mkdir()
+    old = openssl_root(root, 'openssl@1.1', None)
+    brew = f'#!/bin/sh\necho "{old}"\n'
+    script, runner = openssl_tree(root, 'macOS', 'X64', {'brew': brew})
+    result = dependency_step(root, script, runner)
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert (f"install.sh: {old}/include/openssl/opensslv.h is not OpenSSL 3's: "
+            "OPENSSL_VERSION_MAJOR is ''") in result.stderr, result.stderr
+    assert not (root / '.local/openssl').exists() and not (root / 'github-env').exists()
+    for system, processor in (('Windows', 'ARM64'), ('Linux', 'ARM'), ('', '')):
+        result = dependency_step(root, script, {**runner, 'RUNNER_OS': system,
+                                                'RUNNER_ARCH': processor})
+        assert result.returncode == 1, (system, processor, result.returncode)
+        assert (f'install.sh: no OpenSSL 3 is found or pinned for {system} on {processor}'
+                in result.stderr), result.stderr
+    assert downloads(root) == []
+
+
 CASES: list[Callable[[Path], None]] = [
     test_a_pinned_download_is_kept,
     test_another_digest_leaves_no_file,
@@ -797,6 +1269,18 @@ CASES: list[Callable[[Path], None]] = [
     test_emsdk_configure_fails_naming_both_versions,
     test_emsdk_fails_on_a_download_it_does_not_pin,
     test_emsdk_refuses_a_runner_it_pins_nothing_for,
+    test_secp256k1_builds_the_pinned_archive_natively_and_for_emscripten,
+    test_secp256k1_on_windows_builds_debug_with_visual_studio,
+    test_secp256k1_refuses_an_archive_it_does_not_pin,
+    test_secp256k1_refuses_a_runner_it_builds_nothing_for,
+    test_libdatachannel_builds_the_pinned_tag_with_the_lanes_compilers,
+    test_libdatachannel_on_windows_builds_debug_and_puts_its_dll_on_path,
+    test_libdatachannel_refuses_another_commit,
+    test_libdatachannel_refuses_a_runner_or_no_openssl,
+    test_openssl_lays_out_the_runners_own,
+    test_openssl_on_windows_copies_the_images_and_puts_its_dlls_on_path,
+    test_openssl_on_windows_without_one_downloads_the_pinned_installer,
+    test_openssl_refuses_one_that_is_not_3_or_a_runner_it_has_none_for,
 ]
 
 

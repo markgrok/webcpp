@@ -1,0 +1,65 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: libdatachannel
+description: >-
+  Builds libdatachannel 0.24.6, shared, without its WebSocket, examples and tests and with its
+  media transport, from its tag cloned with its submodules and checked against the tag's commit,
+  with CMake, the lane's compilers and the OpenSSL that OPENSSL_ROOT names (the openssl action
+  runs first), in .local/libdatachannel; cached per version, runner, compilers and OpenSSL; and
+  gives the later steps LIBDATACHANNEL_ROOT, and on Windows PATH its DLL. On Linux, macOS and
+  Windows. trystero's native backend needs it, until webcpp builds it from third_party/.
+
+inputs:
+  cc:
+    description: >-
+      The C compiler to build with, as the lane names it (gcc-14, clang-18), or empty for CMake's
+      own choice: Visual Studio's on Windows.
+    required: false
+    default: ''
+  cxx:
+    description: >-
+      The C++ compiler to build with, as the lane names it (g++-14, clang++-18), or empty for
+      CMake's own choice.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Cache key
+      id: key
+      shell: bash
+      env:
+        CC: ${{ inputs.cc }}
+        CXX: ${{ inputs.cxx }}
+      run: bash tools/ci/actions/libdatachannel/install.sh key
+
+    - name: Restore libdatachannel
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .local/libdatachannel
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Build libdatachannel 0.24.6
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        CC: ${{ inputs.cc }}
+        CXX: ${{ inputs.cxx }}
+      run: bash tools/ci/actions/libdatachannel/install.sh install
+
+    - name: Save libdatachannel
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .local/libdatachannel
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Configure libdatachannel
+      shell: bash
+      run: bash tools/ci/actions/libdatachannel/install.sh configure

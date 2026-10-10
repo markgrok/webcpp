@@ -47,7 +47,7 @@ repository of its own, checked out here as a submodule under `libs/<name>`.
 | xstate | a port of XState 5.33.2's state machines and actors; depends on xactor and Boost.JSON | native, wasip2, wasip3; its oracle lane | a submodule at `libs/xstate`; the first user of the shared oracle (chapter 5) |
 | pratt | a Pratt parser engine, generic through concepts, with a calculator built on it, webcpp's own | native, wasip2, wasip3 | a submodule at `libs/pratt`; born with the allocation rule (chapter 6) |
 | wasi | header-only helpers for C++ built as WebAssembly components: the HTTP handler a component exports, webcpp's own | wasip2, wasip3 (`response.hpp` also natively); its own lanes `http`, the components wasmtime serves | a submodule at `libs/wasi`; the first library built as components (chapter 9) |
-| trystero | a port of Trystero, serverless WebRTC rooms | native, emscripten | to come (chapter 13) |
+| trystero | a port of Trystero 0.26.0, serverless WebRTC rooms | native, emscripten; its own lanes `oracle` and `interop` | a submodule at `libs/trystero`; born with the allocation rule through `std::pmr` |
 
 ### The layout
 
@@ -63,7 +63,7 @@ webcpp/
   .clang-tidy         clang-tidy's checks, every repository's
   pyrightconfig.json  Pyright's settings for every Python file
   libs/<name>/        a library: a repository of its own, a submodule here (xactor,
-                      xstate, pratt, wasi)
+                      xstate, pratt, wasi, trystero)
   doc/                the index page (index.adoc, Jamfile)
   tools/
     webcpp.jam        the Jamfile API (chapter 9): webcpp.targets, webcpp.run, ...
@@ -94,9 +94,9 @@ webcpp/
                       fixture libraries demo, oracle_demo, component_demo and browser_demo
     ci/               matrix.py (the lanes), assemble.py (the site), download.sh, wasi-sdk.jam
                       and emsdk.jam (the lines that register the WASI and emscripten
-                      toolsets), and
-                      actions/{boost,wasi-sdk,wasmtime,wit-bindgen,wasi-wit,emsdk,mrdocs,node}/
-                      (chapter 9)
+                      toolsets), container/Dockerfile (the image of the container lanes),
+                      and actions/{boost,wasi-sdk,wasmtime,wit-bindgen,wasi-wit,emsdk,
+                      secp256k1,libdatachannel,openssl,mrdocs,node}/ (chapter 9)
   .github/            workflows/library.yml, workflows/ci.yml, actionlint.yaml (chapter 9)
   .local/             machine-local, git-ignored (below)
   bin/                b2's build directory, git-ignored
@@ -162,7 +162,17 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
   toolsets compile;
 - for emscripten: Emscripten 6.0.11, from emsdk, and Node, which runs its
   programs; the tests of the build need it too;
-- later: OpenSSL for trystero natively.
+- for trystero, until webcpp builds them from `third_party/` (chapter 13):
+  libsecp256k1 0.8.0, static, with its `schnorrsig` and `extrakeys` modules,
+  natively and, for emscripten, built with Emscripten; and, for its native
+  backend, libdatachannel 0.24.6, built with the compiler and the standard
+  library that build the programs, and OpenSSL 3. Each is found in the
+  directory of its `include/` and `lib/` that `SECP256K1_ROOT`,
+  `SECP256K1_EMSCRIPTEN_ROOT`, `LIBDATACHANNEL_ROOT` and `OPENSSL_ROOT`
+  name, else in `.local/secp256k1-native`, `.local/secp256k1-emscripten`,
+  `.local/libdatachannel` and `.local/openssl` when it holds the library's
+  header (below), else on the compiler's default search path; trystero's page
+  says how each is built. The CI's actions build them so (chapter 9).
 
 Each toolchain is installed by hand and configured in `user-config.jam`,
 until webcpp bundles the toolchains (chapter 13). b2 reads
@@ -220,8 +230,18 @@ cannot read stops the build too, naming the directory.
 
 **Machine-local setup.** `.local/` is git-ignored and holds what one machine
 needs: `.local/user-config.jam`, `.local/wasi-sdk/`, `.local/mrdocs/`,
-`.local/wit-bindgen/` and `.local/wasi-wit/p2` and `p3`, where the CI's
-actions install them too (chapter 9). A tool the build looks up itself is
+`.local/wit-bindgen/` and `.local/wasi-wit/p2` and `p3`, `.local/emsdk` (an
+install of emsdk, or a link to one) with Emscripten's cache in
+`.local/emscripten-cache`, and trystero's libraries in
+`.local/secp256k1-native`, `.local/secp256k1-emscripten`,
+`.local/libdatachannel` and `.local/openssl` (`include/openssl` and the two
+libraries of the system's OpenSSL 3, linked, as the CI's `openssl` action
+lays them out), where the CI's actions install them too (chapter 9). The
+build finds each of them there with no variable set: `b2 -a doc`, whose
+reference parses trystero's native backend, runs in a shell that has none.
+A shell may still source a `.local/env.sh` of its own that exports
+`SECP256K1_ROOT`, `SECP256K1_EMSCRIPTEN_ROOT`, `LIBDATACHANNEL_ROOT`,
+`OPENSSL_ROOT` and `EM_CACHE`, to name other directories. A tool the build looks up itself is
 taken from the path its `-s` option gives, else from `.local/`, else from
 `PATH`: MrDocs (`-sMRDOCS`), wit-bindgen and the WIT (above); wasi-sdk is
 where the `using clang` lines of `user-config.jam` name it, and, for a
@@ -562,10 +582,13 @@ than leave it green on the rest.
 - **Allocation.** A library is to avoid dynamic allocation as far as its job
   allows, and to let its user customize the allocator of what it does
   allocate. A library ported or written from now on is born with this rule,
-  as pratt is: its calculator's environment takes the user's `Allocator`.
-  Pending: the mechanism, which a milestone of its own on allocators settles
-  and first applies to xactor, xstate and wasi, whose response holds its body
-  as a `std::string` (chapter 13).
+  as pratt is: its calculator's environment takes the user's `Allocator`; and
+  as trystero is, through `std::pmr`: a `std::pmr::memory_resource` given in
+  its `room_config` reaches every allocation of a room, which a counting test
+  proves natively and on emscripten. Pending: the mechanism, which a
+  milestone of its own on allocators settles and first applies to xactor,
+  xstate and wasi, whose response holds its body as a `std::string`
+  (chapter 13).
 - **Text** is passed and held as `std::string_view` where nothing must own
   it; `std::string` only where something does.
 - **A function starts with its guards:** every condition it needs is checked
@@ -636,10 +659,15 @@ than leave it green on the rest.
   `exception-handling=off` (measured: a usage requirement of the backend's
   target leaves its dependents compiled with `-fno-exceptions`); the lint
   leaves that header out of the analysis without exceptions, and names it;
-  and the header opens with `#ifdef WEBCPP_<NAME>_NO_EXCEPTIONS` and an
-  `#error` that names the dependency. The fixture browser_demo's `native.hpp`
-  is one, against the fake dependency of its `deps/include` (a fixture
-  without `config.hpp`, it tests `BOOST_NO_EXCEPTIONS`).
+  and the header declares nothing without exceptions: what follows its
+  `config.hpp` sits inside `#ifndef WEBCPP_<NAME>_NO_EXCEPTIONS`, with a
+  comment that names the dependency, so that a program built without
+  exceptions that uses it fails on the first name it uses (trystero's:
+  `no member named 'backend' in namespace 'webcpp::trystero::native'`), and
+  one that only includes it compiles. The
+  fixture browser_demo's `native.hpp` is one, against the fake dependency of
+  its `deps/include` (a fixture without `config.hpp`, it tests
+  `BOOST_NO_EXCEPTIONS`).
 - **A program that needs exceptions says so.** A test or an example that
   throws, tries or catches on purpose declares `<exception-handling>on` in
   its requirements, as the fixture demo's
@@ -1487,26 +1515,30 @@ jobs:
   lane that names no target, and one per target for one that names targets,
   which adds `platform`, its target, and `id`, its name in the report; every
   entry has `kind`, the lines' (`original` when any of its directories' lanes
-  runs the original), `name`, its job's, the `os`, `wasm` and `emsdk` of the
-  lane whose setup it shares, the target's own, and the oracle's Clang 18 for
-  native and for none, and `node`, true for a lane of the kind `original` and
-  for one on emscripten, whose lane has Node, which the job reads from it
-  alone.
+  runs the original), `name`, its job's, the `os`, `wasm`, `emsdk`, `cc` and
+  `cxx` of the lane whose setup it shares, the target's own, and the oracle's
+  Clang 18 for native and for none, `node`, true for a lane of the kind
+  `original` and for one on emscripten, whose lane has Node, and `external`,
+  as a lane's (below), which the job reads from it alone.
   Last, `matrix.py declares emscripten [--library <name>]` prints `true`
   when any library of the superproject declares emscripten, whatever library
   the CI runs for, else `false`: the plan's output `has-emscripten`, on
   which the docs and lint jobs install emsdk (the lint analyses every
   library, and a page builds the page of each library it links, with its
-  reference).
+  reference). And `matrix.py external [--library <name>]` prints `true` when
+  any library of `libs/` needs libraries webcpp does not build
+  (`EXTERNAL_DEPENDENCIES`, below), else `false`: the plan's output
+  `external`, on which the docs and lint jobs install them, for the same
+  reasons.
 - **lanes,** one job each, which run `matrix.py lane <entry>`: it registers
   the lane's toolset in `.local/user-config.jam` with its version, prints the
   lane command and runs it, and the job uploads `<lane>.xml`:
 
   | Lane | Runner | Toolset |
   | --- | --- | --- |
-  | `gcc-14` | ubuntu-24.04 | `gcc-14` |
+  | `gcc-14` | ubuntu-24.04 | `gcc-14`, in a container with no network |
   | `gcc-15` | ubuntu-26.04 | `gcc-15` |
-  | `clang-linux-18` | ubuntu-24.04 | `clang-18`, on libstdc++ |
+  | `clang-linux-18` | ubuntu-24.04 | `clang-18`, on libstdc++, in a container with no network |
   | `clang-linux-22` | ubuntu-26.04 | `clang-22`, on libstdc++ |
   | `clang-darwin-<version>` | macos-15 | Apple Clang, its version read from `clang++ -dumpversion` |
   | `msvc-14.3` | windows-2022 | Visual Studio 2022 |
@@ -1519,6 +1551,33 @@ jobs:
   embed-manifest-via=linker --abbreviate-paths`; b2 abbreviates each word of
   a toolset directory, and `msvc-14.3` and `msvc-14.5` are their own
   abbreviations, which `tools/ci/matrix_test.py` checks with b2's own rule.
+
+  **The container lanes,** `gcc-14` and `clang-linux-18` (their entries'
+  `container`), run the lane's b2 in a Linux container with no network but
+  the loopback, so that a test that reaches beyond the machine fails there:
+  every library's tests hold it, and trystero's guarantee 6 rests on it.
+  `matrix.py lane` builds the image of `tools/ci/container/Dockerfile`, with
+  the network: Ubuntu 24.04, the runner's release, pinned by the digest of
+  its image index, with `g++-14`, `clang-18`, OpenSSL's development files
+  and Python from Ubuntu's archive. Then it runs b2 by its path, `docker run
+  --rm --network none`, as the runner's user, with the superproject and b2's
+  prefix, where the Boost action installs Boost's headers too, mounted at
+  their own paths, and the variables of the external libraries passed on;
+  the XML is the lane's, as outside a container. A lane run so needs Linux
+  and docker.
+
+  **External libraries.** A library may need libraries webcpp does not build
+  yet: `EXTERNAL_DEPENDENCIES` in `tools/ci/matrix.py` names them, trystero's
+  `secp256k1`, `libdatachannel` and `openssl`, each the CI's action of that
+  name, until webcpp builds them from `third_party/` (chapter 13). A lane
+  that builds such a library has `external` in its entry, and so does an own
+  lane of it; such a job runs the actions after the lane's own setup, by
+  their YAML anchors in both jobs: `openssl`, then `secp256k1`, with
+  `emscripten: true` on an entry that has emsdk, then `libdatachannel`,
+  built with the lane's compilers, its entry's `cc` and `cxx` (`gcc-14` and
+  `g++-14`; Visual Studio for MSVC, CMake's own choice there). An entry on
+  emscripten has neither OpenSSL nor libdatachannel, which only the native
+  backend needs.
 - **own lanes,** one job per entry, named and placed as the entry says
   (`name`, `os`), which runs `matrix.py own-lane <entry>`: it registers the
   lane's toolset, prints its b2 command and runs it, on the lane in each of
@@ -1543,6 +1602,11 @@ jobs:
     the emscripten lane does, which runs its programs with it; one of the
     kind `programs` on any other target, such as wasi's served lanes, has
     none.
+  - Every own lane has `CHROME=/usr/bin/google-chrome`, the image's Google
+    Chrome, which a driven test runs when its driver meets a browser, as
+    trystero's `interop` lane does natively and on emscripten; its version
+    is the image's, which the image's manifest records (Google Chrome 154 on
+    ubuntu-24.04 in October 2026).
 - **docs:** with MrDocs on Linux x86-64 (it has no build for Linux arm64 or
   Intel macOS), `clang++-18`, Node, wit-bindgen and the WASI WIT (wasi's
   reference parses its bindings), `b2 -a libs/<library>/doc`, or for the
@@ -1550,7 +1614,9 @@ jobs:
   and, when the plan's `has-emscripten` is `true`, emsdk in `.local/emsdk`,
   without its system libraries (`libraries: 'false'`), whose headers
   `/webcpp//emscripten-headers` gives a reference that parses a header built
-  for emscripten alone.
+  for emscripten alone; and, when the plan's `external` is `true`, the
+  external libraries, built with Clang 18, whose headers a reference of
+  their users parses.
 - **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
   with wasi-sdk's clang-format and clang-tidy, Node, Clang 18 as b2's default
   toolset and the wasip2 and wasip3 toolsets after it (`matrix.py register
@@ -1559,7 +1625,9 @@ jobs:
   is `true`, the emscripten toolset after them and emsdk, without its system
   libraries (`libraries: 'false'`), whose `em++` the emscripten dry run
   names and whose cache holds the sysroot an emscripten command is analysed
-  with; and the full history
+  with; when the plan's `external` is `true`, the external libraries, built
+  with Clang 18, libsecp256k1 for emscripten too when `has-emscripten` is;
+  and the full history
   (`fetch-depth: 0`) of the superproject and of the library, since the
   banned-word rule reads every commit.
 - **tools,** for the superproject only: every `tools/**/*_test.py`, with
@@ -1666,6 +1734,50 @@ wrapper each quoted as one word of Jam.
   local node = /path/to/node ;
   using emscripten : : $(emsdk)/upstream/emscripten/em++ : <nodejs>$(node) ;
   ```
+- `openssl`, `secp256k1` and `libdatachannel` install trystero's external
+  libraries where its `build.jam` looks for them, in `.local/`, and give the
+  later steps their variables (`$GITHUB_ENV`), on Linux and macOS, x86-64
+  and arm64, and on Windows x86-64:
+  - `openssl` lays out the runner's own OpenSSL 3 in `.local/openssl` and
+    exports `OPENSSL_ROOT`: on Linux the system's, which `pkg-config` names,
+    and on macOS Homebrew's `openssl@3`, each as links to its
+    `include/openssl` and its two libraries, so that a compiler is given a
+    directory of its own, never `/usr/include` (GCC 14 and Clang 18 given
+    `-isystem /usr/include` no longer find the C library's headers through
+    libstdc++'s `#include_next`, as a reference parses its dependencies'
+    directories); on Windows, copies of the headers and of the import
+    libraries `libssl.lib` and `libcrypto.lib` of the image's installation in
+    `%ProgramFiles%\OpenSSL` (from the first of `lib/VC/x64/MD`,
+    `lib/VC/x64/MDd` and `lib` that holds both), whose `bin`, with the DLLs,
+    it puts on `PATH`; an image without one has the installer of Shining
+    Light Productions pinned by the SHA-256 that `slproweb/opensslhashes`
+    records. It fails, naming it, on one that is not OpenSSL 3.
+  - `secp256k1` builds libsecp256k1 0.8.0 from GitHub's archive of its
+    commit `6e2c8bc`, checked against its SHA-256, with CMake, static, with
+    its `schnorrsig` and `extrakeys` modules and the small tables trystero's
+    page builds it with, into `.local/secp256k1-native`, with the input
+    `cc` (the lane's C compiler, else CMake's own), and with `emscripten:
+    true` also with Emscripten's `emcmake`, after the emsdk action, into
+    `.local/secp256k1-emscripten`; it exports `SECP256K1_ROOT` and
+    `SECP256K1_EMSCRIPTEN_ROOT`.
+  - `libdatachannel` clones the tag `v0.24.6` with its submodules, fails
+    unless `git rev-parse HEAD` is the tag's commit `6b1e2e6`, read with
+    `gh api`, and builds it shared, `NO_WEBSOCKET`, `NO_EXAMPLES` and
+    `NO_TESTS` on and `NO_MEDIA` off, against the OpenSSL `OPENSSL_ROOT`
+    names (the `openssl` action runs first), with the inputs `cc` and `cxx`,
+    into `.local/libdatachannel`; it exports `LIBDATACHANNEL_ROOT`, and on
+    Windows puts its `bin`, with `datachannel.dll`, on `PATH`, where a test
+    b2 runs finds it.
+
+  The two that build are cached, keyed on the version, the runner, the
+  compilers' own `--version` (else the image), the emscripten build or
+  OpenSSL's version, and the action's files. On Windows they build CMake's
+  Debug configuration: b2's debug variant, the lanes', builds with `/MDd`,
+  whose standard types differ from `/MD`'s, and a DLL whose C++ API a
+  program shares must match it. CMake names libsecp256k1's library
+  `libsecp256k1.lib` there, and a program that links it statically defines
+  `SECP256K1_STATIC`, which trystero's `build.jam` does on `msvc`, with
+  OpenSSL's `libssl` and `libcrypto`.
 - `tools/ci/download.sh <url> <sha256> <file>` downloads each pinned file,
   and leaves no file and exits 1 when the download fails or the digest
   differs.
@@ -1676,8 +1788,13 @@ wit-bindgen, WASI WIT and emsdk actions install what they download, what
 they leave out, and their refusals: a runner no build of wit-bindgen or
 emsdk is pinned for, a crate that holds no WIT, an emsdk at another commit,
 a release without its `node_modules`, an archive emsdk would download
-unpinned, and an emcc that is not 6.0.11; and the emsdk action's node
-wrapper, `EM_CACHE`, warmed cache and system libraries.
+unpinned, and an emcc that is not 6.0.11; the emsdk action's node wrapper,
+`EM_CACHE`, warmed cache and system libraries; and, for the external
+libraries, the commands each action builds with, where it installs, what it
+exports and its cache key, and their refusals: an archive of libsecp256k1
+whose SHA-256 is not the pinned one, a libdatachannel at another commit,
+libdatachannel without `OPENSSL_ROOT`, an OpenSSL that is not 3, and a
+runner none of them builds for.
 
 **The site.** On every run of the superproject's CI, `tools/ci/assemble.py`
 lays out the site from the pages and the report, and on `main` it is
@@ -1873,12 +1990,17 @@ Each of these was measured; each has cost time.
 
 What webcpp does not have yet, and the chapters that mention it:
 
-- **More libraries:** trystero, a port of Trystero, serverless WebRTC rooms
-  (chapter 1). It joins `libs/` as a submodule, with its page and its lanes.
+- **External libraries built from `third_party/`.** trystero needs
+  libsecp256k1, libdatachannel and OpenSSL, which webcpp does not build: a
+  machine installs them by hand and the CI's actions build them, each found
+  where a variable names it, else in `.local/` (chapters 1 and 9), until
+  webcpp builds them from `third_party/`, each pinned there by a commit or a
+  SHA-256.
 - **Allocators.** The mechanism by which a library lets its user customize
   the allocator of what it allocates, settled in a milestone of its own,
   which first applies it to xactor, xstate and wasi, whose response holds its
-  body as a `std::string` (chapter 6).
+  body as a `std::string`; pratt is born with the rule, and trystero through
+  `std::pmr` (chapter 6).
 - **Compiled Boost libraries.** The CI installs Boost's headers alone, so a
   library uses only header-only Boost, and a Boost.Test suite compiles the
   framework's header-only form (chapters 2 and 9).

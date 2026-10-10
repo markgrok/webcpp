@@ -10,6 +10,7 @@
 Usage: matrix.py plan [--library NAME] [--user-config FILE]
        matrix.py own-lanes [--library NAME] [--user-config FILE]
        matrix.py declares TARGET [--library NAME] [--user-config FILE]
+       matrix.py external [--library NAME]
        matrix.py lane LANE [--user-config FILE] [--out-dir DIR] [-- B2-ARGUMENT ...]
        matrix.py own-lane OWN-LANE [--user-config FILE] [--out-dir DIR] [-- B2-ARGUMENT ...]
        matrix.py register ID [ID ...] [--user-config FILE]
@@ -46,6 +47,11 @@ declares TARGET, else false: every library's, whatever --library names, which mu
 of libs/ as plan's must. The plan job writes it for emscripten as has-emscripten, on which the
 docs and lint jobs install emsdk: the lint analyses every library, and a page builds the page of
 each library it links, with its reference.
+
+external prints true when some library of the superproject, a directory of libs/ with a build.jam,
+needs a library that webcpp does not build (EXTERNAL_DEPENDENCIES), else false: every library's,
+whatever --library names, which must be a library of libs/. The plan job writes it as external,
+on which the docs and lint jobs install those libraries, for the same reasons.
 
 lane runs one lane, LANE being one entry of that matrix as JSON: it registers the lane's toolset
 in the user-config.jam (unless it is there already), then runs the lane command the Jamroot
@@ -100,6 +106,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import asdict, dataclass, field, replace
@@ -130,6 +137,21 @@ EMSCRIPTEN_NODE = '.local/emscripten/node'
 # The lines that register b2's emscripten toolset against $(emsdk) and $(node), between the tag::
 # and end:: lines of the region emscripten.
 EMSDK_JAM = ROOT / 'tools/ci/emsdk.jam'
+
+# The libraries of libs/ whose build needs libraries webcpp does not build, and those libraries,
+# until webcpp builds them from third_party/ (AGENTS.md chapter 13): the CI's actions of these
+# names, tools/ci/actions/<name>, install each where the build looks, in .local/, before a lane,
+# an own lane, the docs or the lint that builds such a library runs.
+EXTERNAL_DEPENDENCIES = {'trystero': ('secp256k1', 'libdatachannel', 'openssl')}
+
+# The variables that name those libraries' directories, which the actions give a job and a
+# container lane passes on to b2.
+EXTERNAL_VARIABLES = ('SECP256K1_ROOT', 'SECP256K1_EMSCRIPTEN_ROOT', 'LIBDATACHANNEL_ROOT',
+                      'OPENSSL_ROOT')
+
+# The image a container lane runs b2 in, and the directory of the Dockerfile it is built from.
+CONTAINER_IMAGE = 'webcpp-lane:ubuntu-24.04'
+CONTAINER_CONTEXT = ROOT / 'tools/ci/container'
 
 # MSVC's lanes build 64-bit programs, embed their manifest with the linker and abbreviate b2's
 # paths against Windows's MAX_PATH, as xstate-cpp's green Windows jobs did. b2 abbreviates each
@@ -168,6 +190,16 @@ class Lane:
     emsdk: bool = False
     # Whether the lane needs Node, the CI's pinned one: emscripten's runs its programs with it.
     node: bool = False
+    # The C and C++ compilers an external dependency is built with, the lane's own, or nothing
+    # for CMake's own choice: Visual Studio's for MSVC, and emscripten's native build of
+    # libsecp256k1, which no program of the lane links.
+    cc: str = ''
+    cxx: str = ''
+    # Whether its b2 runs in a Linux container with no network but the loopback.
+    container: bool = False
+    # Whether one of its libraries needs a library webcpp does not build (EXTERNAL_DEPENDENCIES):
+    # the plan sets it.
+    external: bool = False
     # The b2 projects it builds: libs/<library>/test and libs/<library>/example of each library.
     projects: tuple[str, ...] = field(default_factory=tuple)
 
@@ -250,18 +282,25 @@ def wasm_lane(target: str) -> Lane:
 
 # Every lane the CI knows, by target. GCC and Clang on Linux build with libstdc++, the system's
 # standard library there: Clang on libstdc++ alone catches a regression of xactor's guarantee 28.
+# GCC 14 and Clang 18, on Ubuntu 24.04, run in a container with no network but the loopback, so
+# that a test that reaches beyond the machine fails there (trystero's guarantee 6).
 LANES = (
-    Lane(id='gcc-14', name='GCC 14', os='ubuntu-24.04', target='native', lane='gcc-14',
-         toolset='gcc-14', using='using gcc : 14 : g++-14 ;'),
+    Lane(id='gcc-14', name='GCC 14 (container, no network)', os='ubuntu-24.04', target='native',
+         lane='gcc-14', toolset='gcc-14', using='using gcc : 14 : g++-14 ;', cc='gcc-14',
+         cxx='g++-14', container=True),
     Lane(id='gcc-15', name='GCC 15', os='ubuntu-26.04', target='native', lane='gcc-15',
-         toolset='gcc-15', using='using gcc : 15 : g++-15 ;'),
-    Lane(id='clang-18', name='Clang 18 (libstdc++)', os='ubuntu-24.04', target='native',
-         lane='clang-linux-18', toolset='clang-18', using='using clang : 18 : clang++-18 ;'),
+         toolset='gcc-15', using='using gcc : 15 : g++-15 ;', cc='gcc-15', cxx='g++-15'),
+    Lane(id='clang-18', name='Clang 18 (libstdc++, container, no network)', os='ubuntu-24.04',
+         target='native', lane='clang-linux-18', toolset='clang-18',
+         using='using clang : 18 : clang++-18 ;', cc='clang-18', cxx='clang++-18',
+         container=True),
     Lane(id='clang-22', name='Clang 22 (libstdc++)', os='ubuntu-26.04', target='native',
-         lane='clang-linux-22', toolset='clang-22', using='using clang : 22 : clang++-22 ;'),
+         lane='clang-linux-22', toolset='clang-22', using='using clang : 22 : clang++-22 ;',
+         cc='clang-22', cxx='clang++-22'),
     Lane(id='apple-clang', name='Apple Clang (macOS 15)', os='macos-15', target='native',
          lane='clang-darwin-{version}', toolset='clang-{version}',
-         using='using clang : {version} : clang++ ;', detect='clang++'),
+         using='using clang : {version} : clang++ ;', detect='clang++', cc='clang',
+         cxx='clang++'),
     Lane(id='msvc-14.3', name='MSVC 14.3 (Visual Studio 2022)', os='windows-2022',
          target='native', lane='msvc-14.3', toolset='msvc-14.3', using='using msvc : 14.3 ;',
          options=MSVC_OPTIONS),
@@ -344,8 +383,17 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
         if libraries:
             projects = tuple(f'libs/{name}/{part}' for name in libraries
                              for part in ('test', 'example'))
-            lanes.append(replace(lane, projects=projects))
+            external = any(name in EXTERNAL_DEPENDENCIES for name in libraries)
+            lanes.append(replace(lane, projects=projects, external=external))
     return lanes
+
+
+def has_external(library: str | None) -> bool:
+    """Whether some library of libs/ needs a library webcpp does not build, whatever library,
+    which must be a library of libs/, names."""
+    if library is not None and not (ROOT / 'libs' / library / 'build.jam').is_file():
+        raise Failure(f'libs/{library} is no library of libs/ (a directory with a build.jam)', 2)
+    return any((ROOT / 'libs' / name / 'build.jam').is_file() for name in EXTERNAL_DEPENDENCIES)
 
 
 # A line of `b2 declared-lanes`: a library, the name of one of its lanes, the directory of the
@@ -444,8 +492,8 @@ def own_lane_base(target: str | None) -> Lane:
 def own_lane_entry(own: OwnLane) -> dict[str, object]:
     """The own lane as an entry of the own-lanes matrix: its library, its lane and its
     directories; its target and its id when it names one; and, for every entry, its kind, the name
-    of its job and the image and the setup of the lane it shares, which the job reads from here
-    alone."""
+    of its job, the image, the setup and the compilers of the lane it shares, and whether its
+    library needs a library webcpp does not build, which the job reads from here alone."""
     base = own_lane_base(own.target)
     entry: dict[str, object] = {'library': own.library, 'lane': own.lane,
                                 'directories': list(own.directories)}
@@ -457,7 +505,8 @@ def own_lane_entry(own: OwnLane) -> dict[str, object]:
     # image's own, another version. A lane of programs alone, a served one, needs none.
     node = base.node or own.kind == 'original'
     entry.update(kind=own.kind, name=own.name, os=base.os, wasm=base.wasm, emsdk=base.emsdk,
-                 node=node)
+                 node=node, cc=base.cc, cxx=base.cxx,
+                 external=own.library in EXTERNAL_DEPENDENCIES)
     return entry
 
 
@@ -635,12 +684,51 @@ def fresh_xml(out_dir: Path, name: str) -> Path:
     return xml
 
 
+def container_image() -> None:
+    """Builds the image a container lane runs in, from CONTAINER_CONTEXT, with the network its
+    packages are installed from."""
+    command = ['docker', 'build', '--tag', CONTAINER_IMAGE, str(CONTAINER_CONTEXT)]
+    print(f'container: {shlex.join(command)}', flush=True)
+    try:
+        status = subprocess.run(command, cwd=ROOT, check=False).returncode
+    except OSError as error:
+        raise Failure(f'cannot run docker: {error.strerror}') from error
+    if status != 0:
+        raise Failure(f'{shlex.join(command)} exited {status}')
+
+
+def contained(command: list[str], mounted: list[Path]) -> list[str]:
+    """command, whose first word is b2, run in the container image with no network but the
+    loopback: b2 by its path, as the user who runs the lane, with ROOT, b2's prefix (the Boost
+    action installs b2 and Boost's headers in one) and each directory of mounted at their own
+    paths, and the variables of EXTERNAL_VARIABLES that are set passed on."""
+    found = shutil.which(command[0])
+    if found is None:
+        raise Failure(f'cannot find {command[0]} on PATH')
+    b2 = Path(found).resolve()
+    directories: list[Path] = []
+    for directory in (ROOT, b2.parents[1], *mounted):
+        if not any(directory == known or known in directory.parents for known in directories):
+            directories.append(directory)
+    variables = [word for name in EXTERNAL_VARIABLES if name in os.environ
+                 for word in ('--env', name)]
+    volumes = [word for directory in directories
+               for word in ('--volume', f'{directory}:{directory}')]
+    return ['docker', 'run', '--rm', '--network', 'none', '--user',
+            f'{os.getuid()}:{os.getgid()}', '--workdir', str(ROOT), *variables, *volumes,
+            CONTAINER_IMAGE, str(b2), *command[1:]]
+
+
 def run_lane(lane: Lane, user_config: Path, out_dir: Path, extra: list[str]) -> int:
-    """Runs the lane, and returns its exit status."""
+    """Runs the lane, in its container when it has one, and returns its exit status."""
     lane = resolved(lane)
     register(lane, user_config)
     xml = fresh_xml(out_dir, lane.lane)
-    status = run_b2(f'lane {lane.lane}', lane_command(lane, user_config, xml, extra))
+    command = lane_command(lane, user_config, xml, extra)
+    if lane.container:
+        container_image()
+        command = contained(command, [user_config.parent, xml.parent])
+    status = run_b2(f'lane {lane.lane}', command)
     return recorded(f'lane {lane.lane}', lane.lane, xml, status)
 
 
@@ -722,6 +810,10 @@ def main(arguments: list[str]) -> int:
     declaring.add_argument('--library', help='the library the CI runs for, which must exist')
     declaring.add_argument('--user-config', type=Path, default=default_config)
 
+    externals = commands.add_parser(
+        'external', help='print true when some library needs a library webcpp does not build')
+    externals.add_argument('--library', help='the library the CI runs for, which must exist')
+
     running = commands.add_parser(
         'lane', help='run one lane of the matrix',
         epilog='After --, more arguments for b2, such as --build-dir=bin/lane-gcc-15.')
@@ -765,6 +857,9 @@ def main(arguments: list[str]) -> int:
             found = declares(declared(options.user_config.resolve()), options.target,
                              options.library)
             print('true' if found else 'false')
+            return 0
+        if options.command == 'external':
+            print('true' if has_external(options.library) else 'false')
             return 0
         if options.command == 'own-lanes':
             listed = [own_lane_entry(own)

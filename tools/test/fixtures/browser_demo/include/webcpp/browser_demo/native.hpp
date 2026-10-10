@@ -5,17 +5,16 @@
 // https://www.boost.org/LICENSE_1_0.txt)
 
 // A header that builds only natively, against a dependency of the host's, the fake one of
-// deps/include, which reports errors by throwing: it needs exceptions, which
-// /webcpp/browser_demo//native declares.
+// deps/include, which /webcpp/browser_demo//native brings.
 
 #ifndef WEBCPP_BROWSER_DEMO_NATIVE_HPP
 #define WEBCPP_BROWSER_DEMO_NATIVE_HPP
 
 #include <boost/config.hpp>
 
-#ifdef BOOST_NO_EXCEPTIONS
-#error "<webcpp/browser_demo/native.hpp> needs exceptions: fake_dependency throws"
-#endif
+// fake_dependency reports errors by throwing, and native_answer catches them: it exists only with
+// exceptions, and without them (BOOST_NO_EXCEPTIONS) this header declares nothing.
+#ifndef BOOST_NO_EXCEPTIONS
 
 #include <fake_dependency.hpp>
 
@@ -35,5 +34,7 @@ inline int native_answer(int question) noexcept {
 }
 
 }  // namespace webcpp::browser_demo
+
+#endif  // BOOST_NO_EXCEPTIONS
 
 #endif

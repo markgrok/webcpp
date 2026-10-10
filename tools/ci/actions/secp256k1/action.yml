@@ -1,0 +1,70 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+
+name: libsecp256k1
+description: >-
+  Builds libsecp256k1 0.8.0, static, with its schnorrsig and extrakeys modules, from the archive of
+  its pinned commit checked against its SHA-256, with CMake and the lane's C compiler, in
+  .local/secp256k1-native and, with emscripten 'true', with Emscripten's emcmake in
+  .local/secp256k1-emscripten; cached per version, runner, compiler and build; and gives the
+  later steps SECP256K1_ROOT and SECP256K1_EMSCRIPTEN_ROOT. On Linux and macOS, and on Windows,
+  natively. trystero's build needs it, until webcpp builds it from third_party/.
+
+inputs:
+  cc:
+    description: >-
+      The C compiler to build with, as the lane names it (gcc-14, clang-18), or empty for CMake's
+      own choice: Visual Studio's on Windows.
+    required: false
+    default: ''
+  emscripten:
+    description: >-
+      Whether to build it with Emscripten too, 'true' or 'false', after the emsdk action.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Cache key
+      id: key
+      shell: bash
+      env:
+        CC: ${{ inputs.cc }}
+        EMSCRIPTEN: ${{ inputs.emscripten }}
+      run: bash tools/ci/actions/secp256k1/install.sh key
+
+    - name: Restore libsecp256k1
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          .local/secp256k1-native
+          .local/secp256k1-emscripten
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Build libsecp256k1 0.8.0
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        CC: ${{ inputs.cc }}
+        EMSCRIPTEN: ${{ inputs.emscripten }}
+      run: bash tools/ci/actions/secp256k1/install.sh install
+
+    - name: Save libsecp256k1
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          .local/secp256k1-native
+          .local/secp256k1-emscripten
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Configure libsecp256k1
+      shell: bash
+      env:
+        EMSCRIPTEN: ${{ inputs.emscripten }}
+      run: bash tools/ci/actions/secp256k1/install.sh configure
