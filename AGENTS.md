@@ -39,6 +39,30 @@ superproject, `webcpporg/webcpp`, is the equivalent of `boostorg/boost`. Every
 library is header-only C++20, under the Boost Software License 1.0, in a
 repository of its own, checked out here as a submodule under `libs/<name>`.
 
+### Why webcpp
+
+webcpp builds infrastructure for every developer, in both directions. It
+brings the best of C++ within easy reach of the web: the libraries of
+highest quality, compiled to WebAssembly. And it brings to C++ the libraries
+web developers use most (zod, a JavaScript interpreter, trystero, libp2p,
+HTTP fetch), so that programs written in C++ and compiled to WebAssembly
+have them. It speaks to C++ developers, crypto developers and AI developers
+who want to build decentralized applications for the web. AI agents are
+first-class readers: they use what webcpp publishes to find libraries of
+high quality, and webcpp will release integrations with the AIs, to bring
+the best technology in the world within reach of C++ programs.
+
+Each target has its purpose:
+
+| Target | For |
+| --- | --- |
+| emscripten | the browser: a C++ program as a web page, with everything the browser offers |
+| wasip2, wasip3 | WASI components run by wasmtime and by clouds: containers lighter than Docker, distributed computing at scale |
+| native | a program that wants close integration with its operating system |
+
+The documentation is written for C++ developers, and will also be written
+for web developers and for AI developers (chapter 13).
+
 ### The libraries
 
 | Library | What it is | Targets | State |
@@ -574,14 +598,23 @@ than leave it green on the rest.
 
 - C++20, header-only. The Jamroot sets `<cxxstd>20`, `<warnings>extra` and
   `<warnings-as-errors>on` for everything.
-- **What a library builds on, in this order:** what webcpp already has; then
-  Boost (boost.org); then the C++ Alliance's libraries
+- **What a library builds on, in this order:** what webcpp already has;
+  then Boost (boost.org); then the C++ Alliance's libraries
   ([cppalliance](https://github.com/cppalliance)), whose authors are Boost's;
-  then the standard library; and only then a library from outside, after the
-  owner's review, with the reason written in the library's documentation
-  (OpenSSL, for one, because it is the standard of its field). Code of the
-  library's own comes last. So a hash is Boost.Hash2's before anything else,
-  and a regular expression is webcpp::regex's.
+  then the standard library; then a library from outside that follows Boost,
+  the standard library and the standards of its field; then a C++ port of a
+  very widely used C library; and only then an implementation of the
+  library's own. A library from outside comes in after the owner's review,
+  with the reason written in the library's documentation (OpenSSL, for one,
+  because it is the standard of its field). The same order governs each
+  function an implementation of its own writes: it builds on those bases
+  first, and follows their standards. So a hash is Boost.Hash2's before
+  anything else, and a regular expression is webcpp::regex's.
+- **Written for the web.** Every library is written to be taken to the web:
+  its memory, its I/O and its scheduling are its user's to customize (the
+  allocators below; the executors and schedulers it runs on), and on the
+  emscripten target it uses what the browser offers, so that a C++ program
+  in a web page has a development environment as good as the web's own.
 - **Within Boost, the newest library of a kind:** Boost.Coroutine2 rather
   than Boost.Coroutine, Boost.Variant2 rather than Boost.Variant, Boost.Hash2
   rather than Boost.ContainerHash for new hashing, Boost.Unordered's flat
@@ -2175,7 +2208,7 @@ What webcpp does not have yet, and the chapters that mention it:
   the fast set runs locally as one command (chapter 9).
 - **The review of the existing libraries.** Once the pending work is done,
   every library is brought to the rules of exceptions, variants,
-  allocators, the order of what a library builds on, the newest Boost
+  allocators, the order of what a library builds on, written for the web, the newest Boost
   library of a kind, wrapped outside libraries, and fixed-width types
   (chapter 6); the lint then checks the last (no plain `int`, `long`,
   `short` or `unsigned` in a public header where no interface asks for it).
@@ -2184,7 +2217,22 @@ What webcpp does not have yet, and the chapters that mention it:
   Boost.Asio and Boost.Cobalt, so that asynchronous libraries are easy to
   write and are all driven from the browser's event loop (chapter 6); its
   design is still to be done.
-
+- **webcpp::asio, webcpp::beast, webcpp::webrtc, webcpp::crypto.** Boost.Asio
+  and Boost.Beast natively, and their interfaces over the browser's event
+  loop, `WebSocket` and `fetch` on emscripten; WebRTC peer connections and
+  data channels on both; authenticated encryption and randomness in C++ on
+  every target. trystero then holds only its protocol. Their specifications
+  are in review.
+- **The libraries web developers use most,** brought to C++: zod (on
+  webcpp::json_schema), a JavaScript interpreter (QuickJS), libp2p, HTTP
+  fetch.
+- **webcpp.org.** The organisation's landing page, on GitHub Pages: what
+  webcpp is and for whom, the list of libraries with a search, and a folder
+  of examples of what is possible, each with a page that explains it (a
+  peer-to-peer site on trystero first).
+- **Documentation for web developers and for AI developers,** beside the
+  documentation for C++ developers every library has today, and webcpp's
+  integrations with the AIs.
 - **External libraries built from `third_party/`.** trystero needs
   libsecp256k1, libdatachannel and OpenSSL, which webcpp does not build: a
   machine installs them by hand and the CI's actions build them, each found

@@ -26,19 +26,33 @@ the superproject, each library has a repository of its own under
 [webcpporg](https://github.com/webcpporg), checked out as a submodule under
 `libs/<name>`, and everything is built, tested and documented with b2.
 
+webcpp builds infrastructure for every developer, in both directions: the
+best of C++ within easy reach of the web, compiled to WebAssembly, and the
+libraries web developers use most brought to C++. It is for C++, crypto and
+AI developers who want to build decentralized applications for the web, on
+three targets: the browser (emscripten), WASI components run by wasmtime and
+by clouds (wasip2, wasip3), and native programs that want close integration
+with their operating system (AGENTS.md, chapter 1).
+
 ## The rules every library keeps
 
 Each line is a rule of AGENTS.md, named by its chapter.
 
 - **Header-only C++20, on solid ground.** A library builds on, in this
   order: what webcpp already has, then Boost, then the C++ Alliance's
-  libraries, then the standard library, and only then a library from outside,
-  after the maintainer's review and with the reason in its documentation.
-  Within Boost, the newest library of a kind (Coroutine2, Variant2, Hash2).
-  A library from outside is wrapped behind an interface that follows its
-  standard or Boost counterpart, so that it can be replaced (webcpp::regex
-  hides SRELL behind `std::regex`'s interface). The aim is that every library
-  carries the quality and the peer review of Boost and the standard
+  libraries, then the standard library, then a library from outside that
+  follows Boost, the standard library and the standards of its field, then a
+  C++ port of a very widely used C library, and only then code of its own,
+  which follows the same order and the same standards in every function it
+  writes. A library from outside comes in after the maintainer's review, with
+  the reason in its documentation. Within Boost, the newest library of a
+  kind (Coroutine2, Variant2, Hash2). A library from outside is wrapped
+  behind an interface that follows its standard or Boost counterpart, so
+  that it can be replaced (webcpp::regex hides SRELL behind `std::regex`'s
+  interface). The aim is that every library carries the quality and the peer
+  review of Boost and the standard (chapter 6).
+- **Written for the web.** Memory, I/O and scheduling are the user's to
+  customize, and on emscripten a library uses what the browser offers
   (chapter 6).
 - **Types of a fixed meaning:** fixed-width integers from `<cstdint>`,
   `std::size_t` for sizes and indices, and plain `int` or `long` only where

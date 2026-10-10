@@ -9,6 +9,15 @@ model: this repository is the superproject, the equivalent of
 [webcpporg](https://github.com/webcpporg), checked out as a submodule under
 `libs/<name>`, and everything is built, tested and documented with b2.
 
+webcpp builds infrastructure for every developer, in both directions: the
+best of C++ within easy reach of the web, compiled to WebAssembly, and the
+libraries web developers use most brought to C++. It is for C++, crypto and
+AI developers who want to build decentralized applications for the web.
+Each target has its purpose: the browser, through Emscripten; WASI
+components, run by wasmtime and by clouds as containers lighter than
+Docker; and native programs, for close integration with an operating
+system.
+
 ## The libraries
 
 | Library | What it is | Targets |
