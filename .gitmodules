@@ -10,3 +10,6 @@
 [submodule "libs/wasi"]
 	path = libs/wasi
 	url = ../wasi.git
+[submodule "libs/trystero"]
+	path = libs/trystero
+	url = ../trystero.git
