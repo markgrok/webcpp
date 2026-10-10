@@ -367,6 +367,26 @@ def test_linked_code_is_whole_or_breaks_between_its_parts(_: None) -> None:
         assert code in html, (code, html)
 
 
+def test_a_link_inside_a_link_of_a_synopsis_is_its_text(_: None) -> None:
+    # MrDocs links a type named inside another's template arguments inside the outer link's text,
+    # link:#a[handler<void(link:#b[bytes])>], where Asciidoctor ends the outer link at the inner
+    # ]. The reference keeps the outer link, whose text shows the inner one's text.
+    mrdocs = ('[#webcpp-sample-handler-08]\n== handler\n\nA handler&period;\n\n'
+              '[#webcpp-sample-bytes]\n== bytes\n\nBytes&period;\n\n'
+              '[#webcpp-sample-message]\n== message\n\n'
+              '[source,cpp,subs="verbatim,replacements,macros,-callouts"]\n----\n'
+              'link:#webcpp-sample-handler-08[handler&lt;void(link:#webcpp-sample-bytes[bytes])'
+              '&gt;] message;\n'
+              'link:#webcpp-sample-handler-08[handler&lt;void(link:#webcpp-sample-bytes[bytes], '
+              'link:#webcpp-sample-bytes[bytes])&gt;] both;\n----\n')
+    page = convert(reference.finished(mrdocs, 'sample'))
+    assert code_text(body(page)) == ['handler<void(bytes)> message;\n'
+                                     'handler<void(bytes, bytes)> both;'], code_text(body(page))
+    assert body(page).count('<a href="#webcpp-sample-handler-08">') == 2, body(page)
+    result = rendered_check(page)
+    assert result.returncode == 0, result.stdout
+
+
 def test_reference_apostrophes_read_as_the_guide_s(_: None) -> None:
     # MrDocs writes each ' as &apos;, which Asciidoctor's replacements, which make the guide's
     # apostrophe curly, never see. Its reference, as reference.py finishes it, shows the same
@@ -625,6 +645,7 @@ CASES: list[Callable[[None], None]] = [
     test_names_break_only_where_they_part,
     test_code_in_a_heading_is_broken_once,
     test_linked_code_is_whole_or_breaks_between_its_parts,
+    test_a_link_inside_a_link_of_a_synopsis_is_its_text,
     test_reference_apostrophes_read_as_the_guide_s,
     test_prose_apostrophes_that_asciidoctor_leaves_straight_are_curly,
     test_a_quote_of_several_words_keeps_its_closing_quote,

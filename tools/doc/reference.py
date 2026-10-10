@@ -32,8 +32,10 @@ Then MrDocs writes the reference, and any warning fails it; and tools/doc/doc_co
 the @tparam of each public template and the brief of each detail symbol. Both run, and the
 output is written only when both pass: MrDocs's text from the library's namespace on, without
 the sections of the global namespace and of webcpp, which hold a table of one row each (a table
-of the library's macros, which the first holds, becomes a section of its own), and with the
-first row of each table, which names its columns, marked as the table's header. The character
+of the library's macros, which the first holds, becomes a section of its own), with each link
+MrDocs writes inside another link's text, link:#a[handler<void(link:#b[bytes])>], written as its
+text, since Asciidoctor would end the outer link at the inner ], and with the first row of each
+table, which names its columns, marked as the table's header. The character
 references MrDocs writes in place of the characters AsciiDoc could read as markup stay:
 postprocess.mjs decodes them in the converted page, where nothing reads them as markup. One
 goes before: an apostrophe of prose in a word, which AsciiDoc reads as no markup, is written
@@ -110,6 +112,11 @@ SECTION = re.compile(r'^\[#([^\]\n]+)\]\n== ', re.MULTILINE)
 DROPPED = ('index', 'webcpp')
 DROPPED_LINK = re.compile(r'link:#(?:index|webcpp)\[([^\]]*)\]')
 
+# A link inside another link's text, which MrDocs writes for a type named among another's
+# template arguments, link:#a[handler&lt;void(link:#b[bytes])&gt;]: Asciidoctor would end the
+# outer link at the inner ]. The outer link and the text before the inner one, then its text.
+NESTED_LINK = re.compile(r'(\blink:[^\s\[]*\[[^\[\]]*)\blink:[^\s\[]*\[([^\[\]]*)\]')
+
 # The table of the macros, in the section of the global namespace: from its title to the next.
 MACROS = re.compile(r'^=== Macros\n(.*?)(?=^=== |\Z)', re.MULTILINE | re.DOTALL)
 
@@ -180,12 +187,22 @@ def apostrophes(text: str) -> str:
     return '\n'.join(lines)
 
 
+def unnested(text: str) -> str:
+    """The text with each link inside another link's text written as its text alone, the outer
+    link kept, as many in one as it holds."""
+    while True:
+        flat = NESTED_LINK.sub(lambda link: link.group(1) + link.group(2), text)
+        if flat == text:
+            return text
+        text = flat
+
+
 def finished(text: str, library: str) -> str:
     """MrDocs's reference as the page shows it: from the library's namespace, the sections of the
     global namespace and of webcpp left out, but for the table of the library's macros, which
-    becomes a section of its own; each link to them their text; and the first row of each table,
-    which names its columns, the table's header; and each apostrophe of its prose in a word as
-    Asciidoctor reads the guide's."""
+    becomes a section of its own; each link to them their text; each link inside another's text
+    its text; and the first row of each table, which names its columns, the table's header; and
+    each apostrophe of its prose in a word as Asciidoctor reads the guide's."""
     starts = [match.start() for match in SECTION.finditer(text)]
     kept = [text[:starts[0]] if starts else text]
     for start, end in zip(starts, [*starts[1:], len(text)]):
@@ -197,7 +214,7 @@ def finished(text: str, library: str) -> str:
         macros = MACROS.search(section) if anchor.group(1) == 'index' else None
         if macros is not None:
             kept.append(f'[#webcpp-{library}-macros]\n== Macros\n\n{macros.group(1).strip()}\n\n')
-    shown = DROPPED_LINK.sub(lambda link: link.group(1), ''.join(kept))
+    shown = unnested(DROPPED_LINK.sub(lambda link: link.group(1), ''.join(kept)))
     return apostrophes(NAMED_COLUMNS.sub(
         lambda table: f'[%header,cols="{table.group(1)}"]\n|===\n| Name', shown))
 
