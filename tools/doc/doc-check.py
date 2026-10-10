@@ -26,7 +26,9 @@ The library's own files are reached the same way, `--library-root`, which webcpp
 library's page as `{library-root}`, so that the page shows its library's build as it is, the
 dependencies its build.jam declares or a test Jamfile's lines: `include::{library-root}/<path>`
 names a region of a file the library's own git tracks, with the same faults, and is a fault when
-the check is not given `--library-root`.
+the check is not given `--library-root`. A path that reaches the file through a link git does
+not track is a fault, and so is a root that is no top of a git checkout of its own; and an
+attribute the page sets to a root, `:lr: {library-root}`, is that root wherever it is named.
 And a `++` in prose, outside a block, inline code and an explicit passthrough
 (`pass:[...]`, `+++...+++`): two of them in one paragraph make Asciidoctor read what lies between
 them as a passthrough, which drops both and swallows a cross-reference with no warning; `{cpp}`
@@ -112,6 +114,7 @@ is one, or 2 on a usage error.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 from html import unescape
 from html.parser import HTMLParser
@@ -365,19 +368,23 @@ class Library:
 
     def tracked(self, root: Path) -> set[str] | None:
         """The files root's own git tracks, by their path there, read once per root: None when it
-        is not a git checkout, or git is not there to list them. root is the superproject for an
-        include of {webcpp-root}, or the library's own directory for one of {library-root}, since
-        the superproject tracks a library itself, as one gitlink."""
+        is not the top of a git checkout, or git is not there to list them. root is the
+        superproject for an include of {webcpp-root}, or the library's own directory for one of
+        {library-root}, since the superproject tracks a library itself, as one gitlink; a
+        directory with no git of its own would list the files of the git around it."""
         key = root.resolve()
         if key not in self.listed:
             try:
+                top = subprocess.run(['git', '-C', str(root), 'rev-parse', '--show-prefix'],
+                                     capture_output=True, check=False)
                 listed = subprocess.run(['git', '-C', str(root), 'ls-files', '-z'],
                                         capture_output=True, check=False)
             except OSError:
                 self.listed[key] = None
             else:
+                own = top.returncode == 0 and top.stdout.strip() == b''
                 self.listed[key] = (set(listed.stdout.decode('utf-8').split('\0')) - {''}
-                                    if listed.returncode == 0 else None)
+                                    if own and listed.returncode == 0 else None)
         return self.listed[key]
 
     def example_output(self, target: str) -> tuple[Path | None, Path | None]:
@@ -427,8 +434,14 @@ def tracked_region_fault(path: Path, root: Path, owner: str, given: dict[str, st
     the superproject or the library."""
     tracked = library.tracked(root)
     if tracked is None:
-        return (f'includes a file of {owner}, and {root} is not a git checkout, or git '
-                'is not on PATH: the check reads the files git tracks')
+        return (f'includes a file of {owner}, and {root} is not the top of a git checkout of its '
+                'own, or git is not on PATH: the check reads the files git tracks')
+    # The path as the page names it, a link among its parts, and the file it reaches: a link git
+    # does not track is no file of a fresh clone.
+    named = Path(os.path.normpath(path))
+    base = Path(os.path.normpath(root))
+    if not named.is_relative_to(base) or named.relative_to(base).as_posix() not in tracked:
+        return f'includes a file {owner} does not track'
     if path.resolve().relative_to(root.resolve()).as_posix() not in tracked:
         return f'includes a file {owner} does not track'
     if 'lines' in given:
@@ -475,16 +488,34 @@ def library_file_fault(relative: str, given: dict[str, str], library: Library) -
     return tracked_region_fault(path, top, 'the library', given, library)
 
 
+def expanded(target: str, entries: dict[str, str], given: dict[str, str]) -> str:
+    """The target with each attribute the page sets replaced by its value, again in what that
+    value names, until no more is: `:lr: {library-root}` then `{lr}/build.jam` is
+    `{library-root}/build.jam`. An attribute the build gives stays, as Asciidoctor keeps one given
+    on its command line over the page's."""
+    for _ in range(len(entries) + 1):
+        replaced = ATTRIBUTE_REFERENCE.sub(
+            lambda name: entries[name.group(1)]
+            if name.group(1) in entries and name.group(1) not in given else name.group(0), target)
+        if replaced == target:
+            break
+        target = replaced
+    return target
+
+
 def faults(section: Path, library: Library, doc_root: Path) -> list[Fault]:
     """Each fault of `section`, as (line number, text)."""
     found: list[Fault] = []
     tables: list[str] = []
     defined = library.defined()
+    given = library.defined()
+    entries: dict[str, str] = {}
     for number, line in enumerate(section.read_text().split('\n'), start=1):
         stripped = line.rstrip()
         entry = ATTRIBUTE_ENTRY.match(stripped)
         if entry is not None:
             defined[entry.group(1)] = entry.group(2)
+            entries[entry.group(1)] = entry.group(2)
             continue
         if TABLE.match(stripped):
             if tables and tables[-1] == stripped:
@@ -497,7 +528,7 @@ def faults(section: Path, library: Library, doc_root: Path) -> list[Fault]:
         match = INCLUDE.match(stripped)
         if match is None:
             continue
-        target = match.group(1)
+        target = expanded(match.group(1), entries, given)
         _, program = library.example_output(target)
         if program is not None and not program.is_file():
             found.append((number, f'includes the output of no example: {target}'))

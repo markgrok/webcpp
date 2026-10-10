@@ -790,6 +790,39 @@ def check_library_root(root: Path) -> None:
                f'page.adoc:{NEXT}: C++ that is not included from an example')
     for name in ('test/x_test.cpp', 'example/nested/x.cpp', 'include/webcpp/fixture/x.hpp'):
         (root / name).unlink()
+    # An attribute of the page that names a root, at any depth, is that root: what it includes
+    # is checked as the root's own include is.
+    for entries, included, fault in (
+            (':lr: {library-root}', '{lr}/untracked/regions.jam[tag=flags]',
+             'includes a file the library does not track'),
+            (':lr: {library-root}\n:jam: {lr}/build.jam', '{jam}[]',
+             'includes a file of the library whole'),
+            (':wr: {webcpp-root}', '{wr}/build.jam[]', 'includes a file of the superproject whole'),
+            (':lr: {library-root}\n:jam: {lr}/build.jam', '{jam}[tag=flags]', None)):
+        write(root / 'doc/page.adoc',
+              f'{entries}\n\n' + PAGE + f'\n[listing]\n----\ninclude::{included}\n----\n')
+        aliased = check(root, '--complete', *given, '--webcpp-root', str(root))
+        if fault is None:
+            expect(aliased, 0, '')
+        else:
+            expect(aliased, 1, fault)
+    # A link the library does not track names a file a fresh clone does not hold, though the
+    # file it points to is tracked.
+    (root / 'untracked/build.jam').symlink_to('../build.jam')
+    write(root / 'doc/page.adoc',
+          PAGE + '\n[listing]\n----\ninclude::{library-root}/untracked/build.jam[tag=flags]\n'
+          '----\n')
+    expect(check(root, *given), 1, f'page.adoc:{line}: includes a file the library does not track')
+    (root / 'untracked/build.jam').unlink()
+    # A directory with no git of its own is no library's checkout, though an enclosing git
+    # tracks its files.
+    write(root / 'plain/build.jam', regions)
+    write(root / 'doc/page.adoc',
+          PAGE + '\n[listing]\n----\ninclude::{library-root}/build.jam[tag=flags]\n----\n')
+    expect(check(root, '--library-root', str(root / 'plain')), 1,
+           f'page.adoc:{line}: includes a file of the library, and {root / "plain"} is not the '
+           'top of a git checkout of its own')
+    (root / 'plain/build.jam').unlink()
     # Without --library-root, which only a library's page is given.
     write(root / 'doc/page.adoc',
           PAGE + '\n[listing]\n----\ninclude::{library-root}/build.jam[tag=flags]\n----\n')

@@ -1018,8 +1018,10 @@ build:
 - an include of `{webcpp-root}/<path>` names a region, `tag=` or `tags=`, of
   a file the superproject's git tracks, which holds that region, and one of
   `{library-root}/<path>` a region of a file the library's own git tracks:
-  an untracked file, a missing one, a whole file and lines chosen by number,
-  which drift, each fail;
+  an untracked file, a link git does not track, a missing file, a whole file
+  and lines chosen by number, which drift, each fail, and so does a library
+  directory with no git of its own; an attribute the page sets to either
+  root is that root, checked the same way;
 - every `(doc: #anchor)` and `index.html#anchor` of the library's files
   names an anchor the page defines, and every `@see "<title>"` a section;
 - every `(doc: <library>#<anchor>)` of the library's files, and every link
