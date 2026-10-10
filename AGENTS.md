@@ -1030,8 +1030,10 @@ build:
   comment), and no `++` appears in prose (two of them swallow what lies
   between): write `{cpp}`;
 - the rendered page has no cross-reference left as text, no stray `++` or
-  backtick, no undecoded escape of MrDocs's, no U+2010, and no link to the
-  dropped `#index` or `#webcpp` sections.
+  backtick, no undecoded escape of MrDocs's, no U+2010, no em dash, which
+  Asciidoctor writes for `--` even inside inline code (`xn\--bcher` keeps
+  the two hyphens), and no link to the dropped `#index` or `#webcpp`
+  sections.
 
 ### Counts
 

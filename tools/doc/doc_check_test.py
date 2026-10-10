@@ -443,8 +443,9 @@ def check_rendered(root: Path) -> None:
     span that does not close leaves its backtick in the text. MrDocs's escapes, &hyphen; and its
     kin, and the U+2010 the first stands for, are what postprocess.mjs decodes; a link of a
     synopsis left as text is a listing the highlighter broke; and a link to #index or #webcpp is
-    one to a section reference.py drops. The samples are what Asciidoctor.js
-    and tools/doc's extensions write."""
+    one to a section reference.py drops. An em dash, in any of its spellings, is what Asciidoctor
+    writes for --, inside inline code too. The samples are what Asciidoctor.js and tools/doc's
+    extensions write."""
     rendered = root / 'html/index.html'
     page = ('<html><head><title>T</title><style>a::before { content: "++"; }</style></head>'
             '<body><h1>The C&#43;&#43; port</h1><p>See <a href="#x">X</a>.</p>'
@@ -456,6 +457,8 @@ def check_rendered(root: Path) -> None:
             # What MrDocs writes of a stream's operators, and of C++ in a comment.
             '<p><code>operator&lt;&lt;</code> and <code>operator&gt;&gt;</code> in C&#43;&#43;'
             ', and std::cout &lt;&lt; x &gt;&gt; y.</p>'
+            # Two hyphens kept, and a thin space and a zero-width one, which are no dash.
+            '<p><code>xn--bcher</code>, a&#8201;-&#8201;b&#8203;.</p>'
             '%s</body></html>')
     for sample, fault in (
             ('', None),
@@ -480,7 +483,15 @@ def check_rendered(root: Path) -> None:
             ('<h3><a href="#webcpp">webcpp</a>::demo</h3>',
              'a link to a section the reference does not keep: #webcpp'),
             ('<p><a href="#index">Global namespace</a></p>',
-             'a link to a section the reference does not keep: #index')):
+             'a link to a section the reference does not keep: #index'),
+            # An em dash, which Asciidoctor writes for -- in prose and in inline code alike.
+            ('<p>A label <code>xn&#8212;&#8203;bcher-kva.example</code>.</p>',
+             'an em dash, which Asciidoctor writes for --: &#8212;'),
+            ('<p>A pause&#8201;&mdash;&#8201;here.</p>',
+             'an em dash, which Asciidoctor writes for --: &mdash;'),
+            ('<p>A pause&#x2014;here.</p>',
+             'an em dash, which Asciidoctor writes for --: &#x2014;'),
+            ('<p>A pause\u2014here.</p>', 'an em dash, which Asciidoctor writes for --: \u2014')):
         write(rendered, page % sample)
         result = run('--rendered', str(rendered))
         if fault is None:

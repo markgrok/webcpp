@@ -72,7 +72,9 @@ And the rendered page, given alone with `--rendered`, shows no cross-reference l
 its code; no backtick outside its blocks of code: one inside inline code is the mark of two spans
 run together by a passthrough, and one outside it of a span that did not close (postprocess.mjs
 keeps a + and a backtick MrDocs escaped as references, as Asciidoctor writes {cpp}); no escape of
-MrDocs's left undecoded and no U+2010, which MrDocs writes for an ASCII hyphen; and no link of a
+MrDocs's left undecoded and no U+2010, which MrDocs writes for an ASCII hyphen; no em dash, a
+character or a reference, which Asciidoctor writes for `--` in prose and in inline code alike,
+`xn--bcher` becoming `xn&#8212;bcher` (`\\--` keeps two hyphens); no link of a
 synopsis left as text in a block of code, which a highlighter that broke the link leaves; and no
 link to #index or #webcpp, the sections of MrDocs's reference that reference.py drops. With the
 library's `--repository` and `--library`, each reference of its files to another library's page,
@@ -198,6 +200,8 @@ MRDOCS_ESCAPE = re.compile(r'&(circ|lowbar|ast|grave|num|lsqb|rsqb|lcub|rcub|bso
                            r'equals|semi|plus|colon|period|apos|sol);')
 # U+2010, which &hyphen; stands for and MrDocs means as -.
 HYPHEN = '\u2010'
+# An em dash, which Asciidoctor writes for --, as a character or as a reference.
+EM_DASH = re.compile(r'\u2014|&#0*8212;|&#x0*2014;|&mdash;', re.I)
 # A link of a synopsis, which the macros substitution reads only when the highlighter keeps it.
 LINK_MACRO = re.compile(r'link:[^\s\[]*\[')
 # A link to the section of the global namespace or of webcpp, which tools/doc/reference.py
@@ -1070,8 +1074,8 @@ def completeness_faults(page: Path, sections: list[Path], library: Library,
 
 
 def rendered_faults(page: Path) -> list[str]:
-    """Each cross-reference left as text, literal ++, stray backtick, escape of MrDocs's, U+2010
-    and link left as text in code of the rendered `page`."""
+    """Each cross-reference left as text, literal ++, stray backtick, escape of MrDocs's, U+2010,
+    em dash and link left as text in code of the rendered `page`."""
     html = page.read_text(encoding='utf-8')
     found = []
 
@@ -1084,6 +1088,9 @@ def rendered_faults(page: Path) -> list[str]:
         report(f'an escape of MrDocs left undecoded: {match.group(0)}', html, match)
     for match in re.finditer(HYPHEN, html):
         report('a U+2010 hyphen where MrDocs read -', html, match)
+    for match in EM_DASH.finditer(html):
+        report(f'an em dash, which Asciidoctor writes for --: {match.group(0)} (write \\-- to '
+               'keep two hyphens)', html, match)
     for match in DROPPED_SECTION.finditer(html):
         report(f'a link to a section the reference does not keep: #{match.group(1)}', html, match)
     # In the blocks of code, no link of a synopsis left as text.

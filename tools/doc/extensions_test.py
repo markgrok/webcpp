@@ -202,6 +202,21 @@ def test_wide_table_labels_its_cells(_: None) -> None:
     assert 'data-label' not in tables[1], tables[1]
 
 
+def test_dashes_stay_as_written_when_escaped(_: None) -> None:
+    # Asciidoctor writes -- as an em dash, in inline code as in prose, which the check of the
+    # rendered page refuses; \-- keeps the two hyphens, and so does a passthrough.
+    for text in ('A label `xn--bcher-kva.example`.\n', 'A pause -- here.\n'):
+        result = rendered_check(convert(text))
+        assert result.returncode == 1 and 'an em dash' in result.stdout, (text, result.stdout)
+    page = convert('A label `xn\\--bcher-kva.example`, a flag `+--recursive+` and a pause \\-- '
+                   'here.\n')
+    result = rendered_check(page)
+    assert result.returncode == 0, result.stdout
+    text = unescape(re.sub(r'<[^>]+>', '', body(page)))
+    for kept in ('xn--bcher-kva.example', '--recursive', 'a pause -- here'):
+        assert kept in text, (kept, text)
+
+
 def parts(html: str) -> str:
     """The html with each | written as the break between two parts of a name that only a phone's
     style keeps; a break after a :: is written as it is, <wbr>, which every style keeps."""
@@ -530,6 +545,7 @@ CASES: list[Callable[[None], None]] = [
     test_short_inline_code_stays_whole,
     test_a_flag_keeps_its_leading_hyphen,
     test_wide_table_labels_its_cells,
+    test_dashes_stay_as_written_when_escaped,
     test_reference_headings_break_after_scopes,
     test_long_names_break_between_their_parts,
     test_names_break_only_where_they_part,
