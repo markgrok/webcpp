@@ -89,6 +89,12 @@ feature.feature webcpp-include : : free incidental ;
 # reads.
 feature.feature webcpp-lane : : free incidental ;
 
+# webcpp-require-external=on: a library webcpp does not build that is not
+# found stops the build (external-found), as the CI asks, rather than leave
+# the library that needs it out. Incidental, so that it plays no part in a
+# build directory, and propagated, so that it reaches each library's alias.
+feature.feature webcpp-require-external : on : optional incidental propagated ;
+
 # What links tools/throw_exception.cpp, the handler Boost calls in place of
 # a throw, into a program a user builds with exception-handling=off, on any
 # target. webcpp builds no variant of its own without exceptions, nor any
@@ -881,4 +887,107 @@ rule drive ( name : sources + : requirements * : script : arguments * : targets 
     runs-original $(found) : $(name) ;
     webcpp-drive.drive $(found) : $(name) : $(sources) : $(requirements) $(.handler)
         : $(script) : $(arguments) : $(original) : $(only) ;
+}
+
+# The superproject's root, this file's directory's parent, and the
+# directory of .local/ that a library webcpp does not build is installed
+# in, by hand or by the CI's actions.
+.root = [ path.parent [ path.parent [ path.make [ modules.binding $(__name__) ] ] ] ] ;
+
+local rule local-root ( directory )
+{
+    return [ path.join [ path.root $(.root) [ path.pwd ] ] .local $(directory) ] ;
+}
+
+# The value -s<variable>=<value> gives on b2's command line, the last one,
+# or nothing. The environment is never read: b2 makes each of its variables
+# a global one as -s does, and a stale variable of a shell would replace
+# .local/ without a word, as AGENTS.md says of the emsdk.
+local rule given ( variable )
+{
+    local values = [ MATCH "^-s$(variable)=(.+)$" : [ modules.peek : ARGV ] ] ;
+    return $(values[-1]) ;
+}
+
+# The directory of a library webcpp does not build, as a library's build.jam
+# hands it to its lib targets: -s<variable>=<dir>, else
+# .local/<directory> when that holds include/<header>, else nothing, which
+# leaves the library to the compiler's default search path.
+rule external-root ( variable : directory : header )
+{
+    local root = [ given $(variable) ] ;
+    if $(root)
+    {
+        return $(root) ;
+    }
+    root = [ local-root $(directory) ] ;
+    if [ path.exists $(root)/include/$(header) ]
+    {
+        return [ path.native $(root) ] ;
+    }
+}
+
+# Whether a library webcpp does not build is there, for the <conditional> of
+# the target of owner, the library of libs/ that needs it: nothing when
+# -s<variable> names a directory that holds include/<header>, or none is
+# given and .local/<directory> holds it, or, with system, natively outside
+# Windows, /usr/include or /usr/local/include does (a system install is
+# legitimate). A -s that names a directory without the header stops the
+# build, naming it. When no candidate holds it, owner is left out: its
+# targets get <build>no, and the build says so once, naming the library and
+# how to give it; with <webcpp-require-external>on, as the CI builds, the
+# build stops instead, so that no lane skips owner without a word.
+rule external-found ( owner : library : variable : directory : header : system ?
+    : properties * )
+{
+    local root = [ given $(variable) ] ;
+    if $(root)
+    {
+        local named = [ path.root [ path.make $(root) ] [ path.pwd ] ] ;
+        if ! [ path.exists $(named)/include/$(header) ]
+        {
+            errors.user-error "-s$(variable)=$(root) holds no include/$(header): give"
+                "the directory of $(library)'s include/ and lib/, or no -s$(variable)"
+                "to look for $(library) in $(.root)/.local/$(directory), else on the"
+                "system." ;
+        }
+        return ;
+    }
+    local installed = [ local-root $(directory) ] ;
+    if [ path.exists $(installed)/include/$(header) ]
+    {
+        return ;
+    }
+    local systems ;
+    if $(system) && ! <toolset>emscripten in $(properties) && [ os.name ] != NT
+    {
+        systems = /usr/include /usr/local/include ;
+        for local system-include in $(systems)
+        {
+            if [ path.exists $(system-include)/$(header) ]
+            {
+                return ;
+            }
+        }
+    }
+    local native = [ path.native $(installed) ] ;
+    local looked = "-s$(variable)=<dir> was not given, and $(native)/include holds no $(header)" ;
+    if $(systems)
+    {
+        looked = "$(looked), nor does $(systems[1]) or $(systems[2])" ;
+    }
+    if <webcpp-require-external>on in $(properties)
+    {
+        errors.user-error "$(library) was not found, and the build requires it"
+            "(webcpp-require-external=on): $(looked). Give -s$(variable)=<dir>, the"
+            "directory of its include/ and lib/, or install it in $(native)." ;
+    }
+    if ! $(.left-out.$(owner).$(library))
+    {
+        .left-out.$(owner).$(library) = true ;
+        ECHO "webcpp: $(owner) is left out: $(library) was not found: $(looked). Give"
+            "-s$(variable)=<dir>, the directory of its include/ and lib/, or install it in"
+            "$(native), as libs/$(owner)/README.md says." ;
+    }
+    return <build>no ;
 }

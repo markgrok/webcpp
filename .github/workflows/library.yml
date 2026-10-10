@@ -406,14 +406,26 @@ jobs:
 
       # clang++ reads the headers for tools/doc/doc_comments.py; the Boost check compiles with
       # the same Clang. The index links each library's page where the site serves it.
+      # A page whose library needs external libraries requires them, as a lane does, and is
+      # given each on b2's command line, where its build.jam reads it.
       - name: Documentation
         env:
           LIBRARY: ${{ inputs.library }}
+          EXTERNAL: ${{ needs.plan.outputs.external }}
         run: |
           python3 tools/ci/matrix.py register clang-18
           request=(doc -sWEBCPP_INDEX=site)
           if [ -n "$LIBRARY" ]; then
             request=("libs/$LIBRARY/doc")
+          fi
+          if [ "$EXTERNAL" = true ]; then
+            request=(webcpp-require-external=on "${request[@]}")
+            for variable in SECP256K1_ROOT SECP256K1_EMSCRIPTEN_ROOT LIBDATACHANNEL_ROOT \
+                OPENSSL_ROOT; do
+              if [ -n "${!variable-}" ]; then
+                request=("-s$variable=${!variable}" "${request[@]}")
+              fi
+            done
           fi
           env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH \
             b2 --user-config=.local/user-config.jam -a -sCLANG=/usr/bin/clang++-18 \

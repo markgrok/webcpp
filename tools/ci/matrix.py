@@ -77,8 +77,10 @@ the report is the verdict. B2-ARGUMENT is for a local run beside others, such as
 the image of tools/ci/container/Dockerfile, unless an image of its tag (the start of the
 Dockerfile's SHA-256) is there, as the CI's container action loads it, then runs that b2, by its
 path, in it, with `docker run --network none`, as the user who runs the lane, with the superproject
-and b2's prefix mounted at their own paths, and the variables of EXTERNAL_VARIABLES that are set
-passed on: no test it runs can reach beyond the loopback.
+and b2's prefix mounted at their own paths, and no variable of the environment: no test it runs can
+reach beyond the loopback. A lane whose entry says external gives b2 webcpp-require-external=on and
+-s<VARIABLE>=<dir> for each variable of EXTERNAL_VARIABLES set, which a library's build.jam reads
+from b2's command line alone; an own lane of such a library likewise.
 
 own-lane runs one own lane, OWN-LANE being one entry of the own-lanes matrix as JSON: it registers
 the toolset of the lane it shares (Clang 18 when it names no target), prints its b2 command and runs
@@ -158,8 +160,9 @@ EMSDK_JAM = ROOT / 'tools/ci/emsdk.jam'
 # an own lane, the docs or the lint that builds such a library runs.
 EXTERNAL_DEPENDENCIES = {'trystero': ('secp256k1', 'libdatachannel', 'openssl')}
 
-# The variables that name those libraries' directories, which the actions give a job and a
-# container lane passes on to b2.
+# The variables that name those libraries' directories, which the actions give a job, and a lane
+# of such a library passes to b2 as -s<VARIABLE>=<dir>: a library's build.jam reads them from b2's
+# command line alone, never from the environment.
 EXTERNAL_VARIABLES = ('SECP256K1_ROOT', 'SECP256K1_EMSCRIPTEN_ROOT', 'LIBDATACHANNEL_ROOT',
                       'OPENSSL_ROOT')
 
@@ -698,10 +701,23 @@ def register(lane: Lane, user_config: Path) -> None:
     user_config.write_text(added)
 
 
+def external_arguments(external: bool) -> list[str]:
+    """What b2 is given for a lane whose libraries need libraries webcpp does not build: that the
+    build requires them (webcpp-require-external=on, so that a library is never left out without
+    a word), and -s<VARIABLE>=<dir> for each variable of EXTERNAL_VARIABLES the CI's actions set,
+    on the command line, where a library's build.jam reads them; none of them otherwise."""
+    if not external:
+        return []
+    return ['webcpp-require-external=on',
+            *(f'-s{name}={os.environ[name]}' for name in EXTERNAL_VARIABLES
+              if os.environ.get(name))]
+
+
 def lane_command(lane: Lane, user_config: Path, xml: Path, extra: list[str]) -> list[str]:
     """The lane command: b2, from scratch, writing xml, for the lane's toolset and projects."""
     return ['b2', f'--user-config={user_config}', '-a', '--dump-tests', f'--out-xml={xml}',
-            f'toolset={lane.toolset}', *lane.options, *extra, *lane.projects]
+            f'toolset={lane.toolset}', *external_arguments(lane.external), *lane.options, *extra,
+            *lane.projects]
 
 
 def own_lane_command(own: OwnLane, user_config: Path, xml: Path | None,
@@ -710,11 +726,12 @@ def own_lane_command(own: OwnLane, user_config: Path, xml: Path | None,
     directories; with Clang 18 when it names no target, and otherwise with the toolset and the
     options of the lane it shares, writing xml, as that lane does."""
     base = own_lane_base(own.target)
+    external = external_arguments(needs_external(own.library))
     if own.target is None:
-        return ['b2', f'--user-config={user_config}', '-a', f'toolset={base.toolset}', *extra,
-                *own.requests]
+        return ['b2', f'--user-config={user_config}', '-a', f'toolset={base.toolset}', *external,
+                *extra, *own.requests]
     return ['b2', f'--user-config={user_config}', '-a', '--dump-tests', f'--out-xml={xml}',
-            f'toolset={base.toolset}', *base.options, *extra, *own.requests]
+            f'toolset={base.toolset}', *external, *base.options, *extra, *own.requests]
 
 
 def run_b2(label: str, command: list[str]) -> int:
@@ -780,7 +797,7 @@ def contained(command: list[str], mounted: list[Path]) -> list[str]:
     """command, whose first word is b2, run in the container image with no network but the
     loopback: b2 by its path, as the user who runs the lane, with ROOT, b2's prefix (the Boost
     action installs b2 and Boost's headers in one) and each directory of mounted at their own
-    paths, and the variables of EXTERNAL_VARIABLES that are set passed on."""
+    paths, and no variable of the environment."""
     found = shutil.which(command[0])
     if found is None:
         raise Failure(f'cannot find {command[0]} on PATH')
@@ -789,12 +806,10 @@ def contained(command: list[str], mounted: list[Path]) -> list[str]:
     for directory in (ROOT, b2.parents[1], *mounted):
         if not any(directory == known or known in directory.parents for known in directories):
             directories.append(directory)
-    variables = [word for name in EXTERNAL_VARIABLES if name in os.environ
-                 for word in ('--env', name)]
     volumes = [word for directory in directories
                for word in ('--volume', f'{directory}:{directory}')]
     return ['docker', 'run', '--rm', '--network', 'none', '--user',
-            f'{os.getuid()}:{os.getgid()}', '--workdir', str(ROOT), *variables, *volumes,
+            f'{os.getuid()}:{os.getgid()}', '--workdir', str(ROOT), *volumes,
             CONTAINER_IMAGE, str(b2), *command[1:]]
 
 

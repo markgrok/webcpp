@@ -453,6 +453,12 @@ def test_an_own_lanes_command(root):
     assert matrix.own_lane_command(driven[0], config, xml, []) == [
         'b2', f'--user-config={config}', '-a', '--dump-tests', f'--out-xml={xml}',
         'toolset=emscripten', 'libs/alpha/test/driver//driver']
+    # An own lane of a library that needs external libraries requires them, as its lane does.
+    interop = matrix.parsed_own_lanes('trystero interop libs/trystero/test/oracle native original')
+    command = matrix.own_lane_command(interop[0], config, xml, [])
+    assert command[command.index('toolset=clang-18') + 1] == 'webcpp-require-external=on', command
+    oracle_command = matrix.own_lane_command(oracle, config, None, [])
+    assert 'webcpp-require-external=on' not in oracle_command, oracle_command
     # The lane the job sets up for each target runs on the own-lanes job's image, and the native
     # one is the oracle's Clang 18.
     for target, lane_id in (('native', 'clang-18'), ('wasip2', 'wasip2'), ('wasip3', 'wasip3'),
@@ -1002,6 +1008,10 @@ def test_the_jobs_install_the_external_dependencies(_):
         emsdk = next(index for index, step in enumerate(steps) if 'actions/emsdk' in step)
         secp256k1 = next(index for index, step in enumerate(steps) if 'actions/secp256k1' in step)
         assert emsdk < secp256k1, name
+    documentation = next(step for step in job_steps(jobs['docs']) if 'name: Documentation' in step)
+    assert 'request=(webcpp-require-external=on "${request[@]}")' in documentation, documentation
+    for variable in matrix.EXTERNAL_VARIABLES:
+        assert variable in documentation, (variable, documentation)
     lint_secp256k1 = next(step for step in job_steps(jobs['lint'])
                           if 'actions/secp256k1' in step)
     assert 'emscripten: ${{ needs.plan.outputs.has-emscripten }}' in lint_secp256k1
@@ -1104,6 +1114,9 @@ def test_a_container_lane_runs_b2_with_no_network(root):
         assert f' {package}' in dockerfile, (package, dockerfile)
     entry = host_lane(root)
     entry['container'] = True
+    # A lane of a library that needs external libraries: the build requires them, and is given
+    # each that an action exported, on b2's command line.
+    entry['external'] = True
     config = boost_only(root)
     tools = root / 'stand-ins'
     tools.mkdir()
@@ -1134,14 +1147,18 @@ def test_a_container_lane_runs_b2_with_no_network(root):
     assert options[:4] == ['run', '--rm', '--network', 'none'], options
     assert ['--user', f'{os.getuid()}:{os.getgid()}'] == options[4:6], options
     assert ['--workdir', str(resolved)] == options[6:8], options
-    assert ['--env', 'LIBDATACHANNEL_ROOT'] == options[options.index('LIBDATACHANNEL_ROOT') - 1:
-                                                     options.index('LIBDATACHANNEL_ROOT') + 1]
-    assert 'SECP256K1_ROOT' not in options, options
+    # The environment reaches no b2: the container is given no variable of the external
+    # libraries, and b2 has them on its command line.
+    assert '--env' not in options, options
     volumes = [options[index + 1] for index, word in enumerate(options) if word == '--volume']
     assert f'{resolved}:{resolved}' in volumes, volumes
     assert f'{b2.parents[1]}:{b2.parents[1]}' in volumes, volumes
     assert command[0] == str(b2), command
     assert command[1:4] == [f'--user-config={config.resolve()}', '-a', '--dump-tests'], command
+    toolset = command.index(next(word for word in command if word.startswith('toolset=')))
+    assert command[toolset + 1:toolset + 3] == ['webcpp-require-external=on',
+                                                '-sLIBDATACHANNEL_ROOT=/somewhere'], command
+    assert not any(word.startswith('-sSECP256K1_ROOT') for word in command), command
     version = matrix.major_version('clang++')
     system = 'darwin' if sys.platform == 'darwin' else 'linux'
     assert (resolved / f'bin/ci/clang-{system}-{version}.xml').is_file()
