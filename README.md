@@ -242,7 +242,9 @@ of the Node packages and the CI's scripts.
 ## Contributing
 
 Every library is developed inside a checkout of the superproject, as a Boost
-library is developed inside Boost. [AGENTS.md](AGENTS.md) holds every rule a
+library is developed inside Boost. [CONTRIBUTING.md](CONTRIBUTING.md) is the
+way in: what webcpp asks of a library, how to propose one, and how a change
+is made and accepted. [AGENTS.md](AGENTS.md) holds every rule a
 contributor, human or agent, needs to port a library or change one: the
 layout, the names, the build, the tests, the documentation, the evidence a
 port gives and how a change is made.

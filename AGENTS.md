@@ -593,14 +593,33 @@ than leave it green on the rest.
 
 - **Allocation.** A library is to avoid dynamic allocation as far as its job
   allows, and to let its user customize the allocator of what it does
-  allocate. A library ported or written from now on is born with this rule,
-  as pratt is: its calculator's environment takes the user's `Allocator`; and
-  as trystero is, through `std::pmr`: a `std::pmr::memory_resource` given in
+  allocate, so that it can be used with Boost.Interprocess:
+  - **A data structure that makes sense to share** (a compiled regex, a
+    compiled schema, a parsed JSON document, a state machine's definition)
+    takes an `Allocator` template parameter, allocates through
+    `std::allocator_traits` of it, and holds every pointer as the
+    allocator's `pointer` type (Boost.Interprocess's `offset_ptr`) or as an
+    offset, never an absolute address, a vtable or a `std::function`: it can
+    be built in a shared segment and used in place by another process that
+    maps it elsewhere.
+  - **Everything else** (run-time objects: actors, rooms, sockets, handlers)
+    routes every allocation through an allocator its user gives, a template
+    parameter or a `std::pmr::memory_resource`, with no requirement to live
+    in a shared segment.
+  - Each library's page says which of its types are shareable, and a test
+    that counts allocations proves that none goes elsewhere.
+
+  A library ported or written from now on is born with this rule, as pratt
+  is: its calculator's environment takes the user's `Allocator`; and as
+  trystero is, through `std::pmr`: a `std::pmr::memory_resource` given in
   its `room_config` reaches every allocation of a room, which a counting test
-  proves natively and on emscripten. Pending: the mechanism, which a
-  milestone of its own on allocators settles and first applies to xactor,
-  xstate and wasi, whose response holds its body as a `std::string`
-  (chapter 13).
+  proves natively and on emscripten. The libraries written before it are
+  brought to it by a review (chapter 13).
+- **Asynchronous code is built on xactor.** A library that ports anything
+  asynchronous runs it as actors on xactor, whose scheduler drives every
+  library the same way, deterministically, and in a browser from the page's
+  event loop, which owns the system's events. How such a library meets
+  Boost.Asio and Boost.Cobalt is still to be designed (chapter 13).
 - **Text** is passed and held as `std::string_view` where nothing must own
   it; `std::string` only where something does.
 - **A function starts with its guards:** every condition it needs is checked
@@ -2002,9 +2021,11 @@ superproject's new `main`. `main` is the only branch.
 
 ## 11. Commits and text
 
-- **Identity.** Commits are made as `R <github.overboard312@passmail.net>`, with no
-  trailer of any kind (no `Co-authored-by`, no `Signed-off-by`, no agent
-  name):
+- **Identity.** A maintainer's commits, and those of the maintainer's
+  agents, are made as `R <github.overboard312@passmail.net>`; an external
+  contributor commits under their own name and address (CONTRIBUTING.md).
+  Either way, with no trailer of any kind (no `Co-authored-by`, no
+  `Signed-off-by`, no agent name):
 
   ```
   git -c user.name=R -c user.email=github.overboard312@passmail.net commit -- <paths>
@@ -2054,9 +2075,11 @@ superproject's new `main`. `main` is the only branch.
   The lint checks each of these.
 - **History.** Every repository starts from one import commit; the history of
   the code it was moved from is not carried over.
-- **Outward actions** belong to the owner: no push, no merge, no remote
-  repository created, no GitHub setting changed, no SSH key or credential
-  touched by an agent.
+- **Outward actions** belong to the owner: no push to a webcpporg
+  repository, no merge, no remote repository created, no GitHub setting
+  changed, no SSH key or credential touched by an agent. An external
+  contributor proposes a change by a pull request from a fork
+  (CONTRIBUTING.md).
 
 ## 12. b2 facts
 
@@ -2116,17 +2139,37 @@ Each of these was measured; each has cost time.
 
 What webcpp does not have yet, and the chapters that mention it:
 
+- **Every variant tested, in three levels of CI.** The lint and the CI test
+  every variant a library supports: with exceptions on and off (the whole
+  suites, not only a compile, chapter 6) and each library's own
+  configurations. The CI runs in three levels: fast on every push and pull
+  request (the changed library and its dependents, one native compiler and
+  wasip2 in the default variant, one native lane without exceptions, the
+  lint, the docs); nightly on main (every target and compiler, the suites
+  without exceptions natively, sanitizers, the heavy own lanes, the
+  container lanes); and release, when the whole of webcpp is released (every
+  target times every variant). `tools/ci/matrix.py` takes the level, and
+  the fast set runs locally as one command (chapter 9).
+- **The review of the existing libraries.** Once the pending work is done,
+  every library is brought to the rules of exceptions, variants and
+  allocators (chapter 6).
+- **Asynchronous libraries on xactor with Boost.Asio and Boost.Cobalt.** An
+  example library shows how a library built on xactor's scheduler meets
+  Boost.Asio and Boost.Cobalt, so that asynchronous libraries are easy to
+  write and are all driven from the browser's event loop (chapter 6); its
+  design is still to be done.
+
 - **External libraries built from `third_party/`.** trystero needs
   libsecp256k1, libdatachannel and OpenSSL, which webcpp does not build: a
   machine installs them by hand and the CI's actions build them, each found
   where a variable names it, else in `.local/` (chapters 1 and 9), until
   webcpp builds them from `third_party/`, each pinned there by a commit or a
   SHA-256.
-- **Allocators.** The mechanism by which a library lets its user customize
-  the allocator of what it allocates, settled in a milestone of its own,
-  which first applies it to xactor, xstate and wasi, whose response holds its
-  body as a `std::string`; pratt is born with the rule, and trystero through
-  `std::pmr` (chapter 6).
+- **Allocators.** The rule of chapter 6, shareable data structures with an
+  `Allocator` template parameter and every other allocation through the
+  user's allocator, applied first to xactor, xstate and wasi, whose response
+  holds its body as a `std::string`; pratt is born with the rule, and
+  trystero through `std::pmr` (chapter 6).
 - **Compiled Boost libraries.** The CI installs Boost's headers alone, so a
   library uses only header-only Boost, and a Boost.Test suite compiles the
   framework's header-only form (chapters 2 and 9).
