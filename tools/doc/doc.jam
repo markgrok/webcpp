@@ -449,11 +449,24 @@ rule write-libraries ( targets * : sources * : properties * )
     SCRIPT on $(targets) = [ path.native $(.here)/libraries.py ] ;
     ROOT on $(targets) = [ path.native $(.root) ] ;
     PAGES on $(targets) = [ declared-pages ] ;
+    # A library whose page this build leaves out, a library it needs not found
+    # (webcpp.left-out), as <library>=<reason>.
+    local left ;
+    for local build in [ path.glob [ path.glob $(.root)/libs : * ] : build.jam ]
+    {
+        local library = [ path.basename [ path.parent $(build) ] ] ;
+        local why = [ modules.call-in webcpp : left-out $(library) ] ;
+        if $(why)
+        {
+            left += "$(library)=$(why)" ;
+        }
+    }
+    LEFT_OUT on $(targets) = $(left) ;
 }
 
 actions write-libraries
 {
-    "$(PYTHON)" "$(SCRIPT)" --root "$(ROOT)" --output "$(<)" --page$(_)"$(PAGES)"
+    "$(PYTHON)" "$(SCRIPT)" --root "$(ROOT)" --output "$(<)" --page$(_)"$(PAGES)" --left-out$(_)"$(LEFT_OUT)"
 }
 
 # doc-check.py on a library's page, whole, and on the files of its

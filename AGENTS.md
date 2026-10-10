@@ -175,13 +175,15 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
   `-sOPENSSL_ROOT=<dir>` on b2's command line name, never the environment,
   else in `.local/secp256k1-native`, `.local/secp256k1-emscripten`,
   `.local/libdatachannel` and `.local/openssl` when it holds the library's
-  header (below), else on the compiler's default search path, where a system
-  install is legitimate. When none holds a library's header, trystero is
-  left out, its programs skipped, with one line that names the library and
-  every place it looked, so that `b2 test` builds every other library; with
-  `webcpp-require-external=on` on b2's command line, as the CI builds, the
-  build stops instead (`webcpp.external-root` and `webcpp.external-found`,
-  chapter 9). trystero's page says how each is built. The CI's actions build
+  header (below), else, natively outside Windows, in `/usr/include` or
+  `/usr/local/include`, where a system install is legitimate; a relative
+  `-s` is read from b2's working directory. When none holds a library's
+  header, trystero is left out, its programs skipped, with one line that
+  names the library and every place it looked, so that `b2 test` builds
+  every other library, and the index names trystero without a link to its
+  page; with `webcpp-require-external=on` on b2's command line, as the CI
+  and the lint build, the build stops instead, naming both libraries
+  (`webcpp.external` and its kin, chapter 9). trystero's page says how each is built. The CI's actions build
   them so (chapter 9).
 
 Each toolchain is installed by hand and configured in `user-config.jam`,
@@ -1288,23 +1290,28 @@ webcpp.lane driver : driven : native emscripten ;
 ```
 
 **Libraries webcpp does not build** (`tools/webcpp.jam`), until it builds
-them from `third_party/` (chapter 13). A library's `build.jam` finds each with
-two rules, which share one computation of `.local/<directory>`:
+them from `third_party/` (chapter 13). A library's `build.jam` declares each,
+and checks them, with three rules, which share one computation of each
+candidate:
 
 ```
-webcpp.external-root <variable> : <directory> : <header> ;
-webcpp.external-found <owner> : <library> : <variable> : <directory> : <header> : <system> ? : <properties> * ;
+webcpp.external <owner> : <library> : <variable> : <directory> : <header> : <target> ;
+webcpp.external-found <owner> : <library> + : <properties> * ;
+webcpp.left-out <owner> ;
 ```
 
 | Rule | What it gives |
 | --- | --- |
-| `webcpp.external-root` | the directory its lib targets search: `-s<variable>=<dir>` on b2's command line, the last one, never the environment; else `.local/<directory>` of the superproject when that holds `include/<header>`; else nothing, the compiler's default search path |
-| `webcpp.external-found` | for the `<conditional>` of the owner's target: nothing when the library is there (the `-s`, `.local/<directory>`, or, with `system`, natively outside Windows, `/usr/include` or `/usr/local/include`); a `-s` that names a directory without the header stops the build, naming it; when no candidate holds it, `<build>no`, so that the owner's targets are skipped, and one line, once per owner and library, `webcpp: <owner> is left out: <library> was not found: ...`, naming every place it looked and how to give it, so that every other library builds; with `webcpp-require-external=on` (an incidental, propagated feature), as the CI builds, the build stops instead |
+| `webcpp.external` | declares that `<owner>`, a library of `libs/`, needs `<library>` on `<target>` (`native` or `emscripten`), found by its `<header>`, and returns the directory its lib targets search: `-s<variable>=<dir>` on b2's command line, the last one, a relative one made absolute against b2's working directory, never the environment; else `.local/<directory>` of the superproject when that holds `include/<header>`; else nothing, so that the compiler finds it on the system |
+| `webcpp.external-found` | for the `<conditional>` of the owner's target: nothing when each library it names, on the target's target, is there (the `-s`; else `.local/<directory>`; else, natively outside Windows, `/usr/include` or `/usr/local/include`, where a system install is legitimate); a `-s` that names a directory without the header stops the build, naming it; when no candidate holds it, `<build>no`, so that the owner's targets are skipped, and one line, once per owner and library, `webcpp: <owner> is left out: <library> was not found: ...`, naming every place it looked and how to give it, so that every other library builds; with `webcpp-require-external=on` (an incidental, propagated feature), as the CI and the lint build, the build stops instead, naming the owner and the library |
+| `webcpp.left-out` | why the owner's page is left out of a native build, `<library> was not found`, or nothing: the index's table then names the library with that reason and no link, so that it never links a page the build did not make |
 
-`tools/test/external_test.py` pins both: the command line and `.local/`
-found, the environment never read, a wrong `-s` refused, a missing library
-left out once while another library builds, and the stop under
-`webcpp-require-external=on`.
+`tools/test/external_test.py` pins them: the command line, a relative one
+too, and `.local/` found, the environment never read, a wrong `-s`
+refused, a missing library left out once while another library builds, the
+index's row without a link, and the stop under
+`webcpp-require-external=on`; `tools/lint/lint_test.py` that the lint's dry
+runs require them and name the two libraries.
 
 The rules of the doc Jamfiles are in chapter 8: `webcpp.doc <library> :
 <page>.adoc ;`, `webcpp.reference <library> : <requirements> * :

@@ -1836,6 +1836,32 @@ def test_shards_split_clang_tidy(root):
                                                                     result.stdout[-6000:])
 
 
+def test_a_library_webcpp_does_not_build_missing_is_named(root):
+    # The lint's dry runs require the libraries webcpp does not build
+    # (webcpp-require-external=on), as the CI's lanes do: one that is missing stops the compilation
+    # database, naming the library that needs it and the one that was not found, rather than leave
+    # the first out and fail later on a header no target compiles.
+    prepare(root)
+    write(root, 'libs/needs_ext/build.jam',
+          'project /webcpp/needs_ext ;\n\nimport webcpp ;\n\n'
+          'local fake-root = [ webcpp.external needs_ext : libfake : FAKE_ROOT : fake : fake.h\n'
+          '    : native ] ;\n\n'
+          'rule fake-found ( properties * )\n{\n'
+          '    return [ webcpp.external-found needs_ext : libfake : $(properties) ] ;\n}\n\n'
+          'alias needs_ext : : <conditional>@fake-found : : <include>include '
+          '<include>$(fake-root)/include ;\n')
+    write(root, 'libs/needs_ext/test/Jamfile',
+          'project : requirements <library>/webcpp/needs_ext//needs_ext ;\n\n'
+          'import webcpp ;\n\nwebcpp.headers-alone needs_ext : ../include ;\n')
+    write(root, 'libs/needs_ext/include/webcpp/needs_ext.hpp',
+          CPP + '\n#ifndef WEBCPP_NEEDS_EXT_HPP\n#define WEBCPP_NEEDS_EXT_HPP\n\n'
+          '#include <fake.h>\n\n#endif\n')
+    completed = compile_database(root)
+    assert completed.returncode != 0, completed.stdout[-6000:]
+    assert ('needs_ext needs libfake, which was not found, and the build requires it '
+            '(webcpp-require-external=on)') in completed.stdout, completed.stdout[-6000:]
+
+
 CASES = [
     test_clean_tree_passes,
     test_no_library_passes,
@@ -1857,6 +1883,7 @@ CASES = [
     test_a_dependency_s_warnings_are_not_ours,
     test_clang_tidy_refuses_a_throw_on_each_target_without_exceptions,
     test_a_native_header_that_needs_no_exceptions_has_its_twin,
+    test_a_library_webcpp_does_not_build_missing_is_named,
     test_blocking_io_context_call,
     test_fluent_chain,
     test_returns_this,

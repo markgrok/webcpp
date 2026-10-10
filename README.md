@@ -101,7 +101,7 @@ The other aggregates work the same way:
 | --- | --- |
 | `b2 test` | builds and runs every library's tests |
 | `b2 example` | builds and runs every library's examples, and compares each one's output with the `.expected` file beside it |
-| `b2 doc` | builds the index page, `doc/html/index.html`, and each library's page, `libs/<name>/doc/html/index.html` |
+| `b2 doc` | builds the index page, `doc/html/index.html`, and each library's page, `libs/<name>/doc/html/index.html`; a library left out, as trystero without its libraries, is named on the index without a link, and has no page |
 | `b2 install --prefix=<dir>` | copies every library's headers to `<dir>/include/webcpp/`, for CMake or a plain compiler, and its licence files beside them, in `<dir>/include/webcpp/<name>/` |
 | `b2 libs/<name>/test` | one library's tests; `libs/<name>/example` and `libs/<name>/doc` likewise |
 | `b2 libs/<name>/test/oracle//oracle` | a port's oracle lane: the original it ports runs the same cases and a twin of each example, and the results must be the port's |
@@ -194,10 +194,13 @@ build finds each where `-sSECP256K1_ROOT=<dir>`,
 `include/` and `lib/`, never the environment, else in
 `.local/secp256k1-native`, `.local/secp256k1-emscripten`,
 `.local/libdatachannel` and `.local/openssl` of the checkout, where the CI
-installs them, else on the compiler's default search path, where a system
-install is legitimate. When none holds a library's header, trystero is left
-out, its tests and examples skipped, with one line that names the library and
-every place it looked, and every other library builds;
+installs them, else, natively outside Windows, in `/usr/include` or
+`/usr/local/include`, where a system install is legitimate; a relative `-s`
+is read from b2's working directory. When none holds a library's header,
+trystero is left out, its tests and examples skipped, with one line that
+names the library and every place it looked, and every other library
+builds; `b2 doc` then names trystero on the index without a link, and makes
+no page for it, and the lint stops, naming the library it did not find.
 `webcpp-require-external=on` on b2's command line, which the CI gives, stops
 the build instead.
 

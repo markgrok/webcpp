@@ -205,8 +205,11 @@ def run_b2(root: str, arguments: list[str]) -> tuple[list[str], subprocess.Compl
 
 
 def dry_run(root: str, request: list[str]) -> list[str]:
-    """The lines b2 prints for a dry run of request, in root; b2's failure is a Failure."""
-    command, completed = run_b2(root, ['-n', '-a', *request])
+    """The lines b2 prints for a dry run of request, in root; b2's failure is a Failure. It
+    requires the libraries webcpp does not build (webcpp-require-external=on), as the CI's lanes
+    do: one that is missing stops it, naming the library that needs it and the one not found,
+    where it would otherwise be left out, and its headers analysed by no target."""
+    command, completed = run_b2(root, ['-n', '-a', 'webcpp-require-external=on', *request])
     if completed.returncode != 0:
         raise Failure(f'{completed.stdout}{" ".join(command)} exited {completed.returncode}')
     return completed.stdout.splitlines()

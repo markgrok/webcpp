@@ -8,6 +8,7 @@
 """Writes the table of webcpp's libraries that the index page includes, as AsciiDoc.
 
 Usage: libraries.py --root <superproject> --output <libraries.adoc> [--page <library>=<page> ...]
+                    [--left-out <library>=<reason> ...]
 
 A library is a directory of <root>/libs with a build.jam, as the Jamroot registers it. It has a
 page, which its doc/Jamfile declares, `webcpp.doc <library> : <page>.adoc ;`, and which is there:
@@ -21,7 +22,9 @@ of the table is an object: the library's name, linked to its page,
 {library-pages}<library>/{library-page}, two attributes the index page is converted with, so
 that one table links the pages where b2 builds them and where the site publishes them
 (tools/doc/doc.jam); its description; and what it ports, linked to the original, or
-"original".
+"original". A library --left-out names, whose page this build does not make because a library
+webcpp does not build was not found (webcpp.left-out), is named with the reason and no link, so
+that the index never links a page that is not there.
 
 The text of a cell is written with the character references MrDocs uses in place of each
 character AsciiDoc could read as markup, which postprocess.mjs decodes in the converted page:
@@ -118,8 +121,10 @@ def page_of(library: Path, pages: dict[str, Path]) -> Path:
     return page
 
 
-def rows(root: Path, pages: dict[str, Path]) -> list[str]:
-    """The rows of the table, one per entry of each library, by the library's directory."""
+def rows(root: Path, pages: dict[str, Path], left_out: dict[str, str] | None = None) -> list[str]:
+    """The rows of the table, one per entry of each library, by the library's directory; a
+    library of left_out without a link, with its reason."""
+    left_out = left_out or {}
     found = []
     for build in sorted((root / 'libs').glob('*/build.jam')):
         library = build.parent
@@ -137,7 +142,12 @@ def rows(root: Path, pages: dict[str, Path]) -> list[str]:
             raise Invalid(f'{origin}: neither an object nor a list of objects')
         page = f'{{library-pages}}{library.name}/{{library-page}}'
         for entry in entries:
-            found.append(f'| link:{page}[{escaped(text_field(entry, "name", origin))}]\n'
+            name = escaped(text_field(entry, 'name', origin))
+            if library.name in left_out:
+                named = f'{name} (left out of this build: {escaped(left_out[library.name])})'
+            else:
+                named = f'link:{page}[{name}]'
+            found.append(f'| {named}\n'
                          f'| {escaped(text_field(entry, "description", origin))}\n'
                          f'| {ports(entry, origin)}')
     return found
@@ -156,9 +166,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--page', action='append', default=[], type=page_argument,
                         metavar='LIBRARY=PAGE', help='the page a library\'s doc Jamfile declares')
+    parser.add_argument('--left-out', action='append', default=[], type=page_argument,
+                        metavar='LIBRARY=REASON',
+                        help='a library whose page this build does not make, and why')
     options = parser.parse_args(argv)
     try:
-        found = rows(options.root.resolve(), dict(options.page))
+        left_out = {library: str(reason) for library, reason in options.left_out}
+        found = rows(options.root.resolve(), dict(options.page), left_out)
     except Invalid as invalid:
         print(f'libraries.py: {invalid}')
         return 1
