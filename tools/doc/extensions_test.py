@@ -220,6 +220,25 @@ def test_dashes_stay_as_written_when_escaped(_: None) -> None:
         assert kept in text, (kept, text)
 
 
+def test_code_keeps_its_characters_when_escaped(_: None) -> None:
+    # Asciidoctor's replacements turn C++ in inline code into other characters: ... into an
+    # ellipsis and a zero-width space, -> => <- <= into arrows, (C) (R) (TM) into signs, and the
+    # ' between two letters into a curly one. The check of the rendered page refuses each, and
+    # +...+ keeps the code as written.
+    code = ('if (!BOOST_TEST(...)) { return; }', 'p->f(x)', 'a => b', 'a <- b', 'a <= b',
+            'f(C)', 'g(R)', 'h(TM)', "it's")
+    for text in code:
+        result = rendered_check(convert(f'Write `{text}` here.\n'))
+        assert result.returncode == 1 and 'a replacement of Asciidoctor\'s inside inline code' in \
+            result.stdout, (text, result.stdout)
+    page = convert(''.join(f'Write `+{text}+` here.\n\n' for text in code))
+    result = rendered_check(page)
+    assert result.returncode == 0, result.stdout
+    shown = unescape(re.sub(r'<[^>]+>', '', body(page)))
+    for text in code:
+        assert f'Write {text} here.' in shown, (text, shown)
+
+
 def test_urls_in_code_stay_as_written_when_escaped(_: None) -> None:
     # Asciidoctor links a URL in inline code, which the check of the rendered page refuses: its
     # text in brackets, or a link nested in another; \http:// keeps it as text, and so does a
@@ -595,6 +614,7 @@ CASES: list[Callable[[None], None]] = [
     test_a_flag_keeps_its_leading_hyphen,
     test_wide_table_labels_its_cells,
     test_dashes_stay_as_written_when_escaped,
+    test_code_keeps_its_characters_when_escaped,
     test_urls_in_code_stay_as_written_when_escaped,
     test_reference_headings_break_after_scopes,
     test_long_names_break_between_their_parts,

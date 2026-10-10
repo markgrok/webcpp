@@ -76,7 +76,9 @@ keeps a + and a backtick MrDocs escaped as references, as Asciidoctor writes {cp
 MrDocs's left undecoded and no U+2010, which MrDocs writes for an ASCII hyphen; no em dash, a
 character or a reference, with its semicolon or without, which Asciidoctor writes for `--` in
 prose and in inline code alike, `xn--bcher` becoming `xn&#8212;bcher` (`\\--` keeps two
-hyphens); no link inside inline code,
+hyphens); none of Asciidoctor's other replacements inside inline code, an ellipsis, an arrow,
+(C), (R), (TM) or a curly apostrophe, each of which changes the code (`+...+` keeps it); no link
+inside inline code,
 which Asciidoctor makes of a URL there, its text or a link nested in another (`\\http://` keeps
 it as text), but for MrDocs's, the whole of the code one link, to a section of the page,
 `<a href="#webcpp-x-f">webcpp::x::f</a>`, or to the line of the header where a symbol is
@@ -216,6 +218,12 @@ HYPHEN = '\u2010'
 # An em dash, which Asciidoctor writes for --, as a character or as a reference.
 # HTML reads a numeric reference without its semicolon too, as long as its digits run.
 EM_DASH = re.compile(r'\u2014|&#0*8212(?![0-9]);?|&#x0*2014(?![0-9a-f]);?|&mdash;', re.I)
+# What Asciidoctor's replacements write, which in inline code changes the code: ... as an ellipsis
+# and a zero-width space, -> => <- <= as arrows, (C) (R) (TM) as signs, and a ' between two letters
+# as a curly one; each as Asciidoctor's reference, a character or a named reference.
+REPLACEMENT = re.compile(r'&#8230;(?:&#8203;)?|&#(?:8594|8658|8592|8656|169|174|8482|8217);|'
+                         '[\u2026\u2192\u21d2\u2190\u21d0\u00a9\u00ae\u2122\u2019]|'
+                         r'&(?:hellip|rarr|rArr|larr|lArr|copy|reg|trade|rsquo);')
 # The inline code MrDocs writes for what it links, the whole of the code one link: a symbol's
 # name, to its section of the page, in a table of members, or the header where a symbol is
 # declared, between < and >, to its line in the library's repository (mrdocs.yml.in's base-url),
@@ -1149,6 +1157,10 @@ def rendered_faults(page: Path) -> list[str]:
         elif re.search(r'<a\b', code.group(1), flags=re.I) and not mrdocs_link(code.group(1)):
             report('a link inside inline code, a URL Asciidoctor linked (write \\http:// or '
                    '+...+ to keep it as text)', text, code)
+        for match in REPLACEMENT.finditer(code.group(1)):
+            report(f'a replacement of Asciidoctor\'s inside inline code, {match.group(0)}, which '
+                   'changes the code (write +...+ to keep it as written, or \\ before the '
+                   'characters)', code.group(1), match)
         inside = re.sub(r'<[^>]+>', ' ', code.group(1))
         for match in re.finditer('`', inside):
             report('a backtick inside inline code, two spans run together', inside, match)

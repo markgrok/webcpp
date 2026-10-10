@@ -471,6 +471,8 @@ def check_rendered(root: Path) -> None:
             '<code>xn--bcher</code>, a&#8201;-&#8201;b&#8203; and &#x2014b;.</p>'
             '<style>/* the <wbr> of old */</style>'
             '<!-- a <wbr> and <code><a href="http://x/">x</a></code> -->'
+            # Prose may hold what a replacement writes; code that reads as it does is no fault.
+            '<p>And so on&#8230;&#8203; it&#8217;s &#169; &#8594; <code>a-&gt;b</code>.</p>'
             '%s</body></html>')
     for sample, fault in (
             ('', None),
@@ -537,7 +539,13 @@ def check_rendered(root: Path) -> None:
             ('<p>Query <code><A HREF="http://x/">x</A></code>.</p>',
              'a link inside inline code, a URL Asciidoctor linked'),
             ('<p>Query <code><code>x</code><a href="http://x/">y</a></code>.</p>',
-             'inline code inside inline code')):
+             'inline code inside inline code'),
+            # Asciidoctor's other replacements, inside inline code.
+            *((f'<p>Write <code>{replaced}</code>.</p>',
+               'a replacement of Asciidoctor\'s inside inline code')
+              for replaced in ('f(&#8230;&#8203;)', 'p&#8594;f', 'a &#8658; b', 'a &#8592; b',
+                               'a &#8656; b', '&#169;', '&#174;', '&#8482;', 'it&#8217;s',
+                               'f(\u2026)', 'p\u2192f', 'it\u2019s'))):
         write(rendered, page % sample)
         result = run('--rendered', str(rendered))
         if fault is None:
