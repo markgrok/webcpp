@@ -224,19 +224,23 @@ def test_urls_in_code_stay_as_written_when_escaped(_: None) -> None:
     # Asciidoctor links a URL in inline code, which the check of the rendered page refuses: its
     # text in brackets, or a link nested in another; \http:// keeps it as text, and so does a
     # passthrough. MrDocs's links in code pass: a header where a symbol is declared, and a symbol.
-    for text in ('A query `http://a/?[x]`.\n', 'Mail `http://a@b@example.com/`.\n'):
+    for text in ('A query `http://a/?[x]`.\n', 'Mail `http://a@b@example.com/`.\n',
+                 'A query `<http://a/?[x]>` here.\n',
+                 'A header `<https://example.com/a.hpp[a.hpp]>`.\n'):
         result = rendered_check(convert(text))
         assert result.returncode == 1 and 'a link inside inline code' in result.stdout, (
             text, result.stdout)
     page = convert('[#webcpp-demo-box]\n== box\n\n'
-                   'A query `\\http://a/?[x]` and mail `+http://a@b@example.com/+`.\n\n'
+                   'A query `\\http://a/?[x]` and mail `+http://a@b@example.com/+`, and\n'
+                   '`+<http://a/?[x]>+`.\n\n'
                    'Declared in `&lt;https://github.com/webcpporg/demo/blob/main/include/webcpp/'
                    'demo/box.hpp#L7[webcpp&sol;demo&sol;box&period;hpp]&gt;`\n\n'
                    '|===\n| `link:#webcpp-demo-box[webcpp::demo::box]`\n|===\n')
     result = rendered_check(page)
     assert result.returncode == 0, result.stdout
     text = unescape(re.sub(r'<[^>]+>', '', body(page)))
-    for kept in ('http://a/?[x]', 'http://a@b@example.com/', '<webcpp/demo/box.hpp>',
+    for kept in ('http://a/?[x]', 'http://a@b@example.com/', '<http://a/?[x]>',
+                 '<webcpp/demo/box.hpp>',
                  'webcpp::demo::box'):
         assert kept in text, (kept, text)
 
@@ -273,7 +277,8 @@ def test_long_names_break_between_their_parts(_: None) -> None:
                    '`get_initial_microsteps(machine, options)`,\n'
                    '`resolveHistoryDefaultTransition` (JavaScript),\n'
                    f'link:#webcpp-demo-{name}[`{name}`] and\n'
-                   f'`&lt;link:https://example.org/include/{header}[{header}]&gt;`,\n'
+                   '`&lt;link:https://github.com/webcpporg/demo/blob/main/include/webcpp/demo/'
+                   f'long_header_name.hpp#L12[{header}]&gt;`,\n'
                    'as https://webcpporg.github.io/webcpp/report/ shows.\n\n'
                    f'[source,cpp]\n----\nint {name}(int value);\n----\n')
     html = body(page)
@@ -291,9 +296,9 @@ def test_long_names_break_between_their_parts(_: None) -> None:
                        '<span class="whole">options)</span></code>'),
                  parts('<code>resolve|History|Default|Transition</code> (JavaScript)'),
                  f'<a href="#webcpp-demo-{name}"><code>{broken}</code></a>',
-                 parts('<code>&lt;<a href="https://example.org/include/webcpp/demo/'
-                       'long_header_name.hpp">webcpp/|demo/|long_|header_|name.|hpp</a>&gt;'
-                       '</code>'),
+                 parts('<code>&lt;<a href="https://github.com/webcpporg/demo/blob/main/include/'
+                       'webcpp/demo/long_header_name.hpp#L12">webcpp/|demo/|long_|header_|name.|hpp'
+                       '</a>&gt;</code>'),
                  parts('<a href="https://webcpporg.github.io/webcpp/report/" class="bare">'
                        'https://|webcpporg.|github.|io/|webcpp/|report/</a>')):
         assert code in html, (code, html)

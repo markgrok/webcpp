@@ -74,13 +74,16 @@ its code; no backtick outside its blocks of code: one inside inline code is the 
 run together by a passthrough, and one outside it of a span that did not close (postprocess.mjs
 keeps a + and a backtick MrDocs escaped as references, as Asciidoctor writes {cpp}); no escape of
 MrDocs's left undecoded and no U+2010, which MrDocs writes for an ASCII hyphen; no em dash, a
-character or a reference, which Asciidoctor writes for `--` in prose and in inline code alike,
-`xn--bcher` becoming `xn&#8212;bcher` (`\\--` keeps two hyphens); no link inside inline code,
+character or a reference, with its semicolon or without, which Asciidoctor writes for `--` in
+prose and in inline code alike, `xn--bcher` becoming `xn&#8212;bcher` (`\\--` keeps two
+hyphens); no link inside inline code,
 which Asciidoctor makes of a URL there, its text or a link nested in another (`\\http://` keeps
 it as text), but for MrDocs's, the whole of the code one link, to a section of the page,
 `<a href="#webcpp-x-f">webcpp::x::f</a>`, or to the line of the header where a symbol is
-declared, `&lt;<a href="...">webcpp/x.hpp</a>&gt;`; no `<wbr>`, after which WebKit paints a part of
-a name twice at some widths, as postprocess.mjs says; no link of a
+declared, `&lt;<a href="https://github.com/webcpporg/x/blob/main/include/webcpp/x.hpp#L7">`
+`webcpp/x.hpp</a>&gt;`, its text that path; no inline code inside inline code, whose first end
+would hide the rest from these checks; no `<wbr>` outside a comment, a style and a script, after
+which WebKit paints a part of a name twice at some widths, as postprocess.mjs says; no link of a
 synopsis left as text in a block of code, which a highlighter that broke the link leaves; and no
 link to #index or #webcpp, the sections of MrDocs's reference that reference.py drops. With the
 library's `--repository` and `--library`, each reference of its files to another library's page,
@@ -211,13 +214,17 @@ MRDOCS_ESCAPE = re.compile(r'&(circ|lowbar|ast|grave|num|lsqb|rsqb|lcub|rcub|bso
 # U+2010, which &hyphen; stands for and MrDocs means as -.
 HYPHEN = '\u2010'
 # An em dash, which Asciidoctor writes for --, as a character or as a reference.
-EM_DASH = re.compile(r'\u2014|&#0*8212;|&#x0*2014;|&mdash;', re.I)
+# HTML reads a numeric reference without its semicolon too, as long as its digits run.
+EM_DASH = re.compile(r'\u2014|&#0*8212(?![0-9]);?|&#x0*2014(?![0-9a-f]);?|&mdash;', re.I)
 # The inline code MrDocs writes for what it links, the whole of the code one link: a symbol's
 # name, to its section of the page, in a table of members, or the header where a symbol is
-# declared, between < and >, to its line; postprocess.mjs breaks either between its parts.
+# declared, between < and >, to its line in the library's repository (mrdocs.yml.in's base-url),
+# its text the header's path; postprocess.mjs breaks either between its parts.
+BREAK = re.compile(r'<span class="wbr(?: part)?"></span>')
 LINK_TEXT = r'(?:[^<]|<span class="wbr(?: part)?"></span>)*'
-MRDOCS_LINK = re.compile(rf'^(?:<a href="#[^"<>]*">{LINK_TEXT}</a>|'
-                         rf'&lt;<a href="[^"<>]*">{LINK_TEXT}</a>&gt;)$')
+SECTION_LINK = re.compile(rf'^<a href="#[^"<>]*">{LINK_TEXT}</a>$')
+HEADER_LINK = re.compile(rf'^&lt;<a href="https://github\.com/webcpporg/{LIBRARY_NAME}/blob/'
+                         rf'[^"/#<>]+/include/([^"#<>]+)#L[0-9]+">({LINK_TEXT})</a>&gt;$')
 # A link of a synopsis, which the macros substitution reads only when the highlighter keeps it.
 LINK_MACRO = re.compile(r'link:[^\s\[]*\[')
 # A link to the section of the global namespace or of webcpp, which tools/doc/reference.py
@@ -1092,6 +1099,14 @@ def completeness_faults(page: Path, sections: list[Path], library: Library,
     return found
 
 
+def mrdocs_link(code: str) -> bool:
+    """Whether the html of inline code is one of the two links MrDocs writes in code."""
+    if SECTION_LINK.match(code):
+        return True
+    header = HEADER_LINK.match(code)
+    return header is not None and BREAK.sub('', header.group(2)) == header.group(1)
+
+
 def rendered_faults(page: Path) -> list[str]:
     """Each cross-reference left as text, literal ++, stray backtick, escape of MrDocs's, U+2010,
     em dash, link inside inline code, <wbr> and link left as text in code of the rendered
@@ -1111,9 +1126,6 @@ def rendered_faults(page: Path) -> list[str]:
     for match in EM_DASH.finditer(html):
         report(f'an em dash, which Asciidoctor writes for --: {match.group(0)} (write \\-- to '
                'keep two hyphens)', html, match)
-    for match in re.finditer(r'<wbr\b[^>]*>', html):
-        report('a <wbr>, after which WebKit paints a part twice at some widths: break with '
-               'postprocess.mjs\'s <span class="wbr">', html, match)
     for match in DROPPED_SECTION.finditer(html):
         report(f'a link to a section the reference does not keep: #{match.group(1)}', html, match)
     # In the blocks of code, no link of a synopsis left as text.
@@ -1121,13 +1133,20 @@ def rendered_faults(page: Path) -> list[str]:
         code = unescape(re.sub(r'<[^>]+>', '', block.group(1)))
         for match in LINK_MACRO.finditer(code):
             report(f'a link of a listing left as text: {match.group(0)}', code, match)
-    # The blocks of code go, and the style and the scripts, which are no text.
-    text = re.sub(r'<(pre|style|script)\b[^>]*>.*?</\1>', ' ', html, flags=re.S)
+    # The blocks of code go, and the comments, the style and the scripts, which are no text.
+    text = re.sub(r'<!--.*?-->', ' ', html, flags=re.S)
+    text = re.sub(r'<(pre|style|script)\b[^>]*>.*?</\1>', ' ', text, flags=re.S | re.I)
+    for match in re.finditer(r'<wbr\b[^>]*>', text, flags=re.I):
+        report('a <wbr>, after which WebKit paints a part twice at some widths: break with '
+               'postprocess.mjs\'s <span class="wbr">', text, match)
     words = re.sub(r'<[^>]+>', ' ', text)
     for match in CROSS_REFERENCE.finditer(words):
         report('a cross-reference left as text', words, match)
-    for code in re.finditer(r'<code\b[^>]*>(.*?)</code>', text, flags=re.S):
-        if re.search(r'<a\b', code.group(1)) and not MRDOCS_LINK.match(code.group(1)):
+    for code in re.finditer(r'<code\b[^>]*>(.*?)</code>', text, flags=re.S | re.I):
+        if re.search(r'<code\b', code.group(1), flags=re.I):
+            report('inline code inside inline code, whose end hides what follows it from these '
+                   'checks', text, code)
+        elif re.search(r'<a\b', code.group(1), flags=re.I) and not mrdocs_link(code.group(1)):
             report('a link inside inline code, a URL Asciidoctor linked (write \\http:// or '
                    '+...+ to keep it as text)', text, code)
         inside = re.sub(r'<[^>]+>', ' ', code.group(1))

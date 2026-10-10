@@ -460,14 +460,17 @@ def check_rendered(root: Path) -> None:
             '<p><code>operator&lt;&lt;</code> and <code>operator&gt;&gt;</code> in C&#43;&#43;'
             ', and std::cout &lt;&lt; x &gt;&gt; y.</p>'
             # The header MrDocs names where a symbol is declared, linked, and a symbol of a table
-            # of members; a link around code; two hyphens kept, and a thin space and a zero-width
-            # one, which are no dash.
+            # of members; a link around code; two hyphens kept, a thin space and a zero-width one,
+            # which are no dash, and a reference whose digits go on, U+2014B; and a style and a
+            # comment, which are no text, naming a <wbr> and holding a link in code.
             '<p>Declared in <code>&lt;<a href="https://github.com/webcpporg/demo/blob/main/'
             'include/webcpp/demo/box.hpp#L7">webcpp/<span class="wbr part"></span>demo/<span '
             'class="wbr part"></span>box.<span class="wbr part"></span>hpp</a>&gt;</code>, <code>'
             '<a href="#webcpp-demo-box">webcpp::<span class="wbr"></span>demo::<span class="wbr">'
             '</span>box</a></code>, <a href="#box"><code>box</code></a>, '
-            '<code>xn--bcher</code>, a&#8201;-&#8201;b&#8203;.</p>'
+            '<code>xn--bcher</code>, a&#8201;-&#8201;b&#8203; and &#x2014b;.</p>'
+            '<style>/* the <wbr> of old */</style>'
+            '<!-- a <wbr> and <code><a href="http://x/">x</a></code> -->'
             '%s</body></html>')
     for sample, fault in (
             ('', None),
@@ -516,7 +519,25 @@ def check_rendered(root: Path) -> None:
              'a link inside inline code, a URL Asciidoctor linked'),
             # A <wbr>, after which WebKit paints a part of a name twice at some widths.
             ('<p>Edit <code>include/<wbr class="part">options.<wbr>hpp</code>.</p>',
-             'a <wbr>, after which WebKit paints a part twice')):
+             'a <wbr>, after which WebKit paints a part twice'),
+            # MrDocs's header form is its own link, to a line of the library's repository, whose
+            # text is the header's path; a URL Asciidoctor linked between < and > is not.
+            ('<p>Query <code class="whole">&lt;<a href="http://a/?">x</a>&gt;</code> here.</p>',
+             'a link inside inline code, a URL Asciidoctor linked'),
+            ('<p>See <code>&lt;<a href="https://example.com/a.hpp">a.hpp</a>&gt;</code>.</p>',
+             'a link inside inline code, a URL Asciidoctor linked'),
+            ('<p>Declared in <code>&lt;<a href="https://github.com/webcpporg/demo/blob/main/'
+             'include/webcpp/demo/box.hpp#L7">webcpp/demo/other.hpp</a>&gt;</code>.</p>',
+             'a link inside inline code, a URL Asciidoctor linked'),
+            # An em dash HTML reads without its semicolon; markup in upper case; a link after a
+            # code nested in inline code.
+            ('<p>A pause&#8212here.</p>', 'an em dash, which Asciidoctor writes for --: &#8212'),
+            ('<p>A pause&#x2014 here.</p>', 'an em dash, which Asciidoctor writes for --: &#x2014'),
+            ('<p>Edit <code>a<WBR>b</code>.</p>', 'a <wbr>, after which WebKit paints'),
+            ('<p>Query <code><A HREF="http://x/">x</A></code>.</p>',
+             'a link inside inline code, a URL Asciidoctor linked'),
+            ('<p>Query <code><code>x</code><a href="http://x/">y</a></code>.</p>',
+             'inline code inside inline code')):
         write(rendered, page % sample)
         result = run('--rendered', str(rendered))
         if fault is None:
