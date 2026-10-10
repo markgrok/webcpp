@@ -66,6 +66,11 @@ ORACLE_HEADER = 'libs/oracle_demo/include/webcpp/oracle_demo.hpp'
 # U+2010, the hyphen MrDocs writes for -, written as an escape.
 HYPHEN = '\u2010'
 
+# The breaks postprocess.mjs marks in a name: after a ::, at every width, and between two other
+# parts, on a phone.
+SCOPE = '<span class="wbr"></span>'
+PART = '<span class="wbr part"></span>'
+
 
 def mrdocs_root() -> Path:
     """The directory MrDocs is installed in, which holds bin/mrdocs: $MRDOCS_ROOT, else this
@@ -178,8 +183,8 @@ def test_page_builds_with_its_reference(root):
     assert 'Global namespace' not in html and 'id="index"' not in html, html
     assert 'id="webcpp"' not in html and 'href="#webcpp"' not in html, html
     # A name of the reference may break after each :: (postprocess.mjs).
-    assert re.search(r'<h3 id="webcpp-demo">(<a class="anchor"[^>]*></a>)?webcpp::<wbr>demo</h3>',
-                     html), html
+    assert re.search(r'<h3 id="webcpp-demo">(<a class="anchor"[^>]*></a>)?webcpp::'
+                     rf'{SCOPE}demo</h3>', html), html
     # Its source links to the library's repository, and detail is MrDocs's to hide.
     assert 'https://github.com/webcpporg/demo/blob/main/include/webcpp/demo/answer.hpp#L' in html
     assert 'id="webcpp-demo-detail-sum"' not in html, html
@@ -198,15 +203,16 @@ def test_page_builds_with_its_reference(root):
         'never of <code class="whole">L\'x\'</code>.' in html, html
     # A name too long for a phone's line breaks after each _, in its heading and in the table
     # that links it, and never inside a listing or an attribute.
-    broken = 'a_|very_|long_|snake_|case_|name'.replace('|', '<wbr class="part">')
+    broken = 'a_|very_|long_|snake_|case_|name'.replace('|', PART)
     assert re.search(r'<h3 id="webcpp-demo-a_very_long_snake_case_name">(<a class="anchor"[^>]*>'
-                     rf'</a>)?webcpp::<wbr><a href="#webcpp-demo">demo</a>::<wbr>{broken}</h3>',
+                     rf'</a>)?webcpp::{SCOPE}<a href="#webcpp-demo">demo</a>::{SCOPE}{broken}</h3>',
                      html), html
     assert (f'<a href="#webcpp-demo-a_very_long_snake_case_name"><code>{broken}</code></a>'
             in html), html
     listings = re.findall(r'<pre\b[^>]*>.*?</pre>', html, flags=re.S)
     assert any('a_very_long_snake_case_name' in block for block in listings), listings
-    assert all('<wbr' not in block for block in listings), listings
+    assert all('class="wbr' not in block for block in listings), listings
+    assert '<wbr' not in html, html
     # The page lives in the library, and is built again from scratch the same.
     assert (root / 'libs/demo/doc/html/index.html').is_file()
     again = harness.run_b2(root, '-a', 'libs/demo/doc')

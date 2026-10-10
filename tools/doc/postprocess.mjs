@@ -33,13 +33,21 @@
 //
 // A name too long for a phone's line, in inline code, in a heading of the
 // reference, `webcpp::xactor::scheduler::run_one`, or in a bare URL, may break
-// between its parts, which a `<wbr>` marks: after a `::`, a `_`, a `/`, or a
-// `.` between letters, before the `(` or the `<` that ends a name, and in code
-// between the words of a name in camel case. So a phone breaks it there and
-// never between two letters of a word, which the style allows only to a part
-// still wider than the line. From 600px, where such a name has room, only the
-// break after a `::` of a heading stays, as the reference's headings always
-// had it: the others are `<wbr class="part">`, which the style hides there.
+// between its parts, which an empty `<span class="wbr">` marks: after a `::`,
+// a `_`, a `/`, or a `.` between letters, before the `(` or the `<` that ends
+// a name, and in code between the words of a name in camel case. So a phone
+// breaks it there and never between two letters of a word, which the style
+// allows only to a part still wider than the line. From 600px, where such a
+// name has room, only the break after a `::` of a heading stays, as the
+// reference's headings always had it: the others are
+// `<span class="wbr part">`, which the style hides there.
+//
+// The style gives the element a zero-width space as generated content, which
+// breaks the line where it stands and which no copy and no search reads. Not a
+// `<wbr>`: WebKit paints the part after one twice at some widths, `hpp` of
+// `include/webcpp/idna/options.hpp:` at the end of one line and at the start
+// of the next at 375px. Not a U+200B in the text, which WebKit lays out
+// without fault but which a reader would copy with the name.
 
 import { Extensions, Postprocessor } from '@asciidoctor/core';
 
@@ -100,8 +108,8 @@ const WHOLE = 24;
 // A break after a `::`, which a heading of the reference keeps at every width;
 // and one between the other parts of a name, which the style keeps only on a
 // phone: from 600px every such name has room on a line.
-const SCOPE = '<wbr>';
-const PART = '<wbr class="part">';
+const SCOPE = '<span class="wbr"></span>';
+const PART = '<span class="wbr part"></span>';
 
 // The points a name breaks at, in text that holds no markup and its
 // references, each with what it becomes: after each `::`; after a run of `_`
@@ -129,19 +137,20 @@ const CODE_BREAKS = [
   [/(?<=^|[\s=(,;])-+[A-Za-z0-9]/g, (flag) => `<span class="lead">${flag}</span>`]
 ];
 
-// A character reference, which no break goes inside: `&#xAB;` and `&rArr;`
-// hold a lower case letter before an upper case one.
-const ANY_REFERENCE = /&(?:[A-Za-z][A-Za-z0-9]*|#[0-9]+|#[xX][0-9A-Fa-f]+);/g;
+// What no break goes inside: a character reference, `&#xAB;` and `&rArr;`
+// holding a lower case letter before an upper case one, and the tag of a
+// break an earlier point wrote, whose `</span>` holds a `/`.
+const UNBROKEN = /&(?:[A-Za-z][A-Za-z0-9]*|#[0-9]+|#[xX][0-9A-Fa-f]+);|<[^>]*>/g;
 
 function breakable(text, points = BREAKS) {
   return points.reduce((broken, [point, mark]) => {
-    const references = [...broken.matchAll(ANY_REFERENCE)].map((reference) => [
-      reference.index,
-      reference.index + reference[0].length
+    const spans = [...broken.matchAll(UNBROKEN)].map((span) => [
+      span.index,
+      span.index + span[0].length
     ]);
     return broken.replace(point, (match, ...rest) => {
       const offset = rest[rest.length - 2];
-      const inside = references.some(([start, end]) => offset > start && offset < end);
+      const inside = spans.some(([start, end]) => offset > start && offset < end);
       return inside ? match : mark(match);
     });
   }, text);

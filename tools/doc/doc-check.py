@@ -78,7 +78,8 @@ character or a reference, which Asciidoctor writes for `--` in prose and in inli
 which Asciidoctor makes of a URL there, its text or a link nested in another (`\\http://` keeps
 it as text), but for MrDocs's, the whole of the code one link, to a section of the page,
 `<a href="#webcpp-x-f">webcpp::x::f</a>`, or to the line of the header where a symbol is
-declared, `&lt;<a href="...">webcpp/x.hpp</a>&gt;`; no link of a
+declared, `&lt;<a href="...">webcpp/x.hpp</a>&gt;`; no `<wbr>`, after which WebKit paints a part of
+a name twice at some widths, as postprocess.mjs says; no link of a
 synopsis left as text in a block of code, which a highlighter that broke the link leaves; and no
 link to #index or #webcpp, the sections of MrDocs's reference that reference.py drops. With the
 library's `--repository` and `--library`, each reference of its files to another library's page,
@@ -209,7 +210,7 @@ EM_DASH = re.compile(r'\u2014|&#0*8212;|&#x0*2014;|&mdash;', re.I)
 # The inline code MrDocs writes for what it links, the whole of the code one link: a symbol's
 # name, to its section of the page, in a table of members, or the header where a symbol is
 # declared, between < and >, to its line; postprocess.mjs breaks either between its parts.
-LINK_TEXT = r'(?:[^<]|<wbr\b[^>]*>)*'
+LINK_TEXT = r'(?:[^<]|<span class="wbr(?: part)?"></span>)*'
 MRDOCS_LINK = re.compile(rf'^(?:<a href="#[^"<>]*">{LINK_TEXT}</a>|'
                          rf'&lt;<a href="[^"<>]*">{LINK_TEXT}</a>&gt;)$')
 # A link of a synopsis, which the macros substitution reads only when the highlighter keeps it.
@@ -1085,7 +1086,8 @@ def completeness_faults(page: Path, sections: list[Path], library: Library,
 
 def rendered_faults(page: Path) -> list[str]:
     """Each cross-reference left as text, literal ++, stray backtick, escape of MrDocs's, U+2010,
-    em dash, link inside inline code and link left as text in code of the rendered `page`."""
+    em dash, link inside inline code, <wbr> and link left as text in code of the rendered
+    `page`."""
     html = page.read_text(encoding='utf-8')
     found = []
 
@@ -1101,6 +1103,9 @@ def rendered_faults(page: Path) -> list[str]:
     for match in EM_DASH.finditer(html):
         report(f'an em dash, which Asciidoctor writes for --: {match.group(0)} (write \\-- to '
                'keep two hyphens)', html, match)
+    for match in re.finditer(r'<wbr\b[^>]*>', html):
+        report('a <wbr>, after which WebKit paints a part twice at some widths: break with '
+               'postprocess.mjs\'s <span class="wbr">', html, match)
     for match in DROPPED_SECTION.finditer(html):
         report(f'a link to a section the reference does not keep: #{match.group(1)}', html, match)
     # In the blocks of code, no link of a synopsis left as text.

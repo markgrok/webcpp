@@ -72,19 +72,20 @@ body, td.tableblock > .content, td.hdlist2, .admonitionblock > table td.content 
    can be, so a column keeps room for a name of the reference, `answer`, whole. A word short enough
    for a phone's line, which postprocess.mjs marks whole, stays on one line at any width: without
    it, a phone would break `#xactor-invariant-13` at a hyphen though the word fits the line. On a
-   phone, a longer word breaks between its parts, at the <wbr> postprocess.mjs marks. From 600px,
-   whose line holds such a word whole, the <wbr> of inline code is no box, and so is a break
-   between two parts of a name in a heading or a URL, <wbr class="part">: the name moves whole to
-   the next line rather than break at the end of one, a table's column keeps room for it, and
-   WebKit, which breaks at a <wbr> even in a word that does not wrap, keeps it whole from 900px.
-   A heading's break after a ::, a plain <wbr>, stays at every width. */
+   phone, a longer word breaks between its parts, at the span.wbr postprocess.mjs marks, whose
+   zero-width space, generated here, breaks the line and is never copied. From 600px, whose line
+   holds such a word whole, a break of inline code is no box, and so is a break between two parts
+   of a name in a heading or a URL, span.wbr.part: the name moves whole to the next line rather
+   than break at the end of one, and a table's column keeps room for it. A heading's break after
+   a ::, a plain span.wbr, stays at every width. */
+span.wbr::after { content: "\200B"; }
 @media screen and (min-width: 56.25em) {
   :not(pre):not([class^=L]) > code { white-space: nowrap; }
   :not(pre):not([class^=L]) > code.words { white-space: normal; }
   code.words > span { white-space: nowrap; }
 }
 @media screen and (min-width: 37.5em) {
-  #content :not(pre):not([class^=L]) > code wbr, wbr.part { display: none; }
+  #content :not(pre):not([class^=L]) > code span.wbr, span.wbr.part { display: none; }
 }
 @media screen and (max-width: 74.9375em) {
   table.tableblock :not(pre):not([class^=L]) > code,

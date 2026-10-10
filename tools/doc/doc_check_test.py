@@ -446,8 +446,8 @@ def check_rendered(root: Path) -> None:
     one to a section reference.py drops. An em dash, in any of its spellings, is what Asciidoctor
     writes for --, inside inline code too; and a link inside inline code is a URL Asciidoctor
     linked there, but for MrDocs's, the whole of the code one link: a symbol's, to its section,
-    or a header's, between < and >. The samples are what Asciidoctor.js and tools/doc's extensions
-    write."""
+    or a header's, between < and >. A <wbr> is a break WebKit may paint a part twice after. The
+    samples are what Asciidoctor.js and tools/doc's extensions write."""
     rendered = root / 'html/index.html'
     page = ('<html><head><title>T</title><style>a::before { content: "++"; }</style></head>'
             '<body><h1>The C&#43;&#43; port</h1><p>See <a href="#x">X</a>.</p>'
@@ -463,9 +463,10 @@ def check_rendered(root: Path) -> None:
             # of members; a link around code; two hyphens kept, and a thin space and a zero-width
             # one, which are no dash.
             '<p>Declared in <code>&lt;<a href="https://github.com/webcpporg/demo/blob/main/'
-            'include/webcpp/demo/box.hpp#L7">webcpp/<wbr class="part">demo/<wbr class="part">box.'
-            '<wbr class="part">hpp</a>&gt;</code>, <code><a href="#webcpp-demo-box">webcpp::<wbr>'
-            'demo::<wbr>box</a></code>, <a href="#box"><code>box</code></a>, '
+            'include/webcpp/demo/box.hpp#L7">webcpp/<span class="wbr part"></span>demo/<span '
+            'class="wbr part"></span>box.<span class="wbr part"></span>hpp</a>&gt;</code>, <code>'
+            '<a href="#webcpp-demo-box">webcpp::<span class="wbr"></span>demo::<span class="wbr">'
+            '</span>box</a></code>, <a href="#box"><code>box</code></a>, '
             '<code>xn--bcher</code>, a&#8201;-&#8201;b&#8203;.</p>'
             '%s</body></html>')
     for sample, fault in (
@@ -512,7 +513,10 @@ def check_rendered(root: Path) -> None:
             ('<p>Declared in <code>&lt;<a href="#a">a.hpp</a>&gt; and &lt;<a href="#b">b.hpp</a>'
              '&gt;</code>.</p>', 'a link inside inline code, a URL Asciidoctor linked'),
             ('<p>Members <code><a href="#a">a</a> and <a href="#b">b</a></code>.</p>',
-             'a link inside inline code, a URL Asciidoctor linked')):
+             'a link inside inline code, a URL Asciidoctor linked'),
+            # A <wbr>, after which WebKit paints a part of a name twice at some widths.
+            ('<p>Edit <code>include/<wbr class="part">options.<wbr>hpp</code>.</p>',
+             'a <wbr>, after which WebKit paints a part twice')):
         write(rendered, page % sample)
         result = run('--rendered', str(rendered))
         if fault is None:

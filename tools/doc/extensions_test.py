@@ -38,8 +38,11 @@ HYPHEN = '\u2010'
 # The page MrDocs's text is included in, as a library's page includes its reference.
 HEADER = '= Sample\n:source-language: cpp\n\n'
 
-# The break between two parts of a name that only a phone's style keeps (postprocess.mjs).
-PART = '<wbr class="part">'
+# The break after a :: of a name, which every style keeps, and the one between two other parts,
+# which only a phone's keeps: an empty element to which the style gives a zero-width space, which
+# breaks the line as <wbr> would and is never copied (postprocess.mjs).
+SCOPE = '<span class="wbr"></span>'
+PART = '<span class="wbr part"></span>'
 
 
 def installed() -> None:
@@ -240,8 +243,8 @@ def test_urls_in_code_stay_as_written_when_escaped(_: None) -> None:
 
 def parts(html: str) -> str:
     """The html with each | written as the break between two parts of a name that only a phone's
-    style keeps; a break after a :: is written as it is, <wbr>, which every style keeps."""
-    return html.replace('|', PART)
+    style keeps, and each <wbr> as the break after a ::, which every style keeps."""
+    return html.replace('<wbr>', SCOPE).replace('|', PART)
 
 
 def test_reference_headings_break_after_scopes(_: None) -> None:
@@ -276,10 +279,10 @@ def test_long_names_break_between_their_parts(_: None) -> None:
     html = body(page)
     heading = re.search(rf'<h2 id="webcpp-demo-{name}">(.*?)</h2>', html, flags=re.S)
     assert heading is not None, html
-    assert heading.group(1).endswith(f'webcpp::<wbr><a href="#x">demo</a>::<wbr>{broken}'), \
+    assert heading.group(1).endswith(parts(f'webcpp::<wbr><a href="#x">demo</a>::<wbr>{broken}')), \
         heading.group(1)
     for code in (f'<code>{broken}{PART}(value)</code>',
-                 f'<code>webcpp::<wbr>demo::<wbr>{broken}</code>',
+                 parts(f'<code>webcpp::<wbr>demo::<wbr>{broken}</code>'),
                  parts('<code>std::<wbr>optional|&lt;boost::<wbr>json::<wbr>value&gt;</code>'),
                  parts('<code>libs/|xstate/|test/|oracle//|update-expected</code>'),
                  parts('<code>xstate.|done.|state.|coffee.|preparation</code>'),
@@ -295,7 +298,7 @@ def test_long_names_break_between_their_parts(_: None) -> None:
                        'https://|webcpporg.|github.|io/|webcpp/|report/</a>')):
         assert code in html, (code, html)
     blocks = re.findall(r'<pre\b[^>]*>.*?</pre>', html, flags=re.S)
-    assert blocks and all('<wbr' not in block for block in blocks), blocks
+    assert blocks and all('class="wbr' not in block for block in blocks), blocks
     assert code_text(html) == [f'int {name}(int value);'], code_text(html)
     assert rendered_check(page).returncode == 0, rendered_check(page).stdout
 
@@ -507,9 +510,29 @@ def test_style_keeps_part_breaks_to_a_phone(_: None) -> None:
               if declarations.get('display') == 'none'
               for selector in selectors if 'wbr' in selector]
     assert sorted(hidden) == sorted([
-        ('screen and (min-width: 37.5em)', 'wbr.part'),
-        ('screen and (min-width: 37.5em)', '#content :not(pre):not([class^=L])>code wbr'),
+        ('screen and (min-width: 37.5em)', 'span.wbr.part'),
+        ('screen and (min-width: 37.5em)', '#content :not(pre):not([class^=L])>code span.wbr'),
     ]), hidden
+
+
+def test_breaks_are_never_wbr_and_never_copied(_: None) -> None:
+    # WebKit paints a part of a name twice where a line breaks at a <wbr> at some widths
+    # (options.hpp: then hpp: at 375px), and a U+200B in the text, which does not, is copied with
+    # the name. So no break is a <wbr>, in a heading, inline code or a URL: each is an empty
+    # element whose zero-width space is the style's generated content, which breaks the line and
+    # which no copy and no search reads. The text holds no U+200B of its own.
+    page = convert('[#webcpp-demo-a_long_snake_case_name]\n'
+                   '== webcpp::link:#x[demo]::a_long_snake_case_name\n\n'
+                   'Edit `include/webcpp/idna/options.hpp`: `unicode_version`, with\n'
+                   '`idna::options{.verify_dns_length = false}`, as\n'
+                   'https://webcpporg.github.io/webcpp/report/ shows.\n')
+    html = body(page)
+    assert '<wbr' not in page, page
+    assert parts('include/|webcpp/|idna/|options.|hpp') in html, html
+    assert '\u200b' not in page and '&#8203;' not in page.lower(), page
+    generated = [(media, declarations) for media, selectors, declarations in page_style()
+                 for selector in selectors if selector == 'span.wbr::after']
+    assert generated == [(None, {'content': '"\\200B"'})], generated
 
 
 def test_style_scrolls_a_wide_table_in_its_box(_: None) -> None:
@@ -580,6 +603,7 @@ CASES: list[Callable[[None], None]] = [
     test_tables_scroll_in_their_own_box,
     test_style_breaks_a_word_only_when_it_must,
     test_style_keeps_part_breaks_to_a_phone,
+    test_breaks_are_never_wbr_and_never_copied,
     test_style_scrolls_a_wide_table_in_its_box,
     test_style_gives_the_content_a_right_gutter_from_the_toc,
 ]

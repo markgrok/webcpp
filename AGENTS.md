@@ -1035,8 +1035,10 @@ build:
   the two hyphens), no link inside inline code, which Asciidoctor makes of a
   URL there (`\http://a/?[x]` or `+http://a/?[x]+` keeps it as text), but
   for MrDocs's, the whole of the code one link, to a symbol's section or to
-  the header where it is declared, and no link to the dropped `#index` or
-  `#webcpp` sections.
+  the header where it is declared, no `<wbr>`, after which WebKit paints a
+  part of a name twice at some widths (`postprocess.mjs` marks a break as an
+  empty `<span class="wbr">`, whose zero-width space the style generates and
+  no copy reads), and no link to the dropped `#index` or `#webcpp` sections.
 
 ### Counts
 
