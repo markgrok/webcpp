@@ -30,7 +30,8 @@ another version is refused), after every directory of the host's, so that none s
 the host has, and its header that builds only against a dependency, and fails on an undocumented
 function of either; and MrDocs and clang++ given at paths that hold a space are
 found; and a page shows a tagged region of a file the superproject's git tracks, at
-{webcpp-root}, and fails on one it does not track.
+{webcpp-root}, or of one its library's own git tracks, at {library-root}, and fails on one it
+does not track.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is; the cases of
@@ -467,6 +468,24 @@ def test_page_includes_a_file_of_the_superproject(root):
     harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
     html = (root / PAGE).read_text()
     assert 'using clang : shown ;' in html and 'tag::shown' not in html, html
+
+
+def test_page_includes_a_file_of_its_library(root):
+    # A page shows a tagged region of a file its library's own git tracks, through
+    # {library-root}: libs/demo is a git repository of its own, which tracks nothing until the
+    # page has failed on the file untracked.
+    prepare(root)
+    edit(root, 'libs/demo/test/Jamfile', 'webcpp.headers-alone demo : ../include ;\n',
+         '# tag::alone[]\nwebcpp.headers-alone demo : ../include ;\n# end::alone[]\n')
+    edit(root, 'libs/demo/doc/demo.adoc', '[#holds]\n',
+         '[listing]\n----\ninclude::{library-root}/test/Jamfile[tag=alone]\n----\n\n[#holds]\n')
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), False,
+                   'includes a file the library does not track: {library-root}/test/Jamfile')
+    assert not (root / PAGE).exists()
+    subprocess.run(['git', 'add', 'test/Jamfile'], cwd=root / 'libs/demo', check=True)
+    harness.expect(harness.run_b2(root, 'libs/demo/doc'), True)
+    html = (root / PAGE).read_text()
+    assert 'webcpp.headers-alone demo : ../include ;' in html and 'tag::alone' not in html, html
 
 
 def test_page_shows_the_counts_of_its_programs(root):
@@ -917,6 +936,7 @@ CASES = [
     test_library_settings_only_present_the_reference,
     test_doc_check_and_rendered_check_run,
     test_page_includes_a_file_of_the_superproject,
+    test_page_includes_a_file_of_its_library,
     test_page_shows_the_counts_of_its_programs,
     test_page_shows_twins_and_their_counts,
     test_page_shows_its_linked_and_driven_programs,

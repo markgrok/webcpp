@@ -931,8 +931,9 @@ sets its own title and attributes, as xactor's does:
 The doc build provides `{examples}` (the library's `example/` directory),
 `{reference}`, `{twins}` (the twin directory, for a library whose oracle
 declares twins, chapter 5), `{webcpp-root}` (the superproject, whose tracked
-files a page includes by tag, below), the counts and the links to other
-pages (below),
+files a page includes by tag, below), `{library-root}` (the library's own
+directory, whose tracked files it includes the same way), the counts and the
+links to other pages (below),
 and sets the highlighter, the shared style (`tools/doc/docinfo.html`, the
 system's fonts, no web fonts), no date and no footer: a page sets none of
 these. In that style a table too wide for the page scrolls in its own box,
@@ -984,7 +985,10 @@ style is C++, which must be an include of an example.
 A page shows the build's own configuration as it is, never a copy: it
 includes a region of a file the superproject's git tracks,
 `include::{webcpp-root}/tools/ci/wasi-sdk.jam[tag=wasip2]`, as wasi's page
-does the lines that register the WASI toolsets.
+does the lines that register the WASI toolsets, and a region of a file its
+library's own git tracks for the library's own build, the dependencies its
+`build.jam` declares or a test Jamfile's lines,
+`include::{library-root}/build.jam[tag=dependencies]`.
 
 The Node packages of the doc build, Asciidoctor.js and highlight.js, are
 installed by `tools/node/install.py` with `npm ci`, once per lockfile under
@@ -1010,9 +1014,10 @@ build:
 - every include names a file that exists, inside `doc/`, `{examples}` or
   `{twins}`; an output's include names a program that exists;
 - an include of `{webcpp-root}/<path>` names a region, `tag=` or `tags=`, of
-  a file the superproject's git tracks, which holds that region: an untracked
-  file, a missing one, a whole file and lines chosen by number, which drift,
-  each fail;
+  a file the superproject's git tracks, which holds that region, and one of
+  `{library-root}/<path>` a region of a file the library's own git tracks:
+  an untracked file, a missing one, a whole file and lines chosen by number,
+  which drift, each fail;
 - every `(doc: #anchor)` and `index.html#anchor` of the library's files
   names an anchor the page defines, and every `@see "<title>"` a section;
 - every `(doc: <library>#<anchor>)` of the library's files, and every link

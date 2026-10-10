@@ -6,7 +6,8 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 
 """Checks doc-check.py: each rule fires on its own fault, and a whole page passes; a program that
-webcpp.link links and never runs is shown by its code, and has no output.
+webcpp.link links and never runs is shown by its code, and has no output; a page shows a tagged
+region of a file the superproject's git tracks, {webcpp-root}, or its library's own, {library-root}.
 
 Each check runs on a library written to a scratch directory: its page under doc/, its examples
 under example/, at any depth, its twins under twins/, a header, a README and a git repository
@@ -666,6 +667,57 @@ def check_superproject(root: Path) -> None:
     write(root / 'doc/page.adoc', PAGE)
 
 
+def check_library_root(root: Path) -> None:
+    """A page includes a region of a file its library's own git tracks, by its tag, through
+    {library-root}: the library's own build, shown as it is, its build.jam's dependencies or a
+    test's lines. A file the library does not track, one that is not there or lies outside it, a
+    whole file, lines by number and a region the file does not hold each fail, and so does such an
+    include when the check is not told where the library is."""
+    regions = ('# tag::dependencies[]\nalias fixture : : : : <include>include ;\n'
+               '# end::dependencies[]\n\n# tag::flags[]\nrequirements <cxxstd>20 ;\n'
+               '# end::flags[]\n')
+    write(root / 'build.jam', 'project /webcpp/fixture ;\n\n' + regions)
+    # A file git ignores is one the library does not track, though it is there.
+    write(root / '.git/info/exclude', 'untracked/\n')
+    write(root / 'untracked/regions.jam', regions)
+    given = ('--library-root', str(root))
+    line = NEXT + 2
+    for included in ('build.jam[tag=dependencies]', 'build.jam[tags=dependencies;flags,indent=0]'):
+        write(root / 'doc/page.adoc',
+              PAGE + f'\n[listing]\n----\ninclude::{{library-root}}/{included}\n----\n')
+        expect(check(root, '--complete', *given), 0, '')
+    for included, fault in (
+            ('untracked/regions.jam[tag=flags]', 'includes a file the library does not track: '
+                                                 '{library-root}/untracked/regions.jam'),
+            ('test/missing.jam[tag=flags]', 'includes a file that is not there: '
+                                            '{library-root}/test/missing.jam'),
+            ('../elsewhere.jam[tag=flags]', 'includes a file outside the library: '
+                                            '{library-root}/../elsewhere.jam'),
+            ('build.jam[]', 'includes a file of the library whole; name its region with '
+                            'tag=<name>: {library-root}/build.jam'),
+            ('build.jam[lines=1..2]', 'includes lines of a file of the library by number, which '
+                                      'drift'),
+            ('build.jam[tag=*]', 'names a region of the library\'s file by *'),
+            ('build.jam[tag=gone]', 'includes a region the file does not hold, tag::gone[] to '
+                                    'end::gone[]: {library-root}/build.jam'),
+            ('build.jam[tags=flags;gone]', 'includes a region the file does not hold, '
+                                           'tag::gone[] to end::gone[]')):
+        write(root / 'doc/page.adoc',
+              PAGE + f'\n[listing]\n----\ninclude::{{library-root}}/{included}\n----\n')
+        expect(check(root, *given), 1, f'page.adoc:{line}: {fault}')
+    # Without --library-root, which only a library's page is given.
+    write(root / 'doc/page.adoc',
+          PAGE + '\n[listing]\n----\ninclude::{library-root}/build.jam[tag=flags]\n----\n')
+    expect(check(root), 1, f'page.adoc:{line}: includes a file of the library, and the check was '
+                           'not given --library-root')
+    # And a rendered page is no page's source.
+    rendered = run('--rendered', str(root / 'doc/page.adoc'), *given)
+    assert rendered.returncode == 2, (rendered.returncode, rendered.stderr)
+    write(root / 'doc/page.adoc', PAGE)
+    write(root / 'build.jam', 'project /webcpp/fixture ;\n')
+    (root / 'untracked/regions.jam').unlink()
+
+
 def check_without_git(root: Path) -> None:
     """Outside a git checkout, or without git, the libraries a page links are none, which the build
     reads as a Jamfile loads; the page's own check names what it cannot read."""
@@ -727,7 +779,7 @@ def main() -> int:
         write(root / 'doc/page.adoc', PAGE)
         for part in (check_page, check_reference, check_examples, check_graph, check_references,
                      check_see_titles, check_readme, check_rendered, check_links,
-                     check_superproject, check_without_git, check_linked):
+                     check_superproject, check_library_root, check_without_git, check_linked):
             part(root)
             print(f'{part.__name__}: ok')
     print('doc-check.py: ok')

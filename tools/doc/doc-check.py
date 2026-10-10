@@ -22,6 +22,11 @@ names, includes a region of a file the superproject's git tracks, which holds ea
 names, `tag::<name>[]` to `end::<name>[]`. A file it does not track, one that is not there or
 lies outside it, a whole file, lines chosen by number, which drift, and a region the file does not
 hold are each a fault, and so is such an include when the check is not given `--webcpp-root`.
+The library's own files are reached the same way, `--library-root`, which webcpp.doc gives a
+library's page as `{library-root}`, so that the page shows its library's build as it is, the
+dependencies its build.jam declares or a test Jamfile's lines: `include::{library-root}/<path>`
+names a region of a file the library's own git tracks, with the same faults, and is a fault when
+the check is not given `--library-root`.
 And a `++` in prose, outside a block, inline code and an explicit passthrough
 (`pass:[...]`, `+++...+++`): two of them in one paragraph make Asciidoctor read what lies between
 them as a passthrough, which drops both and swallows a cross-reference with no warning; `{cpp}`
@@ -81,7 +86,8 @@ libraries whose pages the library's files refer to, one per line: the pages the 
 first; none outside a git checkout, or without git.
 
 Usage: doc-check.py --page <page.adoc> [--examples <dir>] [--twins <dir>] [--repository <dir>]
-[--library <name>] [--readme <README.md>] [--webcpp-root <dir>] [--linked <program.cpp>]...
+[--library <name>] [--readme <README.md>] [--webcpp-root <dir>] [--library-root <dir>]
+[--linked <program.cpp>]...
 [--complete] <section.adoc>...;
 doc-check.py
 --rendered <page.html> [--repository <dir> --library <name>] [--webcpp-libs <path> --webcpp-page
@@ -116,6 +122,8 @@ EXAMPLE_SOURCE = re.compile(rf'^include::\{{examples\}}/{NESTED}\.(cpp|hpp)\[[^\
 SHOWN = re.compile(rf'^include::\{{(examples|twins)\}}/{NESTED}\.(cpp|expected)\[')
 # An include of a file of the superproject, by its path there.
 SUPERPROJECT = re.compile(r'^\{webcpp-root\}/(.+)$')
+# An include of a file of the page's library, by its path there.
+LIBRARY_FILE = re.compile(r'^\{library-root\}/(.+)$')
 REFERENCE = '{reference}'
 ANCHOR = re.compile(r'^\[#([\w-]+)[\],.]|\[\[([\w-]+)\]\]')
 # A library's name, the directory of libs/ that holds it.
@@ -295,14 +303,16 @@ def indented(lines: list[str], indent: int) -> list[str]:
 
 class Library:
     """Where a page's includes resolve: its examples and its twins, each a directory or None
-    when the library has none, and the superproject, or None when the check is not given it."""
+    when the library has none, and the superproject and the library's own directory, each None
+    when the check is not given it."""
 
     def __init__(self, examples: Path | None, twins: Path | None,
-                 webcpp_root: Path | None = None) -> None:
+                 webcpp_root: Path | None = None, library_root: Path | None = None) -> None:
         self.examples = examples
         self.twins = twins
         self.webcpp_root = webcpp_root
-        self.listed: set[str] | None = None
+        self.library_root = library_root
+        self.listed: dict[Path, set[str] | None] = {}
 
     def defined(self) -> dict[str, str]:
         """The attributes webcpp.doc gives the page, as Asciidoctor seeds an attribute given on
@@ -314,21 +324,26 @@ class Library:
             found['twins'] = str(self.twins)
         if self.webcpp_root is not None:
             found['webcpp-root'] = str(self.webcpp_root)
+        if self.library_root is not None:
+            found['library-root'] = str(self.library_root)
         return found
 
-    def tracked(self) -> set[str] | None:
-        """The files the superproject's git tracks, by their path in it, read once; None when it
-        is not a git checkout, or git is not there to list them."""
-        if self.listed is None and self.webcpp_root is not None:
+    def tracked(self, root: Path) -> set[str] | None:
+        """The files root's own git tracks, by their path there, read once per root: None when it
+        is not a git checkout, or git is not there to list them. root is the superproject for an
+        include of {webcpp-root}, or the library's own directory for one of {library-root}, since
+        the superproject tracks a library itself, as one gitlink."""
+        key = root.resolve()
+        if key not in self.listed:
             try:
-                listed = subprocess.run(['git', '-C', str(self.webcpp_root), 'ls-files', '-z'],
+                listed = subprocess.run(['git', '-C', str(root), 'ls-files', '-z'],
                                         capture_output=True, check=False)
             except OSError:
-                return None
-            if listed.returncode != 0:
-                return None
-            self.listed = set(listed.stdout.decode('utf-8').split('\0')) - {''}
-        return self.listed
+                self.listed[key] = None
+            else:
+                self.listed[key] = (set(listed.stdout.decode('utf-8').split('\0')) - {''}
+                                    if listed.returncode == 0 else None)
+        return self.listed[key]
 
     def example_output(self, target: str) -> tuple[Path | None, Path | None]:
         """For an include of an example's output, the output and the program that prints it."""
@@ -370,6 +385,33 @@ def within(path: Path, roots: Iterable[Path]) -> bool:
     return any(target.is_relative_to(root.resolve()) for root in roots)
 
 
+def tracked_region_fault(path: Path, root: Path, owner: str, given: dict[str, str],
+                         library: Library) -> str | None:
+    """What is wrong with an include of the file `path`, there, with the attributes `given`, or
+    None: a region, by its tag, of a file root's own git tracks; `owner` names root in a fault,
+    the superproject or the library."""
+    tracked = library.tracked(root)
+    if tracked is None:
+        return (f'includes a file of {owner}, and {root} is not a git checkout, or git '
+                'is not on PATH: the check reads the files git tracks')
+    if path.resolve().relative_to(root.resolve()).as_posix() not in tracked:
+        return f'includes a file {owner} does not track'
+    if 'lines' in given:
+        return (f'includes lines of a file of {owner} by number, which drift; name its '
+                'region with tag=<name>')
+    names = [name.strip() for name in re.split(r'[;,]', given.get('tags', given.get('tag', '')))]
+    names = [name for name in names if name]
+    if not names:
+        return f'includes a file of {owner} whole; name its region with tag=<name>'
+    held = path.read_text(encoding='utf-8')
+    for name in names:
+        if name.startswith('!') or '*' in name:
+            return f'names a region of {owner}\'s file by {name}; name each with its tag'
+        if f'tag::{name}[]' not in held or f'end::{name}[]' not in held:
+            return f'includes a region the file does not hold, tag::{name}[] to end::{name}[]'
+    return None
+
+
 def superproject_fault(relative: str, given: dict[str, str], library: Library) -> str | None:
     """What is wrong with an include of the superproject's file `relative`, with the attributes
     `given`, or None: a region, by its tag, of a file the superproject's git tracks."""
@@ -381,26 +423,21 @@ def superproject_fault(relative: str, given: dict[str, str], library: Library) -
         return 'includes a file outside the superproject'
     if not path.is_file():
         return 'includes a file that is not there'
-    tracked = library.tracked()
-    if tracked is None:
-        return (f'includes a file of the superproject, and {top} is not a git checkout, or git '
-                'is not on PATH: the check reads the files git tracks')
-    if path.resolve().relative_to(top.resolve()).as_posix() not in tracked:
-        return 'includes a file the superproject does not track'
-    if 'lines' in given:
-        return ('includes lines of a file of the superproject by number, which drift; name its '
-                'region with tag=<name>')
-    names = [name.strip() for name in re.split(r'[;,]', given.get('tags', given.get('tag', '')))]
-    names = [name for name in names if name]
-    if not names:
-        return 'includes a file of the superproject whole; name its region with tag=<name>'
-    held = path.read_text(encoding='utf-8')
-    for name in names:
-        if name.startswith('!') or '*' in name:
-            return f'names a region of the superproject\'s file by {name}; name each with its tag'
-        if f'tag::{name}[]' not in held or f'end::{name}[]' not in held:
-            return f'includes a region the file does not hold, tag::{name}[] to end::{name}[]'
-    return None
+    return tracked_region_fault(path, top, 'the superproject', given, library)
+
+
+def library_file_fault(relative: str, given: dict[str, str], library: Library) -> str | None:
+    """What is wrong with an include of the library's file `relative`, with the attributes
+    `given`, or None: a region, by its tag, of a file the library's own git tracks."""
+    top = library.library_root
+    if top is None:
+        return 'includes a file of the library, and the check was not given --library-root'
+    path = top / relative
+    if not within(path, [top]):
+        return 'includes a file outside the library'
+    if not path.is_file():
+        return 'includes a file that is not there'
+    return tracked_region_fault(path, top, 'the library', given, library)
 
 
 def faults(section: Path, library: Library, doc_root: Path) -> list[Fault]:
@@ -435,16 +472,20 @@ def faults(section: Path, library: Library, doc_root: Path) -> list[Fault]:
             found.append((number, f'includes the output of no twin: {target}'))
             continue
         superproject = SUPERPROJECT.match(target)
+        own = LIBRARY_FILE.match(target)
+        fault = None
         if superproject is not None:
-            fault = superproject_fault(superproject.group(1), attributes(match.group(2)),
-                                       library)
-            if fault is not None:
-                found.append((number, f'{fault}: {target}'))
-                continue
+            fault = superproject_fault(superproject.group(1), attributes(match.group(2)), library)
+        elif own is not None:
+            fault = library_file_fault(own.group(1), attributes(match.group(2)), library)
+        if fault is not None:
+            found.append((number, f'{fault}: {target}'))
+            continue
         path = resolved(section, target, library, defined)
         # Any other include answers for itself: an output already did, above, against the
-        # program that would print it, and a file of the superproject just now.
-        if program is None and twin is None and superproject is None and path is not None:
+        # program that would print it, and a file of the superproject or of the library just now.
+        if program is None and twin is None and superproject is None and own is None and \
+                path is not None:
             if not path.is_file():
                 found.append((number, f'includes a file that is not there: {target}'))
                 continue
@@ -1098,7 +1139,8 @@ def rendered_check(arguments: argparse.Namespace) -> list[str]:
 
 def page_check(arguments: argparse.Namespace) -> list[str]:
     """The faults of the page's sources, and of the files of its library."""
-    library = Library(arguments.examples, arguments.twins, arguments.webcpp_root)
+    library = Library(arguments.examples, arguments.twins, arguments.webcpp_root,
+                      arguments.library_root)
     page: Path = arguments.page
     sections: list[Path] = arguments.sections
     doc_root = page.parent
@@ -1135,6 +1177,7 @@ def main() -> int:
     parser.add_argument('--library')
     parser.add_argument('--readme', type=Path)
     parser.add_argument('--webcpp-root', type=Path)
+    parser.add_argument('--library-root', type=Path)
     parser.add_argument('--complete', action='store_true')
     parser.add_argument('--linked', type=Path, action='append', default=[])
     parser.add_argument('--rendered', type=Path)
@@ -1146,7 +1189,8 @@ def main() -> int:
     arguments = parser.parse_args()
     of_the_page = (arguments.sections or arguments.page or arguments.examples or
                    arguments.twins or arguments.readme or arguments.complete or
-                   arguments.linked or arguments.webcpp_root is not None)
+                   arguments.linked or arguments.webcpp_root is not None or
+                   arguments.library_root is not None)
     of_the_rendered = (arguments.webcpp_libs is not None or arguments.webcpp_page is not None or
                        arguments.linked_page)
     if arguments.linked_libraries:
