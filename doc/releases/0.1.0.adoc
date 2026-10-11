@@ -19,6 +19,9 @@ from R.
 * link:{library-pages}pratt/{library-page}[pratt]: a header-only
 Pratt-parsing engine for {cpp}20, with a decimal calculator built on it,
 from R.
+* link:{library-pages}trystero/{library-page}[trystero]: a port of
+Trystero 0.26.0, serverless WebRTC rooms wire-compatible with the original,
+for {cpp}20, from R.
 * link:{library-pages}wasi/{library-page}[wasi]: a header-only HTTP handler
 for {cpp}20 programs built as WebAssembly components, covering WASI 0.2 and
 WASI 0.3, from R.
@@ -66,6 +69,29 @@ code span.
 * Added the lint rule `changelog`: every changelog line keeps its form.
 * Added `b2 check-release`, `b2 whats-new` and `b2 dist`, which check,
 announce and package a release.
+* Added `third_party/`, third-party code pinned as submodules: first the
+JSON Schema Test Suite, which a test reads on every target through
+`/webcpp/third_party//json-schema-test-suite`.
+* Changed the lint to never read third-party code under `third_party/libs/`.
+* Added `webcpp.generated`, which checks a library's generated files against
+their Python generator, and `update-generated`, their only writer.
+* Added `--files` to `tools/oracle/compare.py`, which compares two files
+byte for byte.
+* Added `/webcpp//boost_url`, Boost.URL built from Boost's sources for every
+target, read from `BOOST_SOURCE` or `.local/boost-source`; another Boost
+version's tree is refused.
+* Changed the CI's Boost action to keep the sources of Boost's compiled
+libraries; `install.sh source <dir>` fills a local tree.
+* Changed the lint to never analyse a source outside the tree, such as
+Boost's.
+* Added `/webcpp//boost_charconv`, Boost.Charconv built from Boost's sources
+for every target.
+* Added `/webcpp//boost_locale`, Boost.Locale without ICU built from Boost's
+sources for every target; a program that uses it needs exceptions.
+* Fixed a lane's alias and a library's generated files running the
+configuration check of Boost, which neither needs.
+* Added `webcpp.data`, which gives a test a directory of the host's at the
+same path on every target, through wasmtime's `--dir` on WASI.
 
 [#webcpp-0-1-0-compilers-tested]
 == Compilers tested
