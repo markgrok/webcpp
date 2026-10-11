@@ -1185,9 +1185,11 @@ def test_a_container_lane_runs_b2_with_no_network(root):
     log = root / 'docker.log'
     environment = harness.b2_environment()
     environment.pop('GITHUB_OUTPUT', None)
+    # Only the one variable the case exports, whatever the shell that runs the test exports.
+    for name in matrix.EXTERNAL_VARIABLES:
+        environment.pop(name, None)
     environment.update(PATH=f'{tools}:{environment["PATH"]}', STAND_IN_DOCKER_LOG=str(log),
                        STAND_IN_IMAGE=matrix.CONTAINER_IMAGE, LIBDATACHANNEL_ROOT='/somewhere')
-    environment.pop('SECP256K1_ROOT', None)
     result = subprocess.run([sys.executable, str(root / 'tools/ci/matrix.py'), 'lane',
                              json.dumps(entry), '--', '--build-dir=bin/lane'], cwd=root,
                             env=environment, capture_output=True, text=True, check=False,
