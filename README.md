@@ -29,7 +29,7 @@ system.
 | [trystero](https://github.com/webcpporg/trystero) | Serverless WebRTC rooms, wire compatible with Trystero: peers meet over public Nostr relays, natively over libdatachannel and in the browser over its own WebRTC. Ports Trystero 0.26.0, and is proven against it. | native, emscripten |
 
 Each library's page, with its API reference, and the test matrix of every
-library on every target are published at <https://webcpporg.github.io/webcpp/>.
+library on every target are published at <https://webcpporg.github.io/>.
 
 ## Prerequisites
 

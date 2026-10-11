@@ -23,7 +23,7 @@ command below runs from the superproject's root, in a shell where `CPATH`,
 6. C++ rules
 7. Doc Comments and the API reference
 8. Documentation
-9. Tests, lanes, the report and CI
+9. Tests, lanes, the report, the site and CI
 10. Process
 11. Commits and text
 12. b2 facts
@@ -89,6 +89,8 @@ webcpp/
   libs/<name>/        a library: a repository of its own, a submodule here (xactor,
                       xstate, pratt, wasi, trystero)
   doc/                the index page (index.adoc, Jamfile)
+  site/               the site, a repository of its own, webcpporg/webcpporg.github.io, a
+                      submodule here: its pages, components, tools and tests (chapter 9)
   tools/
     webcpp.jam        the Jamfile API (chapter 9): webcpp.targets, webcpp.run, ...
     target.jam        the targets, and the target a toolset builds for, which webcpp.jam and
@@ -124,6 +126,9 @@ webcpp/
                       and actions/{boost,wasi-sdk,wasmtime,wit-bindgen,wasi-wit,emsdk,
                       secp256k1,libdatachannel,openssl,chrome,container,mrdocs,node}/
                       (chapter 9)
+    site/             site.jam, the rules of b2 site and b2 site-serve, catalogue.py (the
+                      site's libraries.json), redirect.py (the old address's two pages) and
+                      their tests (chapter 9)
   .github/            workflows/library.yml, workflows/ci.yml, actionlint.yaml (chapter 9)
   .local/             machine-local, git-ignored (below)
   bin/                b2's build directory, git-ignored
@@ -338,7 +343,7 @@ when told: `b2 --user-config=.local/user-config.jam ...`.
 | `tools/lint/lint.sh --clang-format <wasi-sdk>/bin/clang-format --clang-tidy <wasi-sdk>/bin/clang-tidy` | the lint, of the superproject and every library (chapter 6) |
 | `python3 tools/<dir>/<name>_test.py` | a test of the build or of a tool (chapter 10) |
 | `python3 tools/ci/matrix.py plan`, `own-lanes`, `lane`, `own-lane`, `register`, `report` | the CI's lanes and own lanes, run the way the CI runs them (chapter 9) |
-| `b2 site`, `b2 site-serve` | the whole site, the site's pages with every library's page and the report, into `bin/site/`, every link checked (`tools/site/site.jam`, `tools/ci/assemble.py`); `site-serve` then serves it on http://127.0.0.1:8765/ |
+| `b2 site`, `b2 site-serve` | the whole site, the site's pages with every library's page and the report, into `bin/site/`, every link checked (`tools/site/site.jam`, `tools/ci/assemble.py`); `site-serve` then serves it on http://127.0.0.1:8765/; `-sWEBCPP_SITE=release -sWEBCPP_SITE_VERSION=<version>` builds the release channel (chapter 9) |
 
 ## 2. Choosing and registering a port
 
@@ -1158,7 +1163,7 @@ and an identifier breaks only between its parts.
   forever, since code, tests and comments cite them;
 - **a testing chapter:** how a program tests what it builds with the library,
   how the library itself is tested, on which targets, with which commands,
-  and where the test matrix is (https://webcpporg.github.io/webcpp/report/);
+  and where the test matrix is (https://webcpporg.github.io/report/);
 - **the reference,** `include::{reference}[leveloffset=+1]`, under a section
   `[#reference]`;
 - **the appendix "Differences"** for a port (chapter 4).
@@ -1319,7 +1324,7 @@ value stops the build.
 `libs/<name>/doc/html/` inside the tree, so two concurrent doc builds would
 write the same files.
 
-## 9. Tests, lanes, the report and CI
+## 9. Tests, lanes, the report, the site and CI
 
 ### Targets
 
@@ -1678,6 +1683,83 @@ written, when a file cannot be read, a lane spans more than one toolset, a
 lane named after a target was built for another, a lane named after no target
 is not named after its toolset directory, a test lies outside `libs/<name>/`,
 or a library is named `index`.
+
+### The site (`tools/site/`, `site/`)
+
+```
+b2 site
+b2 site -sWEBCPP_SITE=release -sWEBCPP_SITE_VERSION=<version>
+b2 site-serve
+```
+
+builds webcpp's whole site into `bin/site/`: the site's own pages, the index
+page and every library's page, the report, and the files that index them,
+every link checked and every page valid HTML. `b2 site-serve` builds it and
+serves it at http://127.0.0.1:8765/. The site is built for one of two
+channels:
+
+| Channel | Built with | Served at | Indexed |
+| --- | --- | --- | --- |
+| preview | `b2 site`, the default | https://webcpporg.github.io/, from every push to `main` | no: it is the development version, and every page carries `<meta name="robots" content="noindex">`; it writes no `sitemap.xml`, which its `robots.txt` does not name |
+| release | `-sWEBCPP_SITE=release -sWEBCPP_SITE_VERSION=<version>` | https://webcpp.org/, from a release tag | yes: every page says `index, follow`, and `robots.txt` names `sitemap.xml` |
+
+A preview page's band names the commit it was built from and its date, a
+release page's the version. The options:
+
+- `-sWEBCPP_SITE=<channel>`, `preview` or `release`; any other value stops
+  the build, named. The release needs `-sWEBCPP_SITE_VERSION=<version>`, such
+  as `1.0.0` or `1.0.0-rc.1`, and the preview takes none.
+- `-sWEBCPP_SITE_DOCS=<dir>` names the pages `b2 doc -sWEBCPP_INDEX=site`
+  built already, a superproject's root or a copy of its `doc/html` and
+  `libs/<name>/doc/html`, as the CI's docs job hands them on; without it,
+  `b2 site` builds them with `b2 doc`.
+- `-sWEBCPP_SITE_REPORT=<dir>` names what `tools/report/report.py` wrote;
+  without it, `report/` says that no results were given, as on any machine
+  but the CI's.
+
+The steps, each one of the site's npm scripts or a script of
+`tools/`: `tools/site/catalogue.py` writes the catalogue, `bin/libraries.json`,
+from every library's `meta/libraries.json` and the targets it declares; the
+site's `build` script renders its pages with the channel, the commit, its
+date, the version and the catalogue (`/webcpp/site//pages`);
+`tools/ci/assemble.py` lays them out with the docs and the report into
+`bin/site.tmp/`, heading each page of the docs and of the libraries with the
+site's header, each library's page with the head the catalogue gives it, and
+every page with noindex on the preview, then checks that every page carries
+the robots of its channel; the `build` script writes the indexing files
+(`site/tools/indexing.mjs`); `assemble.py --check` checks every link; the
+build moves into `bin/site.builds/`, and `bin/site`, a link, is renamed onto
+it in one step (the `swap` script), so that a server on `bin/site` reads one
+build or the other whole and a failed step leaves the last good build; last,
+`/webcpp/site//valid-html` runs html-validate over every page. `bin/site/`:
+
+```
+index.html          the home, from the site's pages/index.oui
+libraries/, cpp/, javascript/, ai/, examples/, community/, search/
+                    the site's other pages, each from its pages/<name>.oui
+assets/             the styles, the logo, the icons and the client bundle, site.js
+cards/              each page's and each library's social card, 1200 by 630
+favicon.ico
+docs/               the index page, built with -sWEBCPP_INDEX=site
+libs/<name>/        each library's page
+report/             the test matrix
+robots.txt          every crawler allowed; on the release, the sitemap named
+sitemap.xml         on the release alone: every page, with the date its source last changed
+llms.txt            what webcpp is, and a line for each library and each page
+libraries.json      the catalogue
+```
+
+**Where the site's source lives.** The site is a repository of its own,
+`webcpporg/webcpporg.github.io`, checked out as the submodule `site/`, as a
+library is under `libs/`: its pages in OpenUI Lang under `pages/`, the React
+components they are written with and the renderer under `src/`, its node
+tools under `tools/`, its tests under `test/`, its `Jamfile`, and its own
+`AGENTS.md` and `README.md`. A change to it is committed in `site/` on its
+`main`, then the superproject commits the submodule's new commit, as for a
+library. What the superproject holds of the site is `tools/site/` and
+`tools/ci/assemble.py`. Its tests are `b2 /webcpp/site//test`, the site's own
+(its npm `test` and `typecheck`), and `tools/site/*_test.py` with
+`tools/ci/assemble_test.py`, among the tools' tests.
 
 ### CI
 
@@ -2080,21 +2162,23 @@ libdatachannel without `OPENSSL_ROOT`, an OpenSSL that is not 3, one
 whose headers hold no `opensslconf.h`, a chrome-headless-shell whose SHA-256 is not the pinned one, and a
 runner none of them builds for.
 
-**The site.** On every run of the superproject's CI, `tools/ci/assemble.py`
-lays out the site from the pages and the report, and on `main` it is
-deployed to GitHub Pages, `https://webcpporg.github.io/webcpp/`, a red matrix
-included:
-
-```
-index.html          the index page, built with -sWEBCPP_INDEX=site
-libs/<name>/        each library's page
-report/             the test matrix
-```
+**The site.** On every run of the superproject's CI, the job `site` runs
+`b2 site`, the preview ("The site", above), with the pages the docs job built
+and the report, `-sWEBCPP_SITE_DOCS` and `-sWEBCPP_SITE_REPORT`, a red matrix
+included. On a push to `main`, `publish` pushes that build, as the one commit
+of an orphan branch `gh-pages`, to `webcpporg/webcpporg.github.io`, whose
+Pages serve it at `https://webcpporg.github.io/`, with that repository's
+deploy key, the secret `SITE_DEPLOY_KEY`; then `pages` deploys the
+superproject's own Pages, the old address
+`https://webcpporg.github.io/webcpp/`, as `tools/site/redirect.py`'s two
+pages, which send every path under it to the same path at the root and
+carry noindex too.
 
 It fails, naming each fault, when a library has no page, when the index does
-not link a library's page, or when a link of any page names no file of the
-site or no anchor of its page: an index built without `-sWEBCPP_INDEX=site`
-links out of the site, and fails.
+not link a library's page, when a page does not carry the robots of its
+channel, or when a link of any page names no file of the site or no anchor
+of its page: an index built without `-sWEBCPP_INDEX=site` links out of the
+site, and fails.
 
 A library's commits reach its own `main` first; then the superproject's
 commit that moves its submodule is pushed to the superproject's `main`, whose
@@ -2314,10 +2398,25 @@ What webcpp does not have yet, and the chapters that mention it:
 - **The libraries web developers use most,** brought to C++: zod (on
   webcpp::json_schema), a JavaScript interpreter (QuickJS), libp2p, HTTP
   fetch.
-- **webcpp.org.** The organisation's landing page, on GitHub Pages: what
-  webcpp is and for whom, the list of libraries with a search, and a folder
-  of examples of what is possible, each with a page that explains it (a
-  peer-to-peer site on trystero first).
+- **The site, increments 2 to 8.** Increment 1 is done: the site's
+  repository and `b2 site`, the landing, the list of libraries and the three
+  doors (C++, JavaScript, AI), the libraries' pages and the report under the
+  site's theme, `robots.txt`, `llms.txt` and `libraries.json`, published at
+  https://webcpporg.github.io/, the preview, with the redirect from
+  `/webcpp/` (chapter 9). To come, in this order:
+
+  2. xstate for emscripten (its machine layer), and the site's wasm running
+     its own machines, the player's and the install's: the PWA;
+  3. the bridge visualizer and the calculator example;
+  4. trystero's JavaScript API and the collaborative cursors;
+  5. the examples of a state machine, of C++ calling the browser, and of
+     C++ on the server;
+  6. file transfer and video chat, as trystero's roadmap delivers them;
+  7. Google search, for webcpp.org: the Programmable Search engine and the
+     Search Console property are made for the release site; the preview,
+     the development version, gets neither and is never indexed;
+  8. the release channel at https://webcpp.org/, at the first release, with
+     the move of the domain's DNS.
 - **Documentation for web developers and for AI developers,** beside the
   documentation for C++ developers every library has today, and webcpp's
   integrations with the AIs.
