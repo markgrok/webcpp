@@ -1902,8 +1902,8 @@ wrapper each quoted as one word of Jam.
 - `wasi-sdk` installs wasi-sdk 34 into `.local/wasi-sdk`, `wasmtime`
   installs wasmtime 47.0.3 on `PATH`, `mrdocs` installs MrDocs 2026.9.29 into
   `.local/mrdocs`, and `node` sets up Node 26.7.0, with npm's cache keyed on
-  the lock files of `tools/doc`, `tools/lint` and every library's
-  `test/oracle`.
+  the lock files of `tools/doc`, `tools/lint`, every library's
+  `test/oracle` and the site's, `site/`.
 - `wit-bindgen` installs wit-bindgen 0.62.0, the release's archive for the
   runner's system and processor (Linux and macOS, x86-64 and arm64), the
   program alone, into `.local/wit-bindgen`; `wasi-wit` installs the

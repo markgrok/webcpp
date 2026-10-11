@@ -37,7 +37,9 @@ refuses without, Debug on Windows, where it puts its DLL on PATH, and keys its c
 compilers and OpenSSL's version; openssl lays out the system's OpenSSL 3 as links on Linux and
 macOS, those of Debian's include/<multiarch>/openssl too, copies the image's on Windows, from
 lib/VC/x64/MD first, downloads the pinned installer when the image has none, and refuses one that
-is not OpenSSL 3; and each refuses a runner it builds nothing for. Nothing is fetched
+is not OpenSSL 3; and each refuses a runner it builds nothing for. The node action keys npm's
+cache on the lock file of every directory a job runs npm ci in: tools/doc, tools/lint, every
+library's oracle and the site. Nothing is fetched
 from the network: the downloads are file:// URLs, git is a stand-in, and install.sh runs against
 a download.sh that only says it was called, or that hands it a stand-in archive. Run with the
 names of some cases to run only those."""
@@ -754,6 +756,18 @@ def test_the_jamroot_pins_the_action_s_version(_: Path) -> None:
     jamroot = re.search(r'^\.emscripten-version = (\S+) ;$',
                         (CI.parents[1] / 'Jamroot').read_text(), re.MULTILINE)
     assert pinned and jamroot and pinned.group(1) == jamroot.group(1), (pinned, jamroot)
+
+
+def test_node_caches_every_lock_file_npm_ci_reads(_: Path) -> None:
+    # A lock file left out of the key is installed from the registry on every run: the site's is
+    # read by b2 site's npm ci, in the site job and the site's own lane.
+    action = (CI / 'actions/node/action.yml').read_text()
+    paths = re.search(r'^        cache-dependency-path: \|\n((?:          .*\n)+)', action,
+                      re.MULTILINE)
+    assert paths, action
+    listed = [line.strip() for line in paths.group(1).splitlines()]
+    assert listed == ['tools/doc/package-lock.json', 'tools/lint/package-lock.json',
+                      'libs/*/test/oracle/package-lock.json', 'site/package-lock.json'], listed
 
 
 def test_emsdk_configure_fails_naming_both_versions(scratch: Path) -> None:
@@ -1558,6 +1572,7 @@ CASES: list[Callable[[Path], None]] = [
     test_emsdk_builds_the_system_libraries_into_the_cache,
     test_emsdk_for_a_job_that_only_parses,
     test_the_jamroot_pins_the_action_s_version,
+    test_node_caches_every_lock_file_npm_ci_reads,
     test_emsdk_configure_fails_naming_both_versions,
     test_emsdk_fails_on_a_download_it_does_not_pin,
     test_emsdk_refuses_a_runner_it_pins_nothing_for,
