@@ -1130,6 +1130,25 @@ exec "$@"
 """
 
 
+def test_container_apt_get_retries_transient_failures(root):
+    # Ubuntu's snapshot mirror answers some requests with a transient error (measured: 503
+    # Service Unavailable on several index files), which must not fail the whole image build by
+    # itself: every apt-get, update and install alike, retries a failed download with backoff
+    # (Acquire::Retries), and apt-get update still fails the build, rather than continuing with
+    # partial or stale lists, when an index cannot be fetched even after retrying
+    # (APT::Update::Error-Mode=any; verified against apt 2.8.3, the pinned image's, which exits 0
+    # by default on a failed index and only exits non-zero with this option set).
+    dockerfile = (matrix.ROOT / 'tools/ci/container/Dockerfile').read_text()
+    code = ''.join(line for line in dockerfile.splitlines(keepends=True)
+                   if not line.startswith('#'))
+    calls = re.findall(r'apt-get[^&]*', code)
+    assert len(calls) == 4, calls
+    for call in calls:
+        assert '-o Acquire::Retries=5' in call, call
+        if re.search(r'\bupdate\b', call):
+            assert '-o APT::Update::Error-Mode=any' in call, call
+
+
 def test_a_container_lane_runs_b2_with_no_network(root):
     # A container lane builds its image from tools/ci/container/Dockerfile, then runs the lane
     # command's b2 by its path in it, as the user who runs the lane, with no network but the
@@ -1145,9 +1164,8 @@ def test_a_container_lane_runs_b2_with_no_network(root):
     # names it, and none reads the live archive.
     code = ''.join(line for line in dockerfile.splitlines(keepends=True)
                    if not line.startswith('#'))
-    commands = re.findall(r'apt-get (?:-o \S+ )?(update|install)\b[^&]*', code)
-    assert len(commands) == 4, commands
     calls = re.findall(r'apt-get[^&]*', code)
+    assert len(calls) == 4, calls
     assert all('--snapshot "${SNAPSHOT}"' in call for call in calls), calls
     assert re.search(r'install[^&]*--snapshot "\$\{SNAPSHOT\}" ca-certificates', code), code
     digest = hashlib.sha256(dockerfile.encode()).hexdigest()
@@ -1278,6 +1296,7 @@ CASES = [
     test_the_jobs_install_the_external_dependencies,
     test_a_container_lane_has_its_image_from_the_cache,
     test_a_browser_lane_has_the_pinned_chrome,
+    test_container_apt_get_retries_transient_failures,
     test_a_container_lane_runs_b2_with_no_network,
     test_a_container_lane_whose_image_does_not_build_fails,
 ]

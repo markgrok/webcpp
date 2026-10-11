@@ -25,15 +25,25 @@
 # installed"). Ubuntu keeps no snapshot of ports.ubuntu.com: the image builds for x86-64 alone,
 # the container lanes' runners (measured: apt 2.8.3 says "Snapshots not supported for
 # http://ports.ubuntu.com/ubuntu-ports/" on arm64).
+#
+# The snapshot service answers some requests with a transient 503 (measured: several index files
+# at once, which fails the whole build though the mirror itself is fine moments later). Every
+# apt-get, update and install alike, retries a failed download five times with backoff
+# (Acquire::Retries); apt-get update still fails the build, rather than silently continuing with
+# partial or stale lists, when an index cannot be fetched even after retrying
+# (APT::Update::Error-Mode=any, apt 2.8.3's default being to ignore such a failure and exit 0).
 FROM ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
 
 ARG SNAPSHOT=20261009T000000Z
 
 RUN sed -i 's/^Signed-By: .*/&\nSnapshot: yes/' /etc/apt/sources.list.d/ubuntu.sources \
-    && apt-get -o Acquire::https::Verify-Peer=false update --snapshot "${SNAPSHOT}" \
-    && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::Verify-Peer=false install \
-        --yes --no-install-recommends --snapshot "${SNAPSHOT}" ca-certificates \
-    && apt-get update --snapshot "${SNAPSHOT}" \
-    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
-        --snapshot "${SNAPSHOT}" g++-14 clang-18 libssl-dev python3 \
+    && apt-get -o Acquire::https::Verify-Peer=false -o Acquire::Retries=5 \
+        -o APT::Update::Error-Mode=any update --snapshot "${SNAPSHOT}" \
+    && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::Verify-Peer=false \
+        -o Acquire::Retries=5 install --yes --no-install-recommends \
+        --snapshot "${SNAPSHOT}" ca-certificates \
+    && apt-get -o Acquire::Retries=5 -o APT::Update::Error-Mode=any update \
+        --snapshot "${SNAPSHOT}" \
+    && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install --yes \
+        --no-install-recommends --snapshot "${SNAPSHOT}" g++-14 clang-18 libssl-dev python3 \
     && rm -rf /var/lib/apt/lists/*
