@@ -470,10 +470,12 @@ owner's:
 
    project /webcpp/<name> ;
 
-   alias <name> : : : : <include>include <library>/boost//headers ;
+   alias <name> : : : : <include>include <library>/boost//headers <library>/webcpp/config//config ;
    ```
 
-   A dependency on another library is written as its target,
+   Every library adds config's target, `<library>/webcpp/config//config`,
+   since its `config.hpp` includes `<webcpp/config.hpp>` (chapter 3). A
+   dependency on another library is written as its target,
    `<library>/webcpp/xactor//xactor`. A compiled Boost library is built by
    webcpp from Boost's sources (chapter 1): a library that needs Boost.URL
    adds `<library>/webcpp//boost_url` to its target's usage requirements,
@@ -570,7 +572,7 @@ update --init third_party/libs/<name>`; a build that needs none never looks.
 | convenience header | `<webcpp/<name>.hpp>`, which includes every public header, but may leave out one that brings an optional heavy dependency (below) | `<webcpp/xactor.hpp>` |
 | headers | `<webcpp/<name>/...>`, one per responsibility, `snake_case` | `<webcpp/xactor/scheduler.hpp>` |
 | macros | `WEBCPP_<NAME>_*` | `WEBCPP_XACTOR_*` |
-| configuration | `<webcpp/<name>/config.hpp>`, which every public header includes first, with `WEBCPP_<NAME>_NO_EXCEPTIONS` (chapter 6) | `<webcpp/xactor/config.hpp>` |
+| configuration | `<webcpp/<name>/config.hpp>`, which every public header includes first, which includes `<webcpp/config.hpp>` first, with `WEBCPP_<NAME>_NO_EXCEPTIONS` (chapter 6) | `<webcpp/xactor/config.hpp>` |
 | test-only macros | `WEBCPP_TEST_*` | |
 | include guards | `WEBCPP_<NAME>_<HEADER>_HPP` | `WEBCPP_XACTOR_ACTOR_LOGIC_HPP` |
 | b2 target | `/webcpp/<name>//<name>` | `/webcpp/xactor//xactor` |
@@ -872,21 +874,27 @@ exactly its authors' and the program carries only what it calls.
   exceptions by tests of its own that declare `<exception-handling>off`
   (trystero's `browser_*_no_exceptions`).
 - **Each library has its own configuration macro,**
-  `WEBCPP_<NAME>_NO_EXCEPTIONS`, as Boost.Asio has
-  `BOOST_ASIO_NO_EXCEPTIONS`, in `<webcpp/<name>/config.hpp>`, which the
-  convenience header and every public header include first. It is defined
-  automatically when the code is compiled without exceptions
-  (`BOOST_NO_EXCEPTIONS`, which Boost.Config defines under `-fno-exceptions`
-  and so under `exception-handling=off`), and a developer may define it to
-  turn a library's exceptions off in a build that has them. A program sets it
-  for every library alike, without knowing which one throws, so a library
-  that raises no exception of its own has it too, and says so in its Doc
-  Comment. Its test, `test/config_test.cpp`, is built twice: as the build
-  asks, where the macro is defined exactly when `BOOST_NO_EXCEPTIONS` is, and
-  with the macro defined on the command line. MrDocs parses a library as a
-  build with exceptions does, so `config.hpp` defines the macro for the
-  reference under `#ifdef __MRDOCS__` and undefines it at once: the
-  reference lists it, and every API that throws stays in the parse.
+  `WEBCPP_<NAME>_NO_EXCEPTIONS`, as Boost.Asio has `BOOST_ASIO_NO_EXCEPTIONS`,
+  in `<webcpp/<name>/config.hpp>`, which the convenience header and every
+  public header include first, and which includes `<webcpp/config.hpp>` first.
+  It is defined when `WEBCPP_HAS_EXCEPTIONS` is not: when the code is compiled
+  without exceptions (`BOOST_NO_EXCEPTIONS`, which Boost.Config defines under
+  `-fno-exceptions` and so under `exception-handling=off`), or when the
+  developer defines `WEBCPP_NO_EXCEPTIONS`, which disables every library's at
+  once; and a developer may define it alone, to turn one library's exceptions
+  off in a build that has them. A program sets `WEBCPP_NO_EXCEPTIONS` for
+  every library alike, without knowing which one throws, so a library that
+  raises no exception of its own has the macro too, and says so in its Doc
+  Comment. Its test, `test/config_test.cpp`, is built three times: as the
+  build asks (`config`), where the macro is defined exactly when
+  `WEBCPP_HAS_EXCEPTIONS` is not; with `WEBCPP_NO_EXCEPTIONS` defined
+  (`config_all_off`); and with the macro itself defined on the command line
+  (`config_developer_defined`). wasi, which includes nothing of Boost, reads
+  `WEBCPP_NO_EXCEPTIONS` itself, beside the compiler's own macros, until its
+  redesign includes `<webcpp/config.hpp>`. MrDocs parses a library as a build
+  with exceptions does, so `config.hpp` defines the macro for the reference
+  under `#ifdef __MRDOCS__` and undefines it at once: the reference lists it,
+  and every API that throws stays in the parse.
 - **An exception is raised through `boost::throw_exception`, never a bare
   `throw`,** and every API that throws sits behind
   `#ifndef WEBCPP_<NAME>_NO_EXCEPTIONS`, so that code that uses it does not
@@ -2656,9 +2664,8 @@ What webcpp does not have yet, and the chapters that mention it:
   webcpp builds them from `third_party/`, each pinned there by a commit or a
   SHA-256.
 - **Every library on `<webcpp/config.hpp>`.** Each library's `config.hpp`
-  includes it first, and `WEBCPP_NO_EXCEPTIONS` disables every library's
-  exceptions at once (xactor, xstate, pratt and trystero; wasi with its
-  redesign, which brings Boost into it).
+  includes it first: trystero (held with config's publication), and wasi with
+  its redesign, which brings Boost into it.
 - **Allocators.** The rule of chapter 6, shareable data structures with an
   `Allocator` template parameter and every other allocation through the
   user's allocator, applied first to xactor, xstate and wasi, whose response
