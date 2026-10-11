@@ -132,6 +132,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 REPORT = ROOT / 'tools/report/report.py'
 
+# Whether site/ (webcpporg/webcpporg.github.io) is checked out, as Jamroot's own check: plan adds
+# site-test only then, and only for the whole superproject, which is what the site reads.
+SITE_JAMFILE = ROOT / 'site/Jamfile'
+
 # The targets a library may declare, which the report spells: tools/report/lanes.py's TARGETS.
 sys.path.insert(0, str(ROOT / 'tools/report'))
 from lanes import TARGETS  # noqa: E402
@@ -235,8 +239,13 @@ class Lane:
     # Whether one of its libraries needs a library webcpp does not build (EXTERNAL_DEPENDENCIES):
     # the plan sets it.
     external: bool = False
-    # The b2 projects it builds: libs/<library>/test and libs/<library>/example of each library.
+    # The b2 projects it builds: libs/<library>/test and libs/<library>/example of each library,
+    # or, for site-test, /webcpp/site//test alone.
     projects: tuple[str, ...] = field(default_factory=tuple)
+    # Whether the lane writes --out-xml for the report: every lane does except site-test, whose
+    # npm test and typecheck write none, run as an own lane that names no target does, b2 -a
+    # toolset=<toolset> <projects>, its exit status alone the verdict.
+    reports: bool = True
 
 
 class Failure(Exception):
@@ -349,6 +358,15 @@ LANES = (
     wasm_lane('wasip3'),
 )
 
+# The site's own tests (site/Jamfile, b2 /webcpp/site//test), run on Clang 18 as an own lane that
+# names no target does: its toolset builds nothing of the site, which is JavaScript and Python,
+# but b2 needs one registered to load the project at all. plan adds it whenever the site is
+# checked out and no single library is named: the site reads every library, so it is the
+# superproject's own lane, never one library's.
+SITE_TEST = Lane(id='site-test', name="The site's own tests", os='ubuntu-24.04', target='site',
+                 lane='site-test', toolset='clang-18', using='using clang : 18 : clang++-18 ;',
+                 cc='clang-18', cxx='clang++-18', projects=('/webcpp/site//test',), reports=False)
+
 
 def environment() -> dict[str, str]:
     """This process's environment without the variables the Jamroot refuses."""
@@ -420,6 +438,8 @@ def plan(pairs: list[tuple[str, str]], library: str | None) -> list[Lane]:
                              for part in ('test', 'example'))
             external = any(needs_external(name) for name in libraries)
             lanes.append(replace(lane, projects=projects, external=external))
+    if library is None and SITE_JAMFILE.is_file():
+        lanes.append(SITE_TEST)
     return lanes
 
 
@@ -713,8 +733,13 @@ def external_arguments(external: bool) -> list[str]:
               if os.environ.get(name))]
 
 
-def lane_command(lane: Lane, user_config: Path, xml: Path, extra: list[str]) -> list[str]:
-    """The lane command: b2, from scratch, writing xml, for the lane's toolset and projects."""
+def lane_command(lane: Lane, user_config: Path, xml: Path | None, extra: list[str]) -> list[str]:
+    """The lane command: b2, from scratch, for the lane's toolset and projects; writing xml,
+    except when lane.reports is false (site-test), whose exit status alone is the verdict, as an
+    own lane that names no target runs."""
+    if not lane.reports:
+        return ['b2', f'--user-config={user_config}', '-a', f'toolset={lane.toolset}',
+                *external_arguments(lane.external), *lane.options, *extra, *lane.projects]
     return ['b2', f'--user-config={user_config}', '-a', '--dump-tests', f'--out-xml={xml}',
             f'toolset={lane.toolset}', *external_arguments(lane.external), *lane.options, *extra,
             *lane.projects]
@@ -814,16 +839,23 @@ def contained(command: list[str], mounted: list[Path]) -> list[str]:
 
 
 def run_lane(lane: Lane, user_config: Path, out_dir: Path, extra: list[str]) -> int:
-    """Runs the lane, in its container when it has one, and returns its exit status."""
+    """Runs the lane, in its container when it has one, and returns its exit status; one that
+    reports no XML (site-test) by its exit status alone, as an own lane without a target does."""
     lane = resolved(lane)
     register(lane, user_config)
+    label = f'lane {lane.lane}'
+    if not lane.reports:
+        status = run_b2(label, lane_command(lane, user_config, None, extra))
+        if status != 0:
+            raise Failure(f'{label}: b2 exited {status}')
+        return 0
     xml = fresh_xml(out_dir, lane.lane)
     command = lane_command(lane, user_config, xml, extra)
     if lane.container:
         container_image()
         command = contained(command, [user_config.parent, xml.parent])
-    status = run_b2(f'lane {lane.lane}', command)
-    return recorded(f'lane {lane.lane}', lane.lane, xml, status)
+    status = run_b2(label, command)
+    return recorded(label, lane.lane, xml, status)
 
 
 def run_own_lane(own: OwnLane, user_config: Path, out_dir: Path, extra: list[str]) -> int:
@@ -867,8 +899,9 @@ def lane_files(lanes: list[Lane], directory: Path) -> tuple[list[tuple[str, Path
 
 
 def run_report(lanes: list[Lane], directory: Path, out: Path) -> int:
-    """Runs tools/report/report.py on what the lanes wrote, and returns the verdict."""
-    found, missing = lane_files(lanes, directory)
+    """Runs tools/report/report.py on what the lanes wrote, and returns the verdict: a lane that
+    reports no XML (site-test) is its own job's verdict, never named here, missing or found."""
+    found, missing = lane_files([lane for lane in lanes if lane.reports], directory)
     status = 0
     if found:
         arguments = [argument for name, file in found for argument in ('--lane', f'{name}={file}')]

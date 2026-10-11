@@ -438,8 +438,15 @@ if [ glob site/Jamfile ]
     make site-declared.txt : : @site%write-declared : <webcpp-boost-check>off ;
     make libraries.json : site-declared.txt : @site%write-catalogue : <webcpp-boost-check>off ;
     always site-declared.txt libraries.json ;
-    notfile site : @site%assemble : libraries.json /webcpp/site//pages
+    # site-pages lays bin/site/ out, indexes it and checks its links
+    # (site.assemble); site adds no step of its own, but depends on
+    # valid-html too, which must run after site-pages, never beside it, since
+    # it reads the bin/site/ that step writes: valid-html depends on
+    # site-pages itself (tools/site/site.jam), so the two stay ordered
+    # however site's own dependencies are listed.
+    notfile site-pages : @site%assemble : libraries.json /webcpp/site//pages
       : [ site.requirements ] <webcpp-boost-check>off ;
+    alias site : site-pages /webcpp/site//valid-html : <webcpp-boost-check>off ;
     notfile site-serve : @site%serve
       : : <dependency>site <dependency>/webcpp/site//node-modules <webcpp-boost-check>off ;
     if site-serve in [ modules.peek : ARGV ]
@@ -523,5 +530,5 @@ explicit boost_version throw_exception boost_json emscripten-reference test exam
     install $(.install) declared-targets declared-lanes site site-serve ;
 if [ glob site/Jamfile ]
 {
-    explicit site-declared.txt libraries.json ;
+    explicit site-declared.txt libraries.json site-pages ;
 }

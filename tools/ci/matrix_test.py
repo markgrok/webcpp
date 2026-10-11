@@ -124,12 +124,52 @@ def test_plan_of_every_library(root):
     assert [lane['id'] for lane in planned(root, '--library', 'plain')] == NATIVE
 
 
+# The site-test lane, as the plan writes it when site/Jamfile is checked out.
+SITE_TEST_LANE = {'id': 'site-test', 'name': "The site's own tests", 'os': 'ubuntu-24.04',
+                  'target': 'site', 'lane': 'site-test', 'toolset': 'clang-18',
+                  'using': 'using clang : 18 : clang++-18 ;', 'detect': '', 'options': [],
+                  'wasm': False, 'emsdk': False, 'node': False, 'cc': 'clang-18',
+                  'cxx': 'clang++-18', 'container': False, 'external': False,
+                  'projects': ['/webcpp/site//test'], 'reports': False}
+
+
+def site_jamfile(root: Path) -> None:
+    """Gives root a site/Jamfile, as Jamroot's own `[ glob site/Jamfile ]` checks for: site/ is
+    left out of a scratch superproject (harness.TOP_IGNORED), as libs/ is, for a case that wants
+    one to add. Its text does not matter to plan, which only checks the file is there."""
+    (root / 'site').mkdir(exist_ok=True)
+    (root / 'site/Jamfile').write_text('# A stub, for matrix_test.py alone.\n')
+
+
+def test_plan_adds_site_test_only_for_the_whole_superproject_with_the_site_checked_out(root):
+    # site-test reads every library, so plan adds it only when none is named alone, and only
+    # when the site is checked out; it is the one lane with no target among those a library
+    # declares, so it is never filtered out by what the libraries of libs/ declare.
+    assert 'site-test' not in {lane['id'] for lane in planned(root)}, 'no site/Jamfile yet'
+    site_jamfile(root)
+    lanes = planned(root)
+    assert lanes[-1] == SITE_TEST_LANE, lanes[-1]
+    assert [lane['id'] for lane in lanes] == NATIVE + ['wasip2', 'wasip3', 'site-test'], lanes
+    # Named for one library alone, the plan is that library's: never the site's.
+    assert 'site-test' not in {lane['id'] for lane in planned(root, '--library', 'demo')}
+
+
+def test_site_test_runs_b2_on_the_site_s_test_alone_its_exit_status_the_verdict(root):
+    # site-test writes no XML: its command has no --dump-tests or --out-xml, as an own lane that
+    # names no target runs, and the report never waits on it (run_report, lane_files).
+    config = Path('user-config.jam')
+    assert matrix.lane_command(matrix.SITE_TEST, config, None, []) == [
+        'b2', f'--user-config={config}', '-a', 'toolset=clang-18', '/webcpp/site//test']
+    assert matrix.run_report([matrix.SITE_TEST], root / 'downloaded', root / 'report') == 0, (
+        'a lane that reports no XML is never missing, never waited on')
+
+
 # The emscripten lane, as the plan writes it for a library that declares emscripten.
 EMSCRIPTEN_LANE = {'id': 'emscripten', 'name': 'Emscripten 6.0.11 (node)', 'os': 'ubuntu-24.04',
                    'target': 'emscripten', 'lane': 'emscripten', 'toolset': 'emscripten',
                    'using': '{emsdk.jam}', 'detect': '', 'options': [], 'wasm': False,
                    'emsdk': True, 'node': True, 'cc': '', 'cxx': '', 'container': False,
-                   'external': False}
+                   'external': False, 'reports': True}
 
 
 def test_plan_of_a_library_on_emscripten(root):
@@ -216,7 +256,9 @@ def test_a_target_without_a_lane_fails(_):
         raise AssertionError('a target without a lane was planned')
     finally:
         matrix.LANES = original
-    assert [lane.id for lane in matrix.plan(pairs, None)] == NATIVE + ['emscripten']
+    # This checkout's own site/Jamfile is real, so plan(..., None) adds site-test, as it would for
+    # any whole-superproject plan run from here.
+    assert [lane.id for lane in matrix.plan(pairs, None)] == NATIVE + ['emscripten', 'site-test']
 
 
 def test_an_unknown_library_fails(root):
@@ -1209,6 +1251,8 @@ CASES = [
     test_plan_of_one_library,
     test_plan_with_no_toolset_configured,
     test_plan_of_every_library,
+    test_plan_adds_site_test_only_for_the_whole_superproject_with_the_site_checked_out,
+    test_site_test_runs_b2_on_the_site_s_test_alone_its_exit_status_the_verdict,
     test_plan_of_a_library_on_emscripten,
     test_whether_a_library_declares_emscripten,
     test_the_docs_and_lint_jobs_install_emsdk_when_a_library_declares_emscripten,

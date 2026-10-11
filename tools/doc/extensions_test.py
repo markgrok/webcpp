@@ -489,6 +489,33 @@ def test_tables_scroll_in_their_own_box(_: None) -> None:
     assert re.findall(r'<td [^>]*data-label="([^"]*)"', html)[-3:] == ['A', 'B', 'C'], html
 
 
+def test_anchor_permalinks_are_hidden_from_assistive_tech(_: None) -> None:
+    # A library's page turns on sectanchors: Asciidoctor's permalink before a heading goes to the
+    # heading's own id, so a screen reader gains nothing from it that the heading itself does not
+    # already give; aria-hidden and tabindex="-1" take it out of the accessibility tree (and so out
+    # of html-validate's wcag/h30), while a mouse can still click it to copy the page's deep link.
+    html = body(convert(':sectanchors:\n\n[#x]\n== Heading\n\nText.\n'))
+    assert ('<h2 id="x"><a class="anchor" href="#x" aria-hidden="true" tabindex="-1"></a>Heading'
+            '</h2>') in html, html
+
+
+def test_column_widths_are_a_style_not_the_deprecated_attribute(_: None) -> None:
+    # cols gives each column of a table a width Asciidoctor writes on its <col> as the deprecated
+    # width attribute (no-deprecated-attr); the page carries the same percentage in style instead.
+    html = body(convert('[cols="1,3",options="header"]\n|===\n| A | B\n\n| x | y\n|===\n'))
+    assert '<col style="width: 25%;">' in html, html
+    assert '<col style="width: 75%;">' in html, html
+    assert 'width="25%"' not in html and 'width="75%"' not in html, html
+
+
+def test_admonitions_wrap_their_row_in_tbody(_: None) -> None:
+    # Asciidoctor writes an admonition (NOTE, TIP...) as a table with no <thead>, its one row
+    # straight in the <table>, which prefer-tbody flags: the page wraps it in a <tbody>.
+    html = body(convert('NOTE: A note.\n'))
+    assert '<div class="admonitionblock note">\n<table>\n<tbody>\n<tr>' in html, html
+    assert html.count('<tbody>') == html.count('</tbody>') == 1, html
+
+
 def css_rules(text: str) -> list[tuple[str | None, list[str], dict[str, str]]]:
     """The rules of a stylesheet, each as its media query (None outside one), its selectors and
     its declarations."""
@@ -651,6 +678,9 @@ CASES: list[Callable[[None], None]] = [
     test_a_quote_of_several_words_keeps_its_closing_quote,
     test_reference_apostrophes_stay_straight_in_code_and_targets,
     test_tables_scroll_in_their_own_box,
+    test_anchor_permalinks_are_hidden_from_assistive_tech,
+    test_column_widths_are_a_style_not_the_deprecated_attribute,
+    test_admonitions_wrap_their_row_in_tbody,
     test_style_breaks_a_word_only_when_it_must,
     test_style_keeps_part_breaks_to_a_phone,
     test_breaks_are_never_wbr_and_never_copied,

@@ -12,15 +12,20 @@
 #   site-declared.txt  the pairs "<library> <target>" the libraries declare,
 #                      as b2 declared-targets prints them (webcpp.declared);
 #   libraries.json     the site's catalogue, tools/site/catalogue.py;
-#   site               the site: the site's pages (/webcpp/site//pages, its
+#   site-pages         the site: the site's pages (/webcpp/site//pages, its
 #                      Jamfile), the docs index and every library's page, the
-#                      report, laid out into bin/site/ by tools/ci/assemble.py
-#                      once bin/site/ is removed, then the indexing files, then
-#                      every link checked;
+#                      report, laid out into bin/site.tmp/ by
+#                      tools/ci/assemble.py, then the indexing files, then
+#                      every link checked, then moved onto bin/site/, which
+#                      stays the last build that passed every step;
+#   site               site-pages, then /webcpp/site//valid-html, which reads
+#                      bin/site/ once site-pages has moved it there;
 #   site-serve         bin/site/ served at http://127.0.0.1:8765/.
 #
 # The site's Jamfile declares context.json, what its pages are rendered with,
-# with write-context below, and pages, which renders them.
+# with write-context below, pages, which renders them, test, which runs the
+# site's own tests, and valid-html, which checks every page of bin/site/ is
+# valid HTML, html-validate against .htmlvalidate.json.
 #
 # b2 site builds the docs with b2 doc, in the layout of the site (doc.jam),
 # unless -sWEBCPP_SITE_DOCS=<dir> names pages built already, a superproject's
@@ -60,8 +65,12 @@ if ! [ type.registered STAMP ]
 .root = [ path.parent [ path.parent $(.here) ] ] ;
 .site = $(.root)/site ;
 
-# What b2 site writes, and where b2 site-serve serves it.
+# What b2 site writes, and where b2 site-serve serves it; and the sibling
+# directory assemble builds into first, so that a failed step never leaves a
+# half-written bin/site: only a build that finishes every step is moved onto
+# bin/site, in the same action that builds it.
 .out = [ path.native $(.root)/bin/site ] ;
+.tmp = [ path.native $(.root)/bin/site.tmp ] ;
 .port = 8765 ;
 
 .bases.preview = "https://webcpporg.github.io/" ;
@@ -223,7 +232,8 @@ rule assemble ( targets * : sources * : properties * )
     REPORT on $(targets) = $(report) ;
     BASE on $(targets) = $(base) ;
     OUT on $(targets) = $(.out) ;
-    INDEX on $(targets) = [ npm build : --index $(.out) --base $(base) --catalogue $catalogue
+    TMP on $(targets) = $(.tmp) ;
+    INDEX on $(targets) = [ npm build : --index $(.tmp) --base $(base) --catalogue $catalogue
         --superproject [ path.native $(.root) ] ] ;
 }
 
@@ -232,9 +242,16 @@ rule assemble ( targets * : sources * : properties * )
 # sources apart by their names. The catalogue is made absolute for the npm
 # script, which runs in the site's directory.
 #
+# Every step writes bin/site.tmp, never bin/site itself, so that a step that
+# fails (set -e stops the action there) leaves bin/site as it was, the
+# previous build or none, never half of a new one; bin/site becomes this
+# build's only once every step below has passed, the one move at the end.
 # The steps after the check of the links, each a check of the whole site,
-# come here in this order: the check that every page is valid HTML, then the
-# list the PWA precaches, written last so that it lists the final files.
+# come here in this order: the check that every page is valid HTML
+# (/webcpp/site//valid-html, declared in site/Jamfile, depends on this
+# target, site-pages at the superproject's root, so it only reads bin/site
+# once this action has moved it there), then the list the PWA precaches,
+# written last so that it lists the final files.
 actions assemble
 {
     set -e
@@ -249,10 +266,12 @@ actions assemble
         /*) ;;
         *) catalogue="`pwd`/$catalogue" ;;
     esac
-    rm -rf "$(OUT)"
-    "$(PYTHON)" "$(ASSEMBLE)" --pages "$pages/pages" --docs "$(DOCS)" --report "$(REPORT)" --chrome "$pages/docs-header.html" --catalogue "$catalogue" --base "$(BASE)" --out "$(OUT)"
+    rm -rf "$(TMP)"
+    "$(PYTHON)" "$(ASSEMBLE)" --pages "$pages/pages" --docs "$(DOCS)" --report "$(REPORT)" --chrome "$pages/docs-header.html" --catalogue "$catalogue" --base "$(BASE)" --out "$(TMP)"
     $(INDEX)
-    "$(PYTHON)" "$(ASSEMBLE)" --check "$(OUT)"
+    "$(PYTHON)" "$(ASSEMBLE)" --check "$(TMP)"
+    rm -rf "$(OUT)"
+    mv "$(TMP)" "$(OUT)"
 }
 
 # The address b2 site-serve serves the site at, which the Jamroot prints as

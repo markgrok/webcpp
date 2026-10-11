@@ -204,6 +204,36 @@ function partsOfURLs(html) {
   return html.replace(BARE_URL, (_link, open, text, close) => open + breakable(text) + close);
 }
 
+// Asciidoctor's permalink anchor, empty before every heading's text, which links to the
+// heading's own id: clicking it goes nowhere a reader is not already at, so a screen reader skips
+// it (`aria-hidden`, which also drops it from html-validate's wcag/h30 since the link is then
+// outside the accessibility tree) while the mouse can still use it to copy the page's deep link.
+const ANCHOR = /<a class="anchor" href="(#[^"]*)"><\/a>/g;
+
+function silentAnchors(html) {
+  return html.replace(ANCHOR, (_anchor, href) =>
+    `<a class="anchor" href="${href}" aria-hidden="true" tabindex="-1"></a>`);
+}
+
+// `cols` gives each column of a table a width Asciidoctor writes on its `<col>` as the deprecated
+// `width` attribute (no-deprecated-attr); the style carries it instead, which no-inline-style
+// (Task 2's docinfo.html.) excepts for the same reason: this percentage is computed per table from
+// `cols` and cannot be a rule of a static sheet.
+const COL_WIDTH = /<col width="([^"]+)">/g;
+
+function styledColumns(html) {
+  return html.replace(COL_WIDTH, (_col, width) => `<col style="width: ${width};">`);
+}
+
+// An admonition (NOTE, TIP, WARNING...) is a table of its own, icon and content, with no
+// `<thead>`: Asciidoctor writes its one row directly in the `<table>`, which prefer-tbody flags.
+const BARE_TABLE = /<table>((?:(?!<table)[\s\S])*?)<\/table>/g;
+
+function tbodied(html) {
+  return html.replace(BARE_TABLE, (whole, inner) =>
+    inner.includes('<tbody>') ? whole : `<table>\n<tbody>${inner}</tbody>\n</table>`);
+}
+
 // The tag that opens a table of Asciidoctor's, `id` before `class` when it has
 // one.
 const TABLEBLOCK = /^<table\b[^>]*\sclass="tableblock\b/;
@@ -355,7 +385,8 @@ function curledApostrophes(html) {
 class Page extends Postprocessor {
   process(_document, output) {
     const page = labelledTables(wordsOfCode(decodeEntities(output)));
-    return curledApostrophes(boxedTables(partsOfURLs(partsOfHeadings(page))));
+    const built = curledApostrophes(boxedTables(partsOfURLs(partsOfHeadings(page))));
+    return tbodied(styledColumns(silentAnchors(built)));
   }
 }
 

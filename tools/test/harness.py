@@ -39,8 +39,11 @@ FIXTURES = ROOT / 'tools/test/fixtures'
 COMPILER_PATHS = ('CPATH', 'CPLUS_INCLUDE_PATH', 'C_INCLUDE_PATH')
 
 # Left out of a copy at its top: the repository, the machine-local tools and the real libraries;
-# what git ignores there is left out too (ignored_by_git).
-TOP_IGNORED = {'.git', '.local', 'libs'}
+# what git ignores there is left out too (ignored_by_git). site/ is left out for the same reason
+# as libs/: whether it is checked out, and what git ignores under it, is a developer's own
+# machine, never a case's; a case that wants one adds its own Jamfile (matrix_test.py's
+# site_jamfile, tools/site/site_test.py's own copy of the real site/).
+TOP_IGNORED = {'.git', '.local', 'libs', 'site'}
 
 # Left out of a copy at any depth: what a build or a run writes.
 IGNORED = {'bin', 'node_modules', '.node-modules', '__pycache__', '.DS_Store'}

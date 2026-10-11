@@ -165,12 +165,53 @@ def test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page(scratch: Path)
     assert (site / 'index.html').is_file()
 
 
+def test_a_failed_build_leaves_the_previous_bin_site_or_none(scratch: Path) -> None:
+    # tools/site/site.jam's assemble lays bin/site/ out, indexes it and checks its links in
+    # bin/site.tmp/, moved onto bin/site/ only once every step passes: a link check that fails
+    # (here, before valid-html ever runs) must leave the previous build, never half of a new one.
+    root = superproject(scratch)
+    docs = docs_fixture(scratch, root)
+    first = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}')
+    assert first.returncode == 0, (first.returncode, first.stdout[-4000:], first.stderr[-2000:])
+    site = root / 'bin/site'
+    before = (site / 'index.html').read_text()
+    libraries = sorted(build.parent.name for build in (root / 'libs').glob('*/build.jam'))
+    page = docs / f'libs/{libraries[0]}/doc/html/index.html'
+    page.write_text(page.read_text().replace('</body>', '<a href="nowhere.html">gone</a></body>'))
+    second = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}')
+    assert second.returncode != 0, (second.returncode, second.stdout[-4000:], second.stderr[-2000:])
+    output = second.stdout + second.stderr
+    assert 'fault' in output and 'nowhere.html' in output, output[-4000:]
+    # The fault is the link check's, inside site-pages, well before valid-html could run on what
+    # it writes: html-validate is never invoked, so a report naming a file is only ever this one.
+    assert 'html-validate' not in output, output[-4000:]
+    assert site.is_dir(), 'bin/site must still exist: the previous build, never half of a new one'
+    assert (site / 'index.html').read_text() == before, 'bin/site must be the previous build, unchanged'
+
+
 def test_the_release_channel_needs_its_version(scratch: Path) -> None:
     root = superproject(scratch)
     result = b2(root, 'site', '-sWEBCPP_SITE=release', f'-sWEBCPP_SITE_DOCS={scratch}')
     assert result.returncode != 0, (result.stdout, result.stderr)
     assert '-sWEBCPP_SITE_VERSION' in result.stdout + result.stderr, result.stdout
     assert not (root / 'bin/site').exists()
+
+
+def test_valid_html_fails_the_build_naming_the_file(scratch: Path) -> None:
+    # /webcpp/site//valid-html (site/Jamfile), b2 site's last step, runs html-validate over every
+    # page of bin/site/: a page that is not valid HTML fails the build, naming the file and the
+    # fault, after bin/site/ already holds this build (site-pages has moved it there).
+    root = superproject(scratch)
+    docs = docs_fixture(scratch, root)
+    libraries = sorted(build.parent.name for build in (root / 'libs').glob('*/build.jam'))
+    page = docs / f'libs/{libraries[0]}/doc/html/index.html'
+    page.write_text(page.read_text().replace(
+        '<h2 id="usage">Usage</h2>', '<h2 id="usage">Usage</h2><ul><li><p>Unclosed</li></ul>'))
+    result = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}')
+    assert result.returncode != 0, (result.returncode, result.stdout[-4000:], result.stderr[-2000:])
+    output = result.stdout + result.stderr
+    assert 'valid-html' in output, output[-4000:]
+    assert f'libs/{libraries[0]}/index.html' in output, output[-4000:]
 
 
 def test_a_channel_is_preview_or_release(scratch: Path) -> None:
@@ -185,6 +226,8 @@ def test_a_channel_is_preview_or_release(scratch: Path) -> None:
 
 CASES: list[Callable[[Path], None]] = [
     test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page,
+    test_a_failed_build_leaves_the_previous_bin_site_or_none,
+    test_valid_html_fails_the_build_naming_the_file,
     test_the_release_channel_needs_its_version,
     test_a_channel_is_preview_or_release,
 ]
