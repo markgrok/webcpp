@@ -35,9 +35,9 @@ cache on the compiler and the emscripten build; libdatachannel clones the tag, r
 commit before CMake runs, builds it with the lane's compilers against OPENSSL_ROOT, which it
 refuses without, Debug on Windows, where it puts its DLL on PATH, and keys its cache on the
 compilers and OpenSSL's version; openssl lays out the system's OpenSSL 3 as links on Linux and
-macOS, copies the image's on Windows, from lib/VC/x64/MD first, downloads the pinned installer
-when the image has none, and refuses one that is not OpenSSL 3; and each refuses a runner it
-builds nothing for. Nothing is fetched
+macOS, those of Debian's include/<multiarch>/openssl too, copies the image's on Windows, from
+lib/VC/x64/MD first, downloads the pinned installer when the image has none, and refuses one that
+is not OpenSSL 3; and each refuses a runner it builds nothing for. Nothing is fetched
 from the network: the downloads are file:// URLs, git is a stand-in, and install.sh runs against
 a download.sh that only says it was called, or that hands it a stand-in archive. Run with the
 names of some cases to run only those."""
@@ -1064,12 +1064,17 @@ def test_secp256k1_refuses_a_runner_it_builds_nothing_for(scratch: Path) -> None
     assert not (scratch / '.local/secp256k1-native').exists()
 
 
-def openssl_root(scratch: Path, name: str = 'openssl', major: str | None = '3') -> Path:
-    """A stand-in installation of OpenSSL: include/openssl/ssl.h and opensslv.h, which states
-    major as its OPENSSL_VERSION_MAJOR, or none, as OpenSSL 1.1's."""
+def openssl_root(scratch: Path, name: str = 'openssl', major: str | None = '3',
+                 configuration: str = '') -> Path:
+    """A stand-in installation of OpenSSL: include/openssl/ssl.h, opensslv.h, which states major
+    as its OPENSSL_VERSION_MAJOR, or none, as OpenSSL 1.1's, and opensslconf.h, there or, with
+    configuration, a multiarch tuple, in include/<configuration>/openssl, as Debian keeps it."""
     root = scratch / name
     (root / 'include/openssl').mkdir(parents=True)
     (root / 'include/openssl/ssl.h').write_text('/* ssl.h */\n')
+    configured = root / 'include' / configuration / 'openssl'
+    configured.mkdir(parents=True, exist_ok=True)
+    (configured / 'opensslconf.h').write_text('/* opensslconf.h */\n')
     version = f'# define OPENSSL_VERSION_MAJOR  {major}\n' if major else ''
     (root / 'include/openssl/opensslv.h').write_text(
         f'{version}# define OPENSSL_VERSION_TEXT "OpenSSL {major or "1.1"}.0.13"\n')
@@ -1228,6 +1233,41 @@ def test_openssl_lays_out_the_runners_own(scratch: Path) -> None:
             system, (root / 'github-env').read_text())
         assert 'install.sh: OpenSSL 3 in .local/openssl' in result.stdout, result.stdout
         assert downloads(root) == [], system
+
+
+def test_openssl_on_debian_links_the_headers_of_its_configuration_too(scratch: Path) -> None:
+    # Debian and Ubuntu keep opensslconf.h and configuration.h in the architecture's
+    # include/<multiarch>/openssl, which dpkg-architecture names: include/openssl is then a
+    # directory of links to each header of both, which a parse for another target, which does not
+    # search the architecture's directory, reads whole.
+    system_openssl = openssl_root(scratch, 'system openssl', configuration='x86_64-linux-gnu')
+    (system_openssl / 'include/x86_64-linux-gnu/openssl/configuration.h').write_text('/* c */\n')
+    for library in ('libssl', 'libcrypto'):
+        (system_openssl / 'lib' / f'{library}.so').write_text(library)
+    tools = {'pkg-config': '#!/bin/sh\ncase "$1" in\n'
+                           f'    --variable=includedir) echo "{system_openssl}/include" ;;\n'
+                           f'    --variable=libdir) echo "{system_openssl}/lib" ;;\n'
+                           '    *) exit 1 ;;\nesac\n',
+             'dpkg-architecture': '#!/bin/sh\n[ "$*" = -qDEB_HOST_MULTIARCH ] && '
+                                  'echo x86_64-linux-gnu\n'}
+    script, runner = openssl_tree(scratch, 'Linux', 'X64', tools)
+    result = dependency_step(scratch, script, runner)
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    laid = scratch.resolve() / '.local/openssl/include/openssl'
+    assert laid.is_dir() and not laid.is_symlink(), laid
+    real = system_openssl.resolve() / 'include'
+    assert {entry.name: entry.resolve() for entry in laid.iterdir()} == {
+        'ssl.h': real / 'openssl/ssl.h', 'opensslv.h': real / 'openssl/opensslv.h',
+        'opensslconf.h': real / 'x86_64-linux-gnu/openssl/opensslconf.h',
+        'configuration.h': real / 'x86_64-linux-gnu/openssl/configuration.h'}, (
+        sorted(laid.iterdir()))
+    # Without the architecture's directory, the action refuses, naming where it looked.
+    shutil.rmtree(system_openssl / 'include/x86_64-linux-gnu')
+    result = dependency_step(scratch, script, runner)
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert (f'install.sh: neither {system_openssl}/include/openssl nor {system_openssl}/include/'
+            'x86_64-linux-gnu/openssl holds opensslconf.h') in result.stderr, result.stderr
+    assert not (scratch / '.local/openssl').exists()
 
 
 def test_openssl_on_windows_copies_the_images_and_puts_its_dlls_on_path(scratch: Path) -> None:
@@ -1530,6 +1570,7 @@ CASES: list[Callable[[Path], None]] = [
     test_libdatachannel_refuses_another_commit,
     test_libdatachannel_refuses_a_runner_or_no_openssl,
     test_openssl_lays_out_the_runners_own,
+    test_openssl_on_debian_links_the_headers_of_its_configuration_too,
     test_openssl_on_macos_installs_openssl_3_when_the_image_lacks_it,
     test_openssl_on_windows_copies_the_images_and_puts_its_dlls_on_path,
     test_openssl_on_windows_without_one_downloads_the_pinned_installer,

@@ -10,6 +10,11 @@
 #ifndef WEBCPP_BROWSER_DEMO_PAGE_HPP
 #define WEBCPP_BROWSER_DEMO_PAGE_HPP
 
+// Like Emscripten's own headers, <emscripten/wire.h> among them, which declares a binding of long
+// and one of int64_t, page.hpp holds only for wasm32's types: a native parse on a 64-bit host
+// stops here, first.
+static_assert(sizeof(long) == 4, "page.hpp is read for wasm32");
+
 #include <emscripten/val.h>
 
 #include <string>

@@ -14,9 +14,10 @@
 # of /path/to/emsdk and of $(emsdk), and the node wrapper it installs,
 # quoted, in place of /path/to/node and of $(node); the documentation shows
 # the regions from here. No build loads this file. The emsdk these lines
-# name is the toolset's alone: a reference's Emscripten headers come from
-# -sWEBCPP_EMSDK=<dir> on b2's command line, else .local/emsdk, where the
-# action installs it (the Jamroot's emscripten-headers).
+# name is the toolset's alone: a reference read for Emscripten's target is
+# read with the emsdk -sWEBCPP_EMSDK=<dir> on b2's command line names, else
+# .local/emsdk, where the action installs it (the Jamroot's
+# emscripten-reference).
 #
 # b2 1.92's emscripten toolset probes the node it is given with
 # `--version --experimental-wasm-threads`, a flag Node 24 and newer refuse

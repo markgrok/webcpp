@@ -7,8 +7,8 @@
 import webcpp ;
 
 webcpp.doc browser_demo : browser_demo.adoc ;
-# One native parse of every public header: the native backend's target
-# brings the fake dependency, and /webcpp//emscripten-headers puts
-# Emscripten's own headers on the include path for page.hpp.
+# One parse of every public header, for Emscripten's target, where page.hpp
+# builds (/webcpp//emscripten-reference): the native backend's target brings
+# the fake dependency.
 webcpp.reference browser_demo : <library>/webcpp/browser_demo//native
-  <library>/webcpp//emscripten-headers ;
+  <library>/webcpp//emscripten-reference ;

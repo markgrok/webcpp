@@ -17,19 +17,21 @@
 # tools/doc/reference.py writes the library's API reference with MrDocs,
 # strict, from one translation unit of every public header, and checks with
 # doc_comments.py what MrDocs does not. That translation unit is
-# read natively, with the include directories and the defines of the
-# library's target and of the requirements given: a library whose headers
-# build only for WASI gives those a native parse needs, such as the explicit
+# read with the include directories and the defines of the library's target
+# and of the requirements given, natively: a library whose headers build
+# only for WASI gives those a native parse needs, such as the explicit
 # target <name>-headers of webcpp.wit-bindings, which generates the bindings
-# on any toolset and adds their directory, and the macro of one version; a
-# library whose headers no single target builds gives the target of its
-# native backend, which brings that backend's dependencies, and, for the
-# headers that build only on emscripten, /webcpp//emscripten-headers, which
-# gives Emscripten's own headers, searched after every directory of the
-# host's (<webcpp-include-after>, -idirafter), found in the emsdk that
-# -sWEBCPP_EMSDK=<dir> names, else in .local/emsdk (the Jamroot): MrDocs does
-# not parse an emscripten command on macOS, and a native parse of every
-# header is one reference. A header it cannot parse fails it, naming the header.
+# on any toolset and adds their directory, and the macro of one version. A
+# library with a header that builds only on emscripten gives
+# /webcpp//emscripten-reference, whose emsdk (<webcpp-emsdk>, the one
+# -sWEBCPP_EMSDK=<dir> names, else .local/emsdk: the Jamroot) has the
+# translation unit read for Emscripten's target, as its em++ compiles it,
+# since Emscripten's own headers hold only for wasm32's types; with the
+# target of its native backend, if it has one, which brings that backend's
+# dependencies, and the defines its browser build has, which a requirement
+# conditioned on the emscripten toolset does not give a native build.
+# reference.py says why one translation unit reads every header. A header
+# it cannot parse fails it, naming the header.
 # webcpp.doc converts the page with Asciidoctor.js into
 # libs/<library>/doc/html/index.html, the reference included where the page
 # says include::{reference}[...], once doc-check.py finds the page whole
@@ -111,11 +113,10 @@ import stage ;
 
 if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
 
-# A directory a reference's parse searches after every one of the host's,
-# -idirafter: Emscripten's own headers, which /webcpp//emscripten-headers
-# gives, hold some a host has too (uuid/uuid.h, GL/, X11/), which must stay
-# the host's. Free, as <include> is, and a usage requirement reaches it.
-feature.feature webcpp-include-after : : free path ;
+# The emsdk a reference is read with, for Emscripten's target, which
+# /webcpp//emscripten-reference gives. Free, as <include> is, and a usage
+# requirement reaches it.
+feature.feature webcpp-emsdk : : free path ;
 
 # The page a target belongs to: the library's name, or index for the
 # superproject's index page (a name no library takes). Free, so that it
@@ -407,13 +408,13 @@ rule write-reference ( targets * : sources * : properties * )
     LIBRARY on $(targets) = [ feature.get-values <webcpp-doc-page> : $(properties) ] ;
     STD on $(targets) = [ feature.get-values <cxxstd> : $(properties) ] ;
     INCLUDES on $(targets) = [ feature.get-values <include> : $(properties) ] ;
-    AFTER on $(targets) = [ feature.get-values <webcpp-include-after> : $(properties) ] ;
+    EMSDK on $(targets) = [ feature.get-values <webcpp-emsdk> : $(properties) ] ;
     DEFINES on $(targets) = [ feature.get-values <define> : $(properties) ] ;
 }
 
 actions write-reference
 {
-    "$(PYTHON)" "$(SCRIPT)" --library "$(LIBRARY)" --root "$(ROOT)" --output "$(<)" --mrdocs "$(MRDOCS)" --clang "$(CLANG)" --std "$(STD)" --include$(_)"$(INCLUDES)" --include-after$(_)"$(AFTER)" --define$(_)"$(DEFINES)"
+    "$(PYTHON)" "$(SCRIPT)" --library "$(LIBRARY)" --root "$(ROOT)" --output "$(<)" --mrdocs "$(MRDOCS)" --clang "$(CLANG)" --std "$(STD)" --include$(_)"$(INCLUDES)" --define$(_)"$(DEFINES)" --emsdk$(_)"$(EMSDK)"
 }
 
 # The page each library's doc Jamfile declares with webcpp.doc, as

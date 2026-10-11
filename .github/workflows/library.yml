@@ -379,9 +379,10 @@ jobs:
 
       - uses: ./tools/ci/actions/wasi-wit
 
-      # Emscripten's own headers, which /webcpp//emscripten-headers gives a reference that
-      # parses a header built for emscripten alone, from .local/emsdk, when a library declares
-      # emscripten; without the system libraries, which no page links.
+      # The emsdk in .local/emsdk, whose em++ and clang++ read for Emscripten's target the
+      # reference of a library with a header built for emscripten alone
+      # (/webcpp//emscripten-reference), when a library declares emscripten; with the sysroot in
+      # its cache, and without the system libraries, which no page links.
       - if: needs.plan.outputs.has-emscripten == 'true'
         uses: ./tools/ci/actions/emsdk
         with:

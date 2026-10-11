@@ -180,8 +180,9 @@ Jamroot is its build configuration, and `libs/<name>` is its repository.
   serves the components;
 - for the documentation: Node, MrDocs 2026.9.29 and clang++, and wit-bindgen
   and the WIT for a reference that parses a component's bindings (wasi's),
-  and emsdk's headers for a reference that parses a header that builds only
-  on emscripten (`-sWEBCPP_EMSDK=<dir>`, else `.local/emsdk`, chapter 7);
+  and emsdk, whose `em++` and `clang++` read a reference for Emscripten's
+  target, that of a library with a header that builds only on emscripten
+  (`-sWEBCPP_EMSDK=<dir>`, else `.local/emsdk`, chapter 7);
 - for a library's oracle lane: Node and npm, with Boost and a C++ toolset;
 - for the lint: wasi-sdk 34's clang-format, clang-tidy and clang++, Node,
   the wasip2 and wasip3 toolsets, the emscripten toolset when a library
@@ -283,7 +284,7 @@ taken from the path its `-s` option gives, else from `.local/`, else from
 where the `using clang` lines of `user-config.jam` name it, and, for a
 script's component, `-sWASI_SDK` (above). The emsdk is where the `using
 emscripten` line of `user-config.jam` names its `em++`, for the emscripten
-toolset, and, for a reference's Emscripten headers,
+toolset, and, for a reference read for Emscripten's target,
 `-sWEBCPP_EMSDK=<dir>` on b2's command line, else `.local/emsdk` (chapter 7):
 not a `modules.poke` of `user-config.jam`, nor the environment's `EMSDK`.
 `tools/lint/compile_commands.py` runs b2 with `.local/user-config.jam`, else
@@ -855,30 +856,49 @@ single page, from the library's Doc Comments. `webcpp.reference <name> ;` in
 
 - the input is a compilation database of one aggregate translation unit,
   which includes every public header (the same one the lint analyses), read
-  natively with the include directories and defines of the library's target
-  and of the requirements `webcpp.reference <name> : <requirements> * ;`
-  gives: a library whose headers build only for WASI gives those a native
+  with the include directories and defines of the library's target and of
+  the requirements `webcpp.reference <name> : <requirements> * ;` gives,
+  natively: a library whose headers build only for WASI gives those a native
   parse needs, the explicit target `<bindings>-headers` of
   `webcpp.wit-bindings`, which generates the bindings on any toolset, and the
-  macro of one version; a library whose headers no single target builds
-  gives the target of its native backend, which brings that backend's
-  dependencies, and, for the headers that build only on emscripten,
-  `/webcpp//emscripten-headers`, whose usage requirements give Emscripten's
-  own headers, `<emsdk>/upstream/emscripten/system/include`, as a directory
-  searched after every one of the host's (`<webcpp-include-after>`, which
-  `reference.py` passes with `-idirafter`): it also holds headers a host has
-  (`uuid/uuid.h`, `GL/`, `X11/`), which stay the host's. As in
-  `webcpp.reference browser_demo : <library>/webcpp/browser_demo//native
-  <library>/webcpp//emscripten-headers ;`. The emsdk is
-  `-sWEBCPP_EMSDK=<dir>`, read from b2's command line alone, else
-  `.local/emsdk`, never the environment's `EMSDK`, which `emsdk_env.sh`
-  exports and b2 would read as `-sEMSDK`; its
+  macro of one version;
+- a library with a header that builds only on emscripten gives
+  `/webcpp//emscripten-reference`, whose usage requirements give the
+  reference the emsdk (`<webcpp-emsdk>`): the translation unit is then read
+  for Emscripten's target, as the emsdk's `em++` compiles it with
+  `-fwasm-exceptions`, with the words `em++ -fwasm-exceptions --cflags`
+  prints (its target `wasm32-unknown-emscripten` and its sysroot in
+  Emscripten's cache among them) less its `-mllvm` options, which a parse
+  never reaches: `doc_comments.py` reads it with the emsdk's `clang++`, and
+  MrDocs, which adds the include directories that a command's compiler
+  reports when run alone, with no environment, reads a command whose
+  compiler is `emscripten-clang++`, a script `reference.py` writes, which
+  runs the emsdk's `clang++` with those words, so that the directories are
+  Emscripten's (the emsdk's `clang++` alone names no target and reports
+  none, and MrDocs would take the host compiler's). Emscripten's own headers
+  hold only for wasm32's types: `<emscripten/wire.h>` declares a binding of
+  `long` and one of `int64_t`, which a native parse on Linux x86-64, where
+  `int64_t` is `long`, reads as one declared twice (the CI's red docs job of
+  2026-10-10). Every header is read for that target, in the one translation
+  unit: MrDocs merges the symbols of two translation units by an identifier
+  that holds the types of a function's parameters, and the host's standard
+  library and Emscripten's give one function two (trystero's reference read
+  as a native and an emscripten translation unit had 555 sections for 461).
+  Such a library also gives the target of its native backend, if it has
+  one, which brings that backend's dependencies, and the defines its
+  browser build has, which a requirement conditioned on the emscripten
+  toolset does not give a reference built natively: `webcpp.reference
+  trystero : <library>/webcpp/trystero//native
+  <library>/webcpp//emscripten-reference <define>BOOST_ASIO_DISABLE_THREADS
+  ;`. Read so, trystero's reference is the same on Linux and on macOS, byte
+  for byte. The emsdk is `-sWEBCPP_EMSDK=<dir>`, read from b2's command line
+  alone, else `.local/emsdk`, never the environment's `EMSDK`, which
+  `emsdk_env.sh` exports and b2 would read as `-sEMSDK`; its
   `upstream/emscripten/emscripten-version.txt` must name 6.0.11, the version
-  the emsdk action pins. A build that uses the target stops, naming both
-  places, when the headers are not there, and naming both versions on
-  another. The reference is one native parse of every public header: MrDocs
-  does not parse an emscripten command on macOS, and host clang reads
-  `<emscripten/val.h>`. A header the reference cannot parse fails it, naming
+  the emsdk action pins, and Emscripten's cache is where `EM_CACHE` names, as
+  for any `em++` (chapter 1). A build that uses the target stops, naming both
+  places, when its `em++` or its `clang++` is not there, and naming both
+  versions on another. A header the reference cannot parse fails it, naming
   the header;
 - headers that branch by that macro have each branch's Doc Comments checked:
   `webcpp.reference <name> : <requirements> * : <also-checked> * ;` gives
@@ -1761,9 +1781,11 @@ jobs:
   reference parses its bindings), `b2 -a libs/<library>/doc`, or for the
   superproject `b2 -a doc -sWEBCPP_INDEX=site`, whose pages are the site's,
   and, when the plan's `has-emscripten` is `true`, emsdk in `.local/emsdk`,
-  without its system libraries (`libraries: 'false'`), whose headers
-  `/webcpp//emscripten-headers` gives a reference that parses a header built
-  for emscripten alone; and, when the plan's `external` is `true`, the
+  with the sysroot in its cache and without its system libraries
+  (`libraries: 'false'`), whose `em++` and `clang++` read for Emscripten's
+  target the reference of a library with a header built for emscripten
+  alone (`/webcpp//emscripten-reference`, chapter 7); and, when the plan's
+  `external` is `true`, the
   external libraries, built with Clang 18, whose headers the reference of
   the library, or of a library it uses, parses.
 - **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
@@ -1894,7 +1916,13 @@ wrapper each quoted as one word of Jam.
     directory of its own, never `/usr/include` (GCC 14 and Clang 18 given
     `-isystem /usr/include` no longer find the C library's headers through
     libstdc++'s `#include_next`, as a reference parses its dependencies'
-    directories); on Windows, copies of the headers and of the import
+    directories); Debian and Ubuntu keep the headers of OpenSSL's build
+    configuration, `opensslconf.h` and `configuration.h`, in the
+    architecture's `/usr/include/<multiarch>/openssl`, which
+    `dpkg-architecture` names, and which a parse for another target, as
+    trystero's reference is (chapter 7), does not search: there
+    `include/openssl` is a directory of links to each header of both, and a
+    layout without `opensslconf.h` fails the action; on Windows, copies of the headers and of the import
     libraries `libssl.lib` and `libcrypto.lib` of the image's installation in
     `%ProgramFiles%\OpenSSL` (from the first of `lib/VC/x64/MD`,
     `lib/VC/x64/MDd` and `lib` that holds both), whose `bin`, with the DLLs,
@@ -1984,12 +2012,13 @@ unpinned, and an emcc that is not 6.0.11; the emsdk action's node wrapper,
 libraries, the commands each action builds with, where it installs, what it
 exports and its cache key (the emscripten build's from the emsdk action's
 version), libdatachannel's submodules fetched only after its commit is
-checked, and macOS's `openssl@3` installed with `brew` when absent; the
+checked, macOS's `openssl@3` installed with `brew` when absent, and the
+headers of Debian's `include/<multiarch>/openssl` linked beside the others; the
 chrome action's shell and its `--no-sandbox` wrapper; the container action's
 image, built and saved once, then loaded; and their refusals: an archive of libsecp256k1
 whose SHA-256 is not the pinned one, a libdatachannel at another commit,
-libdatachannel without `OPENSSL_ROOT`, an OpenSSL that is not 3, a
-chrome-headless-shell whose SHA-256 is not the pinned one, and a
+libdatachannel without `OPENSSL_ROOT`, an OpenSSL that is not 3, one
+whose headers hold no `opensslconf.h`, a chrome-headless-shell whose SHA-256 is not the pinned one, and a
 runner none of them builds for.
 
 **The site.** On every run of the superproject's CI, `tools/ci/assemble.py`

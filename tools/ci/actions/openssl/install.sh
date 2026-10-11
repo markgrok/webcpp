@@ -20,10 +20,14 @@
 # lib/ the two libraries, so that a directory of its own, never the system's /usr/include, is
 # given to a compiler: GCC and Clang given -isystem /usr/include no longer find the C library's
 # headers through libstdc++'s #include_next (measured with g++-14 and clang++-18 on Ubuntu 24.04),
-# as a reference parses its dependencies' directories. On Windows it holds copies: the headers,
-# and the import libraries libssl.lib and libcrypto.lib from the first of lib/VC/x64/MD,
-# lib/VC/x64/MDd and lib that holds both (CMake's FindOpenSSL reads the same layout); their DLLs
-# are in the installation's bin, which is put on PATH.
+# as a reference parses its dependencies' directories. Debian and Ubuntu keep the two headers of
+# OpenSSL's build configuration, opensslconf.h and configuration.h, apart, in the architecture's
+# /usr/include/<multiarch>/openssl, which a native compiler searches and a parse for another
+# target, as trystero's reference is, does not: there include/openssl is a directory of links to
+# each header of both, so that it holds every header of OpenSSL. On Windows it holds copies: the
+# headers, and the import libraries libssl.lib and libcrypto.lib from the first of
+# lib/VC/x64/MD, lib/VC/x64/MDd and lib that holds both (CMake's FindOpenSSL reads the same
+# layout); their DLLs are in the installation's bin, which is put on PATH.
 set -euo pipefail
 
 # The installer of Shining Light Productions that the image installs from, as
@@ -65,9 +69,11 @@ check_headers() {
 OPENSSL_VERSION_MAJOR is '${found}'"
 }
 
-# Links include/openssl and the two libraries of libdir with extension into .local/openssl.
+# Links include/openssl and the two libraries of libdir with extension into .local/openssl; with
+# configured, the directory that holds the headers of the build's configuration apart,
+# include/openssl is a directory of links to each header of both.
 link() {
-    local include="$1" libdir="$2" extension="$3"
+    local include="$1" libdir="$2" extension="$3" configured="${4-}"
     check_headers "${include}"
     local library
     for library in libssl libcrypto; do
@@ -76,7 +82,15 @@ link() {
     done
     rm -rf .local/openssl
     mkdir -p .local/openssl/include .local/openssl/lib
-    ln -s "${include}/openssl" .local/openssl/include/openssl
+    if [ -n "${configured}" ]; then
+        mkdir .local/openssl/include/openssl
+        ln -s "${include}/openssl/"* "${configured}/"* .local/openssl/include/openssl/ \
+            || refuse "${include}/openssl and ${configured} could not be linked together"
+    else
+        ln -s "${include}/openssl" .local/openssl/include/openssl
+    fi
+    [ -f .local/openssl/include/openssl/opensslconf.h ] \
+        || refuse "${include}/openssl holds no opensslconf.h"
     for library in libssl libcrypto; do
         ln -s "${libdir}/${library}.${extension}" ".local/openssl/lib/${library}.${extension}"
     done
@@ -85,11 +99,22 @@ link() {
 linux() {
     command -v pkg-config >/dev/null 2>&1 || refuse 'pkg-config, which names the system OpenSSL, \
 is not on PATH'
-    local include libdir
+    local include libdir configured=''
     include="$(pkg-config --variable=includedir openssl)" \
         || refuse 'pkg-config knows no openssl: install the development files of OpenSSL 3'
     libdir="$(pkg-config --variable=libdir openssl)"
-    link "${include}" "${libdir}" so
+    if [ ! -f "${include}/openssl/opensslconf.h" ]; then
+        command -v dpkg-architecture >/dev/null 2>&1 || refuse "${include}/openssl holds no \
+opensslconf.h, and dpkg-architecture, which names Debian's directory of the architecture's \
+headers, is not on PATH"
+        local multiarch
+        multiarch="$(dpkg-architecture -qDEB_HOST_MULTIARCH)" \
+            || refuse 'dpkg-architecture names no multiarch tuple'
+        configured="${include}/${multiarch}/openssl"
+        [ -f "${configured}/opensslconf.h" ] \
+            || refuse "neither ${include}/openssl nor ${configured} holds opensslconf.h"
+    fi
+    link "${include}" "${libdir}" so "${configured}"
 }
 
 macos() {

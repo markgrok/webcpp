@@ -23,15 +23,15 @@ undocumented function of it, and without those requirements fails naming the hea
 Comments of the header's wasip3 branch, which that reference does not parse, are checked with
 the other requirements the doc Jamfile gives, and an undocumented function, a detail symbol
 without a brief and an undocumented macro there each fail it, the first the page too; the
-reference of browser_demo parses natively its header that builds only on emscripten, with
-Emscripten's headers that /webcpp//emscripten-headers finds (-sWEBCPP_EMSDK on the command line,
-never the shell's EMSDK, else .local/emsdk, else the build stops naming both; an emsdk of
-another version is refused), after every directory of the host's, so that none shadows a header
-the host has, and its header that builds only against a dependency, and fails on an undocumented
-function of either; and MrDocs and clang++ given at paths that hold a space are
-found; and a page shows a tagged region of a file the superproject's git tracks, at
-{webcpp-root}, or of one its library's own git tracks, at {library-root}, and fails on one it
-does not track.
+reference of browser_demo reads every header for Emscripten's target, as the em++ of the emsdk
+that /webcpp//emscripten-reference finds compiles (-sWEBCPP_EMSDK on the command line, never
+the shell's EMSDK, else .local/emsdk, else the build stops naming both; an emsdk of another
+version is refused), its header that builds only on emscripten, which holds only for wasm32's
+types and fails a native parse, naming its line, and its header that builds only against a
+dependency, and fails on an undocumented function of either; and MrDocs and clang++ given at
+paths that hold a space are found; and a page shows a tagged region of a file the
+superproject's git tracks, at {webcpp-root}, or of one its library's own git tracks, at
+{library-root}, and fails on one it does not track.
 
 Each case builds a scratch superproject, at a path that holds a space, whose libs/demo is the
 fixture library demo, a git repository of its own as a library's submodule is; the cases of
@@ -42,8 +42,10 @@ names of some cases to run only those.
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -743,16 +745,33 @@ def test_reference_checks_each_branch_of_a_header(root):
 def test_reference_reads_headers_of_one_target(root):
     prepare(root)
     add_browser_demo(root)
-    # page.hpp builds only on emscripten, native.hpp only against the fake dependency. The
-    # reference is one native parse of every public header, with the native backend's target,
-    # which brings the dependency, and Emscripten's own headers on the include path, which
-    # /webcpp//emscripten-headers finds in .local/emsdk.
+    # page.hpp builds only on emscripten, and holds only for wasm32's types, as Emscripten's own
+    # <emscripten/wire.h> does, which a native parse on Linux x86-64 read as a redefinition;
+    # native.hpp builds only against the fake dependency. The reference is one parse of every
+    # public header for Emscripten's target, as the emsdk's em++ compiles, which
+    # /webcpp//emscripten-reference finds in .local/emsdk, with the native backend's target, which
+    # brings the dependency.
     harness.expect(harness.run_b2(root, 'libs/browser_demo/doc//reference'), True)
     reference = next((root / 'bin/libs/browser_demo/doc').rglob('reference.adoc')).read_text()
     for anchor, brief in (('page_title', 'Returns the title of the page the program runs in'),
                           ('native_answer', 'Returns the answer the fake dependency gives')):
         assert f'[#webcpp-browser_demo-{anchor}]' in reference, (anchor, reference)
         assert brief in reference, (brief, reference)
+    # MrDocs reads the command of compile_commands.json, whose compiler is emscripten-clang++, the
+    # script that runs the emsdk's clang++ with the words em++ gives it: MrDocs runs it alone for
+    # the include directories it adds, which are then Emscripten's.
+    local = f'{root.resolve()}/.local/emsdk'
+    database = next((root / 'bin/libs/browser_demo/doc').rglob('compile_commands.json'))
+    command = json.loads(database.read_text())[0]['arguments']
+    script = database.parent.resolve() / 'emscripten-clang++'
+    assert Path(command[0]).resolve() == script, command
+    assert command[1:3] == ['-target', 'wasm32-unknown-emscripten'], command
+    assert '-fwasm-exceptions' in command and '-mllvm' not in command, command
+    assert ran(script) == [f'{local}/upstream/bin/clang++', '-target',
+                           'wasm32-unknown-emscripten'], script.read_text()
+    searched = subprocess.run([str(script), '-v', '-E', '-x', 'c++', '-'], input='', env={},
+                              capture_output=True, text=True, check=True).stderr
+    assert '/sysroot/include/c++/v1\n' in searched, searched
     # An undocumented function in either fails the reference, naming it.
     for header in (BROWSER_PAGE, BROWSER_NATIVE):
         text = (root / header).read_text()
@@ -762,20 +781,18 @@ def test_reference_reads_headers_of_one_target(root):
                        f'{at(root, header, "int undocumented(")}:',
                        'undocumented: function is undocumented')
         (root / header).write_text(text)
-    # -sWEBCPP_EMSDK names another emsdk, which must hold Emscripten's headers and be the
-    # version webcpp pins; without it, and without .local/emsdk, the build stops, naming both
-    # places. The shell's EMSDK, which emsdk_env.sh exports, and a WEBCPP_EMSDK of the
-    # environment, change nothing: the emsdk is .local/emsdk unless the command line says.
+    # -sWEBCPP_EMSDK names another emsdk, which must hold em++ and clang++ and be the version
+    # webcpp pins; without it, and without .local/emsdk, the build stops, naming both places. The
+    # shell's EMSDK, which emsdk_env.sh exports, and a WEBCPP_EMSDK of the environment, change
+    # nothing: the emsdk is .local/emsdk unless the command line says.
     emsdk = (root / '.local/emsdk').resolve()
     harness.expect(harness.run_b2(root, f'-sWEBCPP_EMSDK={emsdk}',
                                   'libs/browser_demo/doc//reference'), True)
-    database = root / 'bin/libs/browser_demo/doc/compile_commands.json'
-    local = f'{root.resolve()}/.local/emsdk'
+    assert ran(script)[0] == f'{emsdk}/upstream/bin/clang++', script.read_text()
     for variable in ('EMSDK', 'WEBCPP_EMSDK'):
         harness.expect(harness.run_b2(root, 'libs/browser_demo/doc//reference',
                                       env_extra={variable: '/nonexistent'}), True)
-        assert f'{local}/upstream/emscripten/system/include' in database.read_text(), (
-            variable, database.read_text())
+        assert ran(script)[0] == f'{local}/upstream/bin/clang++', (variable, script.read_text())
     # An emsdk of another version is refused, naming its version, the pinned one and the file.
     other = fake_emsdk(root, '6.0.10')
     version = other / 'upstream/emscripten/emscripten-version.txt'
@@ -787,40 +804,42 @@ def test_reference_reads_headers_of_one_target(root):
                            (('-sWEBCPP_EMSDK=/nonexistent',),
                             '-sWEBCPP_EMSDK=/nonexistent holds none')):
         harness.expect(harness.run_b2(root, *options, 'libs/browser_demo/doc//reference'), False,
-                       "Emscripten's headers", named, local, '-sWEBCPP_EMSDK=<dir>',
-                       'upstream/emscripten/system/include')
-    # A library whose reference does not ask for them needs no emsdk.
+                       'The emsdk, whose em++ and clang++ read a reference', named, local,
+                       '-sWEBCPP_EMSDK=<dir>', 'upstream/emscripten/em++ is not there')
+    # A library whose reference does not ask for it needs no emsdk.
     harness.expect(harness.run_b2(root, 'libs/demo/doc//reference'), True)
 
 
-def fake_emsdk(root: Path, version: str = '6.0.11', shadowing: str = '') -> Path:
-    """An emsdk of root's own whose upstream/emscripten/system/include holds every entry of this
-    checkout's, by a link, and whose emscripten-version.txt names version; with shadowing, a
-    header of that name too, which the host has, that stops any parse that reads it."""
-    real = harness.ROOT / '.local/emsdk/upstream/emscripten'
-    emsdk = root / f'other emsdk {version}'
-    include = emsdk / 'upstream/emscripten/system/include'
-    include.mkdir(parents=True)
-    for entry in (real / 'system/include').iterdir():
-        (include / entry.name).symlink_to(entry.resolve())
-    (emsdk / 'upstream/emscripten/emscripten-version.txt').write_text(f'"{version}"\n')
-    if shadowing:
-        (include / shadowing).write_text(f'#error "the emsdk\'s {shadowing} shadows the host\'s"\n')
-    return emsdk
+def ran(script: Path) -> list[str]:
+    """The program the script emscripten-clang++ runs, and the first two words it gives it."""
+    line = next(line for line in script.read_text().splitlines() if line.startswith('exec '))
+    return shlex.split(line)[1:4]
 
 
-def test_emscripten_headers_never_shadow_the_host_s(root):
-    # Emscripten's system/include holds headers a host has too (uuid/uuid.h, GL/, X11/): the
-    # reference reads it after every directory of the host's, -idirafter, so that a header the
-    # host has is the host's. An emsdk that ships its own stdint.h, which every header of the
-    # fixture reaches through the standard library, stops no parse.
+def test_a_native_parse_of_a_header_for_wasm32_fails(root):
+    # Read natively with Emscripten's own headers on its include path, as trystero's browser
+    # headers were, the reference fails at page.hpp's line that holds only for wasm32's types, as
+    # it failed at <emscripten/wire.h> on Linux x86-64, here on any 64-bit host, naming it; read
+    # for Emscripten's target, it passes (test_reference_reads_headers_of_one_target).
     prepare(root)
     add_browser_demo(root)
-    emsdk = fake_emsdk(root, shadowing='stdint.h')
-    harness.expect(harness.run_b2(root, f'-sWEBCPP_EMSDK={emsdk}',
-                                  'libs/browser_demo/doc//reference'), True)
-    database = (root / 'bin/libs/browser_demo/doc/compile_commands.json').read_text()
-    assert '"-idirafter",' in database and 'system/include' in database, database
+    headers = (root / '.local/emsdk/upstream/emscripten/system/include').resolve()
+    edit(root, 'libs/browser_demo/doc/Jamfile', '<library>/webcpp//emscripten-reference',
+         f'<include>"{headers}"')
+    harness.expect(harness.run_b2(root, 'libs/browser_demo/doc//reference'), False,
+                   f'{at(root, BROWSER_PAGE, "static_assert(sizeof(long) == 4")}:',
+                   'page.hpp is read for wasm32')
+
+
+def fake_emsdk(root: Path, version: str) -> Path:
+    """An emsdk of root's own whose em++ and clang++ are there, and whose
+    emscripten-version.txt names version."""
+    emsdk = root / f'other emsdk {version}'
+    for tool in ('upstream/emscripten/em++', 'upstream/bin/clang++'):
+        (emsdk / tool).parent.mkdir(parents=True, exist_ok=True)
+        (emsdk / tool).write_text('#!/bin/sh\nexit 1\n')
+    (emsdk / 'upstream/emscripten/emscripten-version.txt').write_text(f'"{version}"\n')
+    return emsdk
 
 
 def test_tools_given_at_paths_with_spaces(root):
@@ -992,7 +1011,7 @@ CASES = [
     test_reference_reads_a_header_built_only_for_wasi,
     test_reference_checks_each_branch_of_a_header,
     test_reference_reads_headers_of_one_target,
-    test_emscripten_headers_never_shadow_the_host_s,
+    test_a_native_parse_of_a_header_for_wasm32_fails,
     test_tools_given_at_paths_with_spaces,
     test_page_outside_git,
     test_counts_warn_and_fail_through_the_build,

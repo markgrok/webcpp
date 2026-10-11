@@ -9,21 +9,34 @@
 
 Usage: reference.py --library <name> --root <superproject> --output <reference.adoc>
     --mrdocs <mrdocs> --clang <clang++> --std <standard> [--include <dir>]...
-    [--include-after <dir>]... [--define <macro>]...
+    [--define <macro>]... [--emsdk <dir>]
 
 The target webcpp.reference declares runs it, from the directory b2 runs in, with the include
 directories and the defines of the library's target and of the requirements its doc Jamfile
-gives (the native backend's dependencies, Emscripten's own headers for a header that builds only
-on emscripten, the bindings of a WASI world), and the language standard of the build: one native
-parse of every public header. A directory given with --include-after is searched after every one
-of the host's (-idirafter): Emscripten's own headers hold some a host has too (uuid/uuid.h, GL/,
-X11/), which must stay the host's. Beside the output it writes:
+gives (the native backend's dependencies, the bindings of a WASI world), and the language
+standard of the build: one parse of every public header, native, or, with --emsdk, for
+Emscripten's target, which a library with a header that builds only on emscripten asks for.
+
+Such a header is read as em++ compiles it, since Emscripten's own headers are written for
+wasm32's types: <emscripten/wire.h> declares a binding of long and one of int64_t, which a host
+where int64_t is long, Linux on x86-64, reads as one declared twice. Every header is read so, in
+the one translation unit: MrDocs merges the symbols of two translation units by an identifier
+that holds the types of a function's parameters, and the standard library of the host and
+Emscripten's give the same function two (measured: 461 sections of trystero's reference became
+555). The parse has the words `em++ -fwasm-exceptions --cflags` prints, from the emsdk's
+em++, its target wasm32-unknown-emscripten and its sysroot in Emscripten's cache among them,
+without its -mllvm options, which a parse never reaches, and -fwasm-exceptions, with which every
+lane builds: doc_comments.py reads it with the emsdk's own clang++, and MrDocs with its own clang,
+given in place of the compiler of the command emscripten-clang++, a script beside the output that
+runs the emsdk's clang++ with those words. MrDocs adds to a command the include directories its
+compiler reports when run alone, with no environment: that script reports Emscripten's, where
+the emsdk's clang++ alone, which names no target, fails, and MrDocs would take the host
+compiler's. Beside the output it writes:
 
 - aggregate.cpp, the library's aggregate translation unit, which tools/lint/compile_commands.py
   writes for the lint too: an include of every public header;
 - compile_commands.json, that translation unit's one command, whose source root is
-  ${MRDOCS_SOURCE_ROOT}, libs/<name>, and whose other include directories are system ones, those
-  of --include-after searched last;
+  ${MRDOCS_SOURCE_ROOT}, libs/<name>, and whose other include directories are system ones;
 - mrdocs.yml, tools/doc/mrdocs.yml.in filled in for the library, with the keys of
   libs/<name>/doc/mrdocs.yml, when there is one, added: only keys of how the reference is
   presented, PRESENTATION below.
@@ -55,6 +68,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -320,6 +334,43 @@ def run_mrdocs(mrdocs: str, config: Path, output: Path) -> list[str]:
             'function that returns a value']
 
 
+def emscripten(emsdk: Path) -> tuple[str, list[str]]:
+    """The emsdk's clang++, and the words with which a header is read as its em++ compiles it with
+    -fwasm-exceptions: those em++ --cflags prints, without its -mllvm options, and
+    -fwasm-exceptions."""
+    emsdk = Path(os.path.abspath(emsdk))
+    em = emsdk / 'upstream/emscripten/em++'
+    clang = emsdk / 'upstream/bin/clang++'
+    for tool in (em, clang):
+        if not tool.is_file():
+            raise Broken(f'--emsdk {emsdk} holds no {tool.relative_to(emsdk)}')
+    try:
+        printed = compile_commands.emscripten_words(str(em), ('-fwasm-exceptions',))
+    except compile_commands.Failure as failure:
+        raise Broken(str(failure)) from failure
+    words: list[str] = []
+    remaining = iter(printed)
+    for word in remaining:
+        if word == '-mllvm':
+            next(remaining, None)
+            continue
+        words.append(word)
+    return str(clang), [*words, '-fwasm-exceptions']
+
+
+def write_compiler(path: Path, clang: str, words: list[str]) -> None:
+    """Writes at path the script that runs clang with words before its own arguments: the compiler
+    of the command MrDocs reads, which MrDocs runs alone, with no environment, for the include
+    directories it adds."""
+    if os.name == 'nt':
+        raise Broken('a reference read for Emscripten\'s target is written on Linux and macOS, '
+                     'where MrDocs runs the script emscripten-clang++')
+    path.write_text('#!/bin/sh\n# Written by tools/doc/reference.py: the emsdk\'s clang++, with '
+                    'the words em++ gives it.\n'
+                    f'exec {shlex.join([clang, *words])} "$@"\n')
+    path.chmod(0o755)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description='Writes a library\'s reference with MrDocs.')
     parser.add_argument('--library', required=True)
@@ -329,14 +380,17 @@ def main(argv: list[str]) -> int:
     parser.add_argument('--clang', required=True)
     parser.add_argument('--std', required=True)
     parser.add_argument('--include', action='append', default=[])
-    parser.add_argument('--include-after', action='append', default=[])
     parser.add_argument('--define', action='append', default=[])
+    parser.add_argument('--emsdk', action='append', default=[], type=Path)
     options = parser.parse_args(argv)
     library: str = options.library
     if not LIBRARY.fullmatch(library):
         parser.error(f'--library {library} is not a library\'s name')
     if not STANDARD.fullmatch(options.std):
         parser.error(f'--std {options.std} is not a C++ standard, such as 20')
+    if len(options.emsdk) > 1:
+        parser.error(f'--emsdk is given {len(options.emsdk)} times: a reference is read with one '
+                     'emsdk')
     try:
         return reference(options)
     except Failure as failure:
@@ -371,13 +425,18 @@ def reference(options: argparse.Namespace) -> int:
             others.append(absolute)
     flags = [f'-std=c++{options.std}', *(f'-D{macro}' for macro in options.define)]
     systems = [word for directory in others for word in ('-isystem', str(directory))]
-    systems += [word for directory in options.include_after
-                for word in ('-idirafter', os.path.abspath(directory))]
+    clang: str = options.clang
+    compiler = 'clang++'
+    if options.emsdk:
+        clang, words = emscripten(options.emsdk[0])
+        compiler = str(work / 'emscripten-clang++')
+        write_compiler(Path(compiler), clang, words)
+        flags = [*words, *flags]
     database = work / 'compile_commands.json'
     database.write_text(json.dumps([{
         'directory': '${MRDOCS_SOURCE_ROOT}',
         'file': str(aggregate),
-        'arguments': ['clang++', *flags, '-I${MRDOCS_SOURCE_ROOT}/include', *systems, '-c',
+        'arguments': [compiler, *flags, '-I${MRDOCS_SOURCE_ROOT}/include', *systems, '-c',
                       str(aggregate)],
     }], indent=4) + '\n')
 
@@ -396,7 +455,7 @@ def reference(options: argparse.Namespace) -> int:
 
     faults = run_mrdocs(options.mrdocs, config, written)
     try:
-        found = doc_comments.check(options.clang, library, include,
+        found = doc_comments.check(clang, library, include,
                                    [*flags, f'-I{include}', *systems, str(aggregate)])
     except doc_comments.Unreadable as unreadable:
         print('\n'.join([*faults, f'reference.py: doc_comments.py: {unreadable}']))

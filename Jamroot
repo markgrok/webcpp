@@ -308,21 +308,20 @@ rule projects ( pattern )
 
 path-constant WEBCPP_ROOT : . ;
 
-# Emscripten's own headers, <emscripten/val.h> among them, for a native parse
-# of a header that builds only on emscripten: a library's reference reads
-# every public header natively (tools/doc/doc.jam), and puts
-# <library>/webcpp//emscripten-headers in its requirements when one of them
-# builds only there. Its usage requirements give the reference
-# <emsdk>/upstream/emscripten/system/include as a directory searched after
-# every one of the host's (<webcpp-include-after>, which reference.py passes
-# with -idirafter), so that the headers it also holds, uuid/uuid.h, GL/ and
-# X11/ among them, never shadow the host's. The emsdk is -sWEBCPP_EMSDK=<dir>
-# on the command line, else .local/emsdk: never the environment's EMSDK,
-# which emsdk_env.sh exports and b2 would read as -sEMSDK. It must be
-# Emscripten 6.0.11, the version tools/ci/actions/emsdk/install.sh pins, as
-# its upstream/emscripten/emscripten-version.txt says. When the headers are
-# not there, or the version is another, the build stops, naming why, only
-# when a target uses it.
+# The emsdk a library's reference is read with, for Emscripten's target, as
+# its em++ compiles (tools/doc/doc.jam): a reference puts
+# <library>/webcpp//emscripten-reference in its requirements when one of the
+# library's headers builds only on emscripten, since Emscripten's own
+# headers, <emscripten/val.h> among them, hold only for wasm32's types. Its
+# usage requirements give the reference the emsdk (<webcpp-emsdk>), whose
+# em++ says how it compiles and whose clang++ reads the headers. The emsdk is
+# -sWEBCPP_EMSDK=<dir> on the command line, else .local/emsdk: never the
+# environment's EMSDK, which emsdk_env.sh exports and b2 would read as
+# -sEMSDK. It must be Emscripten 6.0.11, the version
+# tools/ci/actions/emsdk/install.sh pins, as its
+# upstream/emscripten/emscripten-version.txt says. When its em++ or its
+# clang++ is not there, or the version is another, the build stops, naming
+# why, only when a target uses it.
 .emscripten-version = 6.0.11 ;
 .emsdk-local = [ path.join [ path.root [ path.make $(WEBCPP_ROOT) ] [ path.pwd ] ]
     .local/emsdk ] ;
@@ -333,7 +332,6 @@ if $(.emsdk-given)
     .emsdk-given = $(.emsdk-given[-1]) ;
     .emsdk = [ path.root [ path.make $(.emsdk-given) ] [ path.pwd ] ] ;
 }
-.emscripten-include = $(.emsdk)/upstream/emscripten/system/include ;
 
 # The text of the emsdk's emscripten-version.txt, "6.0.11" with its quotes,
 # or nothing when it has none.
@@ -351,20 +349,23 @@ local rule emscripten-version-text ( )
     return [ SHELL "cat \"$(file)\"" : strip-eol ] ;
 }
 
-rule emscripten-headers-found ( properties * )
+rule emsdk-found ( properties * )
 {
     local linked = [ path.native $(.emsdk-local) ] ;
-    if ! [ path.exists $(.emscripten-include)/emscripten/emscripten.h ]
+    for local tool in upstream/emscripten/em++ upstream/bin/clang++
     {
-        local looked = "no -sWEBCPP_EMSDK=<dir> was given, and $(linked) holds none" ;
-        if $(.emsdk-given)
+        if ! [ path.exists $(.emsdk)/$(tool) ]
         {
-            looked = "-sWEBCPP_EMSDK=$(.emsdk-given) holds none" ;
+            local looked = "no -sWEBCPP_EMSDK=<dir> was given, and $(linked) holds none" ;
+            if $(.emsdk-given)
+            {
+                looked = "-sWEBCPP_EMSDK=$(.emsdk-given) holds none" ;
+            }
+            errors.user-error "The emsdk, whose em++ and clang++ read a reference for"
+                "Emscripten's target (/webcpp//emscripten-reference), was not found: its"
+                "$(tool) is not there: $(looked). Give the emsdk's directory with"
+                "-sWEBCPP_EMSDK=<dir>, or link it at $(linked)." ;
         }
-        errors.user-error "Emscripten's headers, which /webcpp//emscripten-headers"
-            "gives a native parse of a header that builds only on emscripten, were not"
-            "found in upstream/emscripten/system/include of the emsdk: $(looked). Give"
-            "the emsdk's directory with -sWEBCPP_EMSDK=<dir>, or link it at $(linked)." ;
     }
     local text = [ emscripten-version-text ] ;
     local version = [ MATCH "^\"?([^\"]*)\"?$" : $(text) ] ;
@@ -379,8 +380,8 @@ rule emscripten-headers-found ( properties * )
     }
 }
 
-alias emscripten-headers : : <conditional>@emscripten-headers-found
-  : : <webcpp-include-after>$(.emscripten-include) ;
+alias emscripten-reference : : <conditional>@emsdk-found
+  : : <webcpp-emsdk>$(.emsdk) ;
 
 # The documentation toolchain's own targets, tools/doc/Jamfile.
 use-project /webcpp/doc-tools : tools/doc ;
@@ -484,5 +485,5 @@ notfile declared-lanes : @declared-lanes : : <webcpp-boost-check>off ;
 # every test, those the lane skips included. With --out-xml, b2 exits 0 even
 # when a test fails: the report's exit status is the verdict.
 
-explicit boost_version throw_exception boost_json emscripten-headers test example doc
+explicit boost_version throw_exception boost_json emscripten-reference test example doc
     install $(.install) declared-targets declared-lanes ;
