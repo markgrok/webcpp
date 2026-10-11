@@ -6,13 +6,19 @@
 
 # The superproject's CI: the lanes, the own lanes, the docs, the lint, the tests of the tools and
 # the report of library.yml, over every library of libs/ at the commit its submodule points to, and
-# the index page with every library's page. Then tools/ci/assemble.py lays out the site and checks
-# every link of it, on every run, and on main it is published to GitHub Pages,
-# https://webcpporg.github.io/webcpp/:
+# the index page with every library's page. Then:
 #
-#   index.html          the index page;
-#   libs/<name>/        each library's page;
-#   report/             the test matrix, which the pages link to.
+#   site     b2 site builds the whole site into bin/site/ from those pages and the report, with
+#            the site's own pages (site/, webcpporg/webcpporg.github.io), and checks every link
+#            and every page's HTML, on every run; bin/site/ is the artifact site.
+#   publish  on a push to main, commits the artifact site, b2 site's output as it is, with a
+#            .nojekyll, as the one commit of an orphan branch gh-pages and force-pushes that branch
+#            alone to webcpporg/webcpporg.github.io, whose Pages serve it at
+#            https://webcpporg.github.io/. gh-pages is build output, replaced whole. The push uses
+#            the deploy key of that repository, the secret SITE_DEPLOY_KEY.
+#   pages    once publish has succeeded, deploys this repository's own Pages, the old address
+#            https://webcpporg.github.io/webcpp/, as tools/site/redirect.py's two pages, which
+#            send every path under /webcpp/ to the same path at the root.
 #
 # The site is published whenever the pages were built, a red matrix included: the matrix is
 # there to show what fails.
@@ -42,14 +48,20 @@ jobs:
     needs: ci
     if: always() && needs.ci.outputs.docs == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
     steps:
+      # The superproject with its submodules, the site's among them.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          submodules: true
+
+      - uses: ./tools/ci/actions/boost
+
+      - uses: ./tools/ci/actions/node
 
       - name: Download the pages
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -63,22 +75,97 @@ jobs:
           name: report
           path: bin/report
 
-      - name: Assemble the site
-        run: python3 tools/ci/assemble.py --docs bin/pages --report bin/report --out bin/site
+      # The pages and the report built already, so b2 site builds no doc of its own. b2 needs a
+      # toolset registered to load the project, though it compiles nothing here.
+      - name: b2 site
+        run: |
+          python3 tools/ci/matrix.py register clang-18
+          env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH \
+            b2 --user-config=.local/user-config.jam -a toolset=clang-18 site \
+            -sWEBCPP_SITE_DOCS=bin/pages -sWEBCPP_SITE_REPORT=bin/report
 
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      # Every file b2 site wrote, a hidden one included, which upload-artifact leaves out by default.
+      - name: Upload the site
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: site
           path: bin/site
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
-  pages:
-    name: Pages
+  # Only webcpporg/webcpp holds the deploy key: a fork's main publishes nothing. The commit needs
+  # no history of gh-pages, which it replaces whole, so the published repository is never
+  # fetched. The runs on main queue rather than cancel (concurrency, above), so an older site
+  # never replaces a newer one.
+  publish:
+    name: Publish
     needs: site
     if: >-
       always() && needs.site.result == 'success' && github.event_name == 'push'
-      && github.ref == 'refs/heads/main'
+      && github.ref == 'refs/heads/main' && github.repository == 'webcpporg/webcpp'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Download the site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: ${{ runner.temp }}/site
+
+      # The key goes to a file of mode 600, made so by the umask before it holds anything, and no
+      # step prints it. GitHub's host key is the one it publishes (api.github.com/meta), so ssh
+      # trusts no host it has not been told of.
+      - name: Write the deploy key
+        env:
+          SITE_DEPLOY_KEY: ${{ secrets.SITE_DEPLOY_KEY }}
+        run: |
+          if [ -z "$SITE_DEPLOY_KEY" ]; then
+            echo "the secret SITE_DEPLOY_KEY, the deploy key of webcpporg/webcpporg.github.io, is not set"
+            exit 1
+          fi
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$SITE_DEPLOY_KEY" > "$RUNNER_TEMP/ssh/deploy-key"
+          chmod 600 "$RUNNER_TEMP/ssh/deploy-key"
+          printf '%s\n' \
+            'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+            > "$RUNNER_TEMP/ssh/known_hosts"
+
+      - name: Publish to webcpporg.github.io's gh-pages
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          site="$RUNNER_TEMP/site"
+          touch "$site/.nojekyll"
+          git -C "$site" init -q -b gh-pages
+          git -C "$site" add --all
+          git -C "$site" -c user.name=R -c user.email=github.overboard312@passmail.net \
+            -c commit.gpgsign=false commit -q -m "The preview of main at $SHA"
+          export GIT_SSH_COMMAND="ssh -i '$RUNNER_TEMP/ssh/deploy-key' -o IdentitiesOnly=yes \
+            -o UserKnownHostsFile='$RUNNER_TEMP/ssh/known_hosts' -o StrictHostKeyChecking=yes"
+          git -C "$site" push --force git@github.com:webcpporg/webcpporg.github.io.git \
+            refs/heads/gh-pages:refs/heads/gh-pages
+
+      - name: Remove the deploy key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh"
+
+  # The old address redirects only once the site it sends readers to is published.
+  pages:
+    name: Pages
+    needs: publish
+    if: always() && needs.publish.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
@@ -88,6 +175,19 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The redirect to https://webcpporg.github.io/
+        run: >-
+          python3 tools/site/redirect.py --to https://webcpporg.github.io/ --prefix /webcpp/
+          --out bin/redirect
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: bin/redirect
+
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Deploy
