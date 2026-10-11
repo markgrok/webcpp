@@ -92,6 +92,57 @@ sources for every target; a program that uses it needs exceptions.
 configuration check of Boost, which neither needs.
 * Added `webcpp.data`, which gives a test a directory of the host's at the
 same path on every target, through wasmtime's `--dir` on WASI.
+* Added `b2 site` and `b2 site-serve`: the whole site, every library's page
+and the report under its header, into `bin/site/`, every link checked, then
+served.
+* Added the site's tests, `b2 /webcpp/site//test`, and a CI lane that runs
+them.
+* Changed CI to publish the site, never indexed, at
+https://webcpporg.github.io/; the old address
+https://webcpporg.github.io/webcpp/ redirects there.
+* Added `/webcpp//emscripten-reference`, which reads a library's reference as
+Emscripten's `em++` compiles it, with the emsdk of `-sWEBCPP_EMSDK=<dir>` or
+`.local/emsdk`.
+* Changed the lint to analyse headers and programs that build only on
+emscripten, with the options `em++` gives them, or only against a native
+dependency.
+* Changed the CI's docs and lint jobs to install emsdk only when a library
+declares emscripten.
+* Changed the lint's analysis without exceptions to leave out, by name, a
+header whose headers-alone call declares `<exception-handling>on`.
+* Changed the lint's `*this` rule to allow an assignment operator however
+its signature is split, a prefix increment or decrement, and a function
+marked `lint-std`.
+* Changed the lint's `io_context::run` rule to find an `io_context` named
+through a namespace alias, and to accept a reason after `lint-run:`.
+* Changed the lint's world rule to name `getentropy`, `getrandom`,
+`arc4random`, `RAND_bytes` and `<sys/random.h>`.
+* Changed the lint's licence rule to check `.js`, `.adoc` and `.html` files
+too.
+* Added `webcpp.external`, which finds a library webcpp does not build
+through `-s<VARIABLE>=<dir>`, `.local/` or the system, and leaves out a
+library that needs a missing one.
+* Added `webcpp-require-external=on`, which stops the build on a missing
+external library instead, as the CI and the lint build.
+* Changed the index to name a library a build leaves out, with the reason
+and no link.
+* Changed `b2 install` to put each library's licence files beside its
+headers.
+* Added `+{library-root}+`, through which a library's page shows a tagged
+region of a file its own git tracks, a test's or an example's as {cpp}.
+* Added doc-check rules: a rendered page holds no em dash, no link inside
+inline code, and no replacement of Asciidoctor's inside inline code.
+* Changed every library's reference to list only a derived class's own
+members (`inherit-base-members: never`).
+* Changed a page's counts to read with a thousands separator, as 1,111.
+* Changed the CI's GCC 14 and Clang 18 lanes to run in a container built
+from Ubuntu's archive snapshot, with no network but the loopback.
+* Added a pinned chrome-headless-shell to the CI, for the own lanes whose
+driver meets a browser.
+* Added the CI actions `secp256k1`, `libdatachannel` and `openssl`, which
+build trystero's external libraries, pinned, with each lane's compilers.
+* Changed the Node package installer to run `npm ci` with `DO_NOT_TRACK=1`,
+so that no install script reports an install.
 
 [#webcpp-0-1-0-compilers-tested]
 == Compilers tested
