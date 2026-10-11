@@ -577,7 +577,7 @@ def test_whats_new_lists_updated_libraries(directory: Path) -> None:
 
 
 def test_whats_new_highlights_are_checked(directory: Path) -> None:
-    # check names an uncommitted path first, alone (uncommitted_findings, Task 7): a written
+    # check names an uncommitted path first, alone (uncommitted_findings): a written
     # What's new is committed here before each check, as the release procedure commits it once
     # its highlights are filled.
     tree = scratch.make_tree(directory)
@@ -923,9 +923,9 @@ def test_whats_new_a_fence_refuses_the_rest_of_highlights(directory: Path) -> No
 
 
 def test_whats_new_every_adversarial_input(directory: Path) -> None:
-    # Every input the review and re-reviews 1 to 3 of Task 8 tried, each named by its exact
-    # findings, which check finds on a committed tree: the ones that defeated a round, and the
-    # ones they found correct, so that no round reopens an earlier one.
+    # Every adversarial input the Highlights grammar was tried against, each named by its exact
+    # findings, which check finds on a committed tree: the ones that once defeated it, and the
+    # ones found correct, so that none of them is reopened.
     case = Highlights(directory)
     real = '- **New libraries**: real one.'
     clean = ('- **New libraries**: five header-only libraries arrive.',
@@ -941,12 +941,12 @@ def test_whats_new_every_adversarial_input(directory: Path) -> None:
     fenced = (case.opens(2), case.inside(3, opener), case.inside(4, opener),
               case.inside(6, opener))
     cases: list[tuple[str, str, list[str]]] = [
-        # The review.
+        # Two markers on a line, and a category twice.
         ('two markers on one line, one highlight', case.text(
             '- **New libraries**: five. - **Dependencies**: one.'), []),
         ('a duplicated category', case.text(
             '- **Dependencies**: one.', '- **Dependencies**: two.'), [ORDER]),
-        # Re-review 1.
+        # A marker hidden in a code span, a link or a split line, and line endings.
         ('a marker in a code span', case.text(
             real, '', '`- **Developer experience**: fake extra credit.`'), [case.at(2)]),
         ('a marker in a link', case.text(
@@ -963,7 +963,7 @@ def test_whats_new_every_adversarial_input(directory: Path) -> None:
         ('CRLF line endings', case.text(*clean).replace('\n', '\r\n'), []),
         ('six highlights on six lines', case.text(*(['- **Dependencies**: one.'] * 6)),
          [f'{WHATS_NEW}: 6 highlights, and there are at most 5', ORDER]),
-        # Re-review 2.
+        # Fences, tabs, stars, a second heading and comments.
         ('a backtick fence', case.text(
             real, '', '```', '- **Dependencies**: fake.', '```', '', clean[1]), list(fenced)),
         ('a tab after the colon', case.text(
@@ -982,7 +982,7 @@ def test_whats_new_every_adversarial_input(directory: Path) -> None:
          [case.at(0, 'a tab')]),
         ('a star in the category, first', case.text('- **New*libraries**: fake.'),
          [case.at(0)]),
-        # Task 8b: a nested list item starts a Markdown block, which no continuation may.
+        # A nested list item starts a Markdown block, which no continuation may.
         ('a nested list item', case.text(real, '  - a nested item.'), [case.block(1)]),
         ('no highlights at all', case.text(), []),
         ('a category outside ASCII', case.text('- **Café**: one.'), [case.at(0, CATEGORY)]),
@@ -993,7 +993,7 @@ def test_whats_new_every_adversarial_input(directory: Path) -> None:
             '- **New libraries**: one.', '- **Performance improvements**: two.',
             '- **Dependencies**: three.', '- **Security & reliability**: four.',
             '- **Developer experience**: five.'), []),
-        # Re-review 3.
+        # Fences of every form, comments over several lines and bare line endings.
         ('a tilde fence', case.text(
             real, '', '~~~', '- **Dependencies**: fake.', '~~~', '', clean[1]), list(fenced)),
         ('a fence with an info string', case.text(
@@ -1105,7 +1105,7 @@ def test_whats_new_section_ends_at_a_heading(directory: Path) -> None:
 
 
 def test_whats_new_a_continuation_starts_no_markdown_block(directory: Path) -> None:
-    # Task 8b: a continuation's text, after its two spaces, is more of the highlight's sentence
+    # A continuation's text, after its two spaces, is more of the highlight's sentence
     # only when Markdown reads it so: one that starts a block (a list item, a heading, a quote,
     # a table row, a thematic break or a setext underline) shows the reader that block inside
     # the bullet instead, and is named on its line.
