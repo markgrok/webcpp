@@ -10,7 +10,8 @@
 #
 #   site     b2 site builds the whole site into bin/site/ from those pages and the report, with
 #            the site's own pages (site/, webcpporg/webcpporg.github.io), and checks every link
-#            and every page's HTML, on every run; bin/site/ is the artifact site.
+#            and every page's HTML, on every run; the build bin/site links to is the artifact
+#            site.
 #   publish  on a push to main, commits the artifact site, b2 site's output as it is, with a
 #            .nojekyll, as the one commit of an orphan branch gh-pages and force-pushes that branch
 #            alone to webcpporg/webcpporg.github.io, whose Pages serve it at

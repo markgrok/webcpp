@@ -279,7 +279,7 @@ actions assemble
         *) catalogue="`pwd`/$catalogue" ;;
     esac
     rm -rf "$(TMP)"
-    "$(PYTHON)" "$(ASSEMBLE)" --pages "$pages/pages" --docs "$(DOCS)" --report "$(REPORT)" --chrome "$pages/docs-header.html" --catalogue "$catalogue" --base "$(BASE)" --out "$(TMP)"
+    "$(PYTHON)" "$(ASSEMBLE)" --pages "$pages/pages" --docs "$(DOCS)" --report "$(REPORT)" --chrome "$pages/docs-header.html" --site-chrome "$pages/site-header.html" --catalogue "$catalogue" --base "$(BASE)" --out "$(TMP)"
     $(INDEX)
     "$(PYTHON)" "$(ASSEMBLE)" --check "$(TMP)"
     mkdir -p "$(BUILDS)"

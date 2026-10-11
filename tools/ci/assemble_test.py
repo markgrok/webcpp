@@ -29,9 +29,12 @@ from pathlib import Path
 
 ASSEMBLE = Path(__file__).resolve().parent / 'assemble.py'
 BASE = 'https://webcpporg.github.io/'
-CHROME = ('<header class="site"><a class="logo" href="./"><img src="assets/logo.svg" '
+# The two headers the site renders: the light pages' (Asciidoctor's), whose mark is the light one,
+# and the site's own, whose mark follows the reader's theme.
+CHROME = ('<header class="site"><a class="logo" href="./"><img src="assets/logo-light.svg" '
           'alt="webcpp"></a><nav><a href="libraries/">Libraries</a>'
           '<a href="report/">Report</a></nav></header>')
+SITE_CHROME = CHROME.replace('assets/logo-light.svg', 'assets/logo.svg')
 
 
 def page(path: Path, body: str, title: str = 'a page', body_tag: str = '<body>') -> None:
@@ -50,6 +53,7 @@ class Built:
     docs: Path
     report: Path
     chrome: Path
+    site_chrome: Path
     catalogue: Path
 
 
@@ -69,6 +73,7 @@ def built(scratch: Path, docs_index: str = '', links: str = '../libs/{name}/',
     (pages / 'assets/site.css').write_text('body { margin: 0; }\n')
     (pages / 'assets/chrome.css').write_text('header.site { margin: 0; }\n')
     (pages / 'assets/logo.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg"/>\n')
+    (pages / 'assets/logo-light.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg"/>\n')
     (pages / 'llms.txt').write_text('# webcpp\n')
     for name in ('alpha', 'beta'):
         (pages / 'cards/libs').mkdir(parents=True, exist_ok=True)
@@ -93,6 +98,8 @@ def built(scratch: Path, docs_index: str = '', links: str = '../libs/{name}/',
     (report / 'output/gcc-14/x.txt').write_text('output\n')
     chrome = scratch / 'docs-header.html'
     chrome.write_text(CHROME)
+    site_chrome = scratch / 'site-header.html'
+    site_chrome.write_text(SITE_CHROME)
     catalogue = scratch / 'libraries.json'
     catalogue.write_text(json.dumps([
         {'key': 'alpha', 'name': 'alpha', 'description': 'The first library, a port of Alpha.',
@@ -104,13 +111,14 @@ def built(scratch: Path, docs_index: str = '', links: str = '../libs/{name}/',
          'category': ['Concurrent'], 'targets': ['native', 'wasip2'], 'port_of': None,
          'page': 'libs/beta/', 'repository': 'https://github.com/webcpporg/beta'},
     ], indent=4))
-    return Built(pages, docs, report, chrome, catalogue)
+    return Built(pages, docs, report, chrome, site_chrome, catalogue)
 
 
 def lay_out(inputs: Built, out: Path, report: str | None = None) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(ASSEMBLE), '--pages', str(inputs.pages),
                            '--docs', str(inputs.docs), '--report', report or str(inputs.report),
-                           '--chrome', str(inputs.chrome), '--catalogue', str(inputs.catalogue),
+                           '--chrome', str(inputs.chrome), '--site-chrome', str(inputs.site_chrome),
+                           '--catalogue', str(inputs.catalogue),
                            '--base', BASE, '--out', str(out)],
                           capture_output=True, text=True, check=False)
 
@@ -154,8 +162,11 @@ def test_without_a_report_a_page_says_none_was_given(scratch: Path) -> None:
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
     report = (out / 'report/index.html').read_text()
     assert 'No test results were given to this build' in report
-    # The site's own page, headed as a library's page is, and styled as the site's pages are.
+    # The site's own page, headed with the site's own header, whose mark follows the reader's theme
+    # as the page itself does, and styled as the site's pages are.
     assert report.index('<body>\n<header class="site">') > 0, report
+    assert 'src="../assets/logo.svg"' in report, report
+    assert 'logo-light' not in report, report
     assert report.index('href="../assets/chrome.css"') < report.index('href="../assets/site.css"')
     result = check(out)
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
@@ -169,7 +180,7 @@ def test_the_header_and_the_stylesheet_head_every_docs_and_library_page(scratch:
                        ('libs/beta/index.html', '../../')):
         html = (out / name).read_text()
         header = (f'<header class="site"><a class="logo" href="{root}"><img '
-                  f'src="{root}assets/logo.svg" alt="webcpp"></a><nav><a '
+                  f'src="{root}assets/logo-light.svg" alt="webcpp"></a><nav><a '
                   f'href="{root}libraries/">Libraries</a><a href="{root}report/">Report</a>'
                   '</nav></header>')
         assert re.search(r'<body[^>]*>\n?' + re.escape(header), html), (name, html)

@@ -148,10 +148,16 @@ def test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page(scratch: Path)
                  'cards/goes.png', *(f'libs/{library}/index.html' for library in libraries)):
         assert (site / name).is_file(), name
     assert 'No test results were given to this build' in (site / 'report/index.html').read_text()
+    # The report's page is the site's own and turns dark with the reader's theme: its header's mark
+    # follows the theme too, where a library's page, light alone, shows the light mark.
+    report_header = (site / 'report/index.html').read_text().split('</header>')[0]
+    assert 'src="../assets/logo.svg"' in report_header, report_header
+    assert 'logo-light' not in report_header, report_header
     catalogue = json.loads((site / 'libraries.json').read_text())
     assert sorted(entry['key'] for entry in catalogue) == libraries, catalogue
     library = (site / f'libs/{libraries[0]}/index.html').read_text()
     assert '<header class="site">' in library, library[:3000]
+    assert 'src="../../assets/logo-light.svg"' in library.split('</header>')[0], library[:3000]
     assert '<link rel="stylesheet" href="../../assets/chrome.css">' in library, library[:3000]
     assert 'assets/site.css' not in library, 'a library\'s page keeps its own style'
     assert f'<title>{libraries[0]}: a library for C++ - webcpp</title>' in library

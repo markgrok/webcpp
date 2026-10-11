@@ -8,8 +8,8 @@
 """Lays out webcpp's site, which `b2 site` builds into bin/site/ (tools/site/site.jam), and checks
 that every link in it resolves.
 
-Usage: assemble.py --pages DIR --docs ROOT --report DIR|- --chrome FILE --catalogue FILE
-                   --base URL --out DIR
+Usage: assemble.py --pages DIR --docs ROOT --report DIR|- --chrome FILE --site-chrome FILE
+                   --catalogue FILE --base URL --out DIR
        assemble.py --check DIR
 
 The first form lays the site out in DIR, which is empty or does not exist:
@@ -26,11 +26,13 @@ root, or a copy of its doc/html and libs/<name>/doc/html. A place the site's own
 hold, docs/, libs/ or report/, fails.
 
 Every page of docs/ and libs/, and the report's page of the second kind, gets the site's header
-and its style: --chrome is the header's HTML, with its links from the site's root, inserted after
-the page's <body> with each relative link rebased from the page; and a <link rel="stylesheet"> to
+and its style: the header's HTML, with its links from the site's root, inserted after the page's
+<body> with each relative link rebased from the page; and a <link rel="stylesheet"> to
 assets/chrome.css, relative from the page, goes before its </head>. That stylesheet styles the
-header and nothing else, so that a page Asciidoctor styled keeps its look; the report's page of
-the second kind is the site's own, and links site.css too.
+header and nothing else, so that a page Asciidoctor styled keeps its look. Asciidoctor's pages,
+light alone, get --chrome, whose mark is the light one; the report's page of the second kind is
+the site's own, links site.css too and turns dark with the reader's theme, so it gets
+--site-chrome, whose mark follows the theme.
 
 --catalogue is the site's libraries.json (tools/site/catalogue.py). Each library of ROOT/libs is
 one of its entries, by key, and each entry has its page. A library's page gets the head the
@@ -274,7 +276,7 @@ def with_library_head(text: str, library: dict[str, Any],
     return text, fault, library_head(library, heading, base)
 
 
-def assemble(pages: Path, docs: Path, report: Path | None, chrome: str,
+def assemble(pages: Path, docs: Path, report: Path | None, chrome: str, site_chrome: str,
              catalogue: list[dict[str, Any]], base: str, out: Path) -> list[str]:
     """Writes the site into out, which is empty or does not exist, and returns the libraries."""
     libraries = sorted(library.name for library in (docs / 'libs').glob('*') if library.is_dir())
@@ -317,8 +319,9 @@ def assemble(pages: Path, docs: Path, report: Path | None, chrome: str,
             text, fault, head = with_library_head(text, entries[library.group(1)], base)
             if fault:
                 faults.append(fault)
-        text = headed(text, name, chrome, root_of(out, page), head)
-        if name == 'report/index.html':
+        own = name == 'report/index.html'
+        text = headed(text, name, site_chrome if own else chrome, root_of(out, page), head)
+        if own:
             text = text.replace('</head>', '<link rel="stylesheet" href="../assets/site.css">\n'
                                 '</head>', 1)
         page.write_text(text, encoding='utf-8')
@@ -422,17 +425,19 @@ def main(arguments: list[str]) -> int:
     parser.add_argument('--docs', type=Path, metavar='ROOT')
     parser.add_argument('--report', metavar='DIR|-')
     parser.add_argument('--chrome', type=Path, metavar='FILE')
+    parser.add_argument('--site-chrome', type=Path, metavar='FILE')
     parser.add_argument('--catalogue', type=Path, metavar='FILE')
     parser.add_argument('--base', metavar='URL')
     parser.add_argument('--out', type=Path, metavar='DIR')
     options = parser.parse_args(arguments)
-    layout = ('pages', 'docs', 'report', 'chrome', 'catalogue', 'base', 'out')
+    layout = ('pages', 'docs', 'report', 'chrome', 'site_chrome', 'catalogue', 'base', 'out')
     if options.check:
-        given = [f'--{name}' for name in layout if getattr(options, name) is not None]
+        given = [f'--{name.replace("_", "-")}' for name in layout
+                 if getattr(options, name) is not None]
         if given:
             parser.error(f'--check takes no other option, and {", ".join(given)} given')
         return check(options.check)
-    missing = [f'--{name}' for name in layout if getattr(options, name) is None]
+    missing = [f'--{name.replace("_", "-")}' for name in layout if getattr(options, name) is None]
     if missing:
         parser.error(f'{", ".join(missing)} required, or --check DIR')
     if not re.fullmatch(r'https?://[^/?#]+/([^?#]*/)?', options.base):
@@ -442,13 +447,15 @@ def main(arguments: list[str]) -> int:
         parser.error(f'--out {out} exists and is not an empty directory')
     try:
         chrome = options.chrome.read_text(encoding='utf-8')
+        site_chrome = options.site_chrome.read_text(encoding='utf-8')
         catalogue = json.loads(options.catalogue.read_text(encoding='utf-8'))
     except (OSError, ValueError) as error:
         print(f'assemble.py: {error}', file=sys.stderr)
         return 1
     report = None if options.report == '-' else Path(options.report)
     try:
-        assemble(options.pages, options.docs, report, chrome, catalogue, options.base, out)
+        assemble(options.pages, options.docs, report, chrome, site_chrome, catalogue,
+                 options.base, out)
     except Failure as failure:
         print('\n'.join(f'assemble.py: {line}' for line in str(failure).split('\n')),
               file=sys.stderr)
