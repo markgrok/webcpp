@@ -10,7 +10,10 @@ each library's page under libs/<name>/ and the report under report/, or, without
 that says no results were given; the site's header and its stylesheet head every page of docs/
 and libs/, each link relative from its page; the catalogue gives each library's page its title,
 description, canonical URL, Open Graph, Twitter card and JSON-LD, and a library whose title is
-too long, or which the catalogue and the docs do not both have, fails, naming it. Then --check:
+too long, or which the catalogue and the docs do not both have, fails, naming it. On the preview
+channel every page of the site carries noindex, the report's as report.py wrote them included,
+and a page of the site's own without it fails, naming it; on the release channel none does, and
+a page that does fails; a channel other than the two is a usage error. Then --check:
 every link resolves, the home links the libraries page and that page links every library; a
 link to no file, to no fragment, from the server's root or out of the site is named and fails,
 and so does an index built for the tree; an output directory that holds something is refused.
@@ -29,6 +32,9 @@ from pathlib import Path
 
 ASSEMBLE = Path(__file__).resolve().parent / 'assemble.py'
 BASE = 'https://webcpporg.github.io/'
+# What the site's renderer writes in every page's head on the preview (site/src/head.ts).
+NOINDEX = '<meta name="robots" content="noindex">'
+ROBOTS = re.compile(r'<meta name="robots" content="([^"]*)">')
 # The two headers the site renders: the light pages' (Asciidoctor's), whose mark is the light one,
 # and the site's own, whose mark follows the reader's theme.
 CHROME = ('<header class="site"><a class="logo" href="./"><img src="assets/logo-light.svg" '
@@ -37,10 +43,11 @@ CHROME = ('<header class="site"><a class="logo" href="./"><img src="assets/logo-
 SITE_CHROME = CHROME.replace('assets/logo-light.svg', 'assets/logo.svg')
 
 
-def page(path: Path, body: str, title: str = 'a page', body_tag: str = '<body>') -> None:
+def page(path: Path, body: str, title: str = 'a page', body_tag: str = '<body>',
+         head: str = '') -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n'
-                    f'<title>{title}</title>\n<style>p {{ margin: 0; }}</style>\n</head>\n'
+                    f'<title>{title}</title>\n{head}<style>p {{ margin: 0; }}</style>\n</head>\n'
                     f'{body_tag}\n{body}\n</body>\n</html>\n')
 
 
@@ -59,16 +66,20 @@ class Built:
 
 def built(scratch: Path, docs_index: str = '', links: str = '../libs/{name}/',
           home: str = '<a href="libraries/">Libraries</a>',
-          titles: dict[str, str] | None = None) -> Built:
-    """Inputs for the libraries alpha, a port, and beta, webcpp's own. links is how the docs
-    index links a library's page; home is the body of the site's home."""
+          titles: dict[str, str] | None = None, channel: str = 'preview') -> Built:
+    """Inputs for the libraries alpha, a port, and beta, webcpp's own, the site's own pages
+    rendered for channel. links is how the docs index links a library's page; home is the body of
+    the site's home."""
     titles = titles or {'alpha': 'alpha: the first library', 'beta': 'beta: the second one'}
+    robots = '<meta name="robots" content="{}">\n'.format(
+        'noindex' if channel == 'preview' else 'index, follow')
     pages = scratch / 'pages'
     page(pages / 'index.html', f'<header class="site"></header>{home}<a href="docs/">Docs</a>'
-         '<a href="report/">Report</a><a href="llms.txt">llms.txt</a>', 'Home - webcpp')
+         '<a href="report/">Report</a><a href="llms.txt">llms.txt</a>', 'Home - webcpp',
+         head=robots)
     page(pages / 'libraries/index.html',
          '<a href="../libs/alpha/">alpha</a><a href="../libs/beta/">beta</a>',
-         'Libraries - webcpp')
+         'Libraries - webcpp', head=robots)
     (pages / 'assets').mkdir()
     (pages / 'assets/site.css').write_text('body { margin: 0; }\n')
     (pages / 'assets/chrome.css').write_text('header.site { margin: 0; }\n')
@@ -114,12 +125,15 @@ def built(scratch: Path, docs_index: str = '', links: str = '../libs/{name}/',
     return Built(pages, docs, report, chrome, site_chrome, catalogue)
 
 
-def lay_out(inputs: Built, out: Path, report: str | None = None) -> subprocess.CompletedProcess:
+def lay_out(inputs: Built, out: Path, report: str | None = None,
+            channel: str | None = 'preview') -> subprocess.CompletedProcess:
+    """assemble.py's first form over inputs, for channel, or with no --channel when it is None."""
     return subprocess.run([sys.executable, str(ASSEMBLE), '--pages', str(inputs.pages),
                            '--docs', str(inputs.docs), '--report', report or str(inputs.report),
                            '--chrome', str(inputs.chrome), '--site-chrome', str(inputs.site_chrome),
                            '--catalogue', str(inputs.catalogue),
-                           '--base', BASE, '--out', str(out)],
+                           '--base', BASE, *(['--channel', channel] if channel else []),
+                           '--out', str(out)],
                           capture_output=True, text=True, check=False)
 
 
@@ -195,7 +209,7 @@ def test_the_header_and_the_stylesheet_head_every_docs_and_library_page(scratch:
 
 def test_the_catalogue_gives_each_library_page_its_head(scratch: Path) -> None:
     out = scratch / 'site'
-    result = assembled(built(scratch), out)
+    result = lay_out(built(scratch, channel='release'), out, channel='release')
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
     html = (out / 'libs/alpha/index.html').read_text()
     head = html[:html.index('</head>')]
@@ -230,6 +244,73 @@ def test_the_catalogue_gives_each_library_page_its_head(scratch: Path) -> None:
     beta = {node['@type']: node for node in graph((out / 'libs/beta/index.html').read_text())}
     assert 'isBasedOn' not in beta['SoftwareSourceCode'], beta
     assert beta['SoftwareSourceCode']['runtimePlatform'] == ['WebAssembly', 'WASI 0.2', 'native']
+
+
+def robots_of(site: Path) -> dict[str, list[str]]:
+    """Every HTML page of site, by its path from the root, with the content of each of its
+    robots metas."""
+    return {page.relative_to(site).as_posix(): ROBOTS.findall(page.read_text(encoding='utf-8'))
+            for page in sorted(site.rglob('*.html'))}
+
+
+def test_on_the_preview_every_page_carries_noindex(scratch: Path) -> None:
+    # The preview is the development version, never indexed (the owner, 2026-10-11): the site's
+    # own pages carry noindex from its renderer, and assemble.py writes it into every page it lays
+    # out, the docs', the libraries', and the report's, whether report.py wrote them or not.
+    inputs = built(scratch)
+    for report in (None, '-'):
+        out = scratch / f'site{report or ""}'
+        result = lay_out(inputs, out, report=report)
+        assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+        robots = robots_of(out)
+        expected = {'index.html', 'libraries/index.html', 'docs/index.html',
+                    'libs/alpha/index.html', 'libs/beta/index.html', 'report/index.html'}
+        if report is None:
+            expected.add('report/alpha.html')
+        assert set(robots) == expected, robots
+        assert all(found == ['noindex'] for found in robots.values()), robots
+        assert check(out).returncode == 0
+
+
+def test_on_the_release_no_page_carries_noindex(scratch: Path) -> None:
+    inputs = built(scratch, channel='release')
+    for report in (None, '-'):
+        out = scratch / f'site{report or ""}'
+        result = lay_out(inputs, out, report=report, channel='release')
+        assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+        robots = robots_of(out)
+        assert not any('noindex' in content for found in robots.values() for content in found), (
+            robots)
+        assert robots['libs/alpha/index.html'] == ['index, follow'], robots
+
+
+def test_a_site_page_without_noindex_fails_on_the_preview(scratch: Path) -> None:
+    # The site's renderer writes the robots meta of the channel it is given: a page rendered for
+    # the release, or with none, laid out as the preview's, fails rather than be indexed.
+    inputs = built(scratch, channel='release')
+    result = lay_out(inputs, scratch / 'site')
+    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
+    for name in ('index.html', 'libraries/index.html'):
+        assert f'{name}: no {NOINDEX}' in result.stderr, (name, result.stderr)
+    assert 'docs/index.html' not in result.stderr, result.stderr
+
+
+def test_a_page_with_noindex_fails_on_the_release(scratch: Path) -> None:
+    inputs = built(scratch)
+    result = lay_out(inputs, scratch / 'site', channel='release')
+    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
+    for name in ('index.html', 'libraries/index.html'):
+        assert f'{name}: noindex, which no page of the release carries' in result.stderr, (
+            name, result.stderr)
+
+
+def test_a_channel_is_preview_or_release(scratch: Path) -> None:
+    for channel in (None, 'draft'):
+        out = scratch / 'site'
+        result = lay_out(built(scratch / str(channel)), out, channel=channel)
+        assert result.returncode == 2, (channel, result.returncode, result.stderr)
+        assert '--channel' in result.stderr, (channel, result.stderr)
+        assert not out.exists(), channel
 
 
 def test_a_library_whose_title_is_too_long_fails_naming_it(scratch: Path) -> None:
@@ -306,7 +387,8 @@ def test_the_home_must_link_the_libraries_page(scratch: Path) -> None:
 
 def test_the_libraries_page_links_every_library(scratch: Path) -> None:
     inputs = built(scratch)
-    page(inputs.pages / 'libraries/index.html', '<a href="../libs/alpha/">alpha</a>')
+    page(inputs.pages / 'libraries/index.html', '<a href="../libs/alpha/">alpha</a>',
+         head=f'{NOINDEX}\n')
     result = assembled(inputs, scratch / 'site')
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
     assert 'libraries/index.html: no link to libs/beta/, the page of the library beta' in (
@@ -354,6 +436,11 @@ CASES: list[Callable[[Path], None]] = [
     test_without_a_report_a_page_says_none_was_given,
     test_the_header_and_the_stylesheet_head_every_docs_and_library_page,
     test_the_catalogue_gives_each_library_page_its_head,
+    test_on_the_preview_every_page_carries_noindex,
+    test_on_the_release_no_page_carries_noindex,
+    test_a_site_page_without_noindex_fails_on_the_preview,
+    test_a_page_with_noindex_fails_on_the_release,
+    test_a_channel_is_preview_or_release,
     test_a_library_whose_title_is_too_long_fails_naming_it,
     test_a_library_whose_title_does_not_name_it_fails,
     test_the_catalogue_and_the_docs_must_hold_the_same_libraries,

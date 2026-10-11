@@ -38,7 +38,12 @@
 # no results were given. The channel is -sWEBCPP_SITE: preview, the default,
 # served at https://webcpporg.github.io/, or release, served at
 # https://webcpp.org/, which needs -sWEBCPP_SITE_VERSION=<version>; any other
-# value, and a version on preview, stop the build, named.
+# value, and a version on preview, stop the build, named. The preview is the
+# development version and is never indexed: every page carries noindex
+# (site/src/head.ts writes it in the site's own pages, tools/ci/assemble.py in
+# every other and checks them all), and it writes no sitemap.xml, which its
+# robots.txt does not name; the release has its sitemap and no noindex. Both
+# write llms.txt and libraries.json.
 #
 # Every JavaScript step is one of the site's npm scripts, which b2 runs
 # through site.npm and never repeats: the rendering, the indexing files and
@@ -236,11 +241,12 @@ rule assemble ( targets * : sources * : properties * )
     DOCS on $(targets) = $(docs) ;
     REPORT on $(targets) = $(report) ;
     BASE on $(targets) = $(base) ;
+    CHANNEL on $(targets) = $(channel[1]) ;
     BUILDS on $(targets) = $(.builds) ;
     TMP on $(targets) = $(.tmp) ;
     SWAP on $(targets) = [ npm swap : $(.out) $build ] ;
     INDEX on $(targets) = [ npm build : --index $(.tmp) --base $(base) --catalogue $catalogue
-        --superproject [ path.native $(.root) ] ] ;
+        --channel $(channel[1]) --superproject [ path.native $(.root) ] ] ;
 }
 
 # The site's pages and the docs' header are where the target pages wrote them,
@@ -279,7 +285,7 @@ actions assemble
         *) catalogue="`pwd`/$catalogue" ;;
     esac
     rm -rf "$(TMP)"
-    "$(PYTHON)" "$(ASSEMBLE)" --pages "$pages/pages" --docs "$(DOCS)" --report "$(REPORT)" --chrome "$pages/docs-header.html" --site-chrome "$pages/site-header.html" --catalogue "$catalogue" --base "$(BASE)" --out "$(TMP)"
+    "$(PYTHON)" "$(ASSEMBLE)" --pages "$pages/pages" --docs "$(DOCS)" --report "$(REPORT)" --chrome "$pages/docs-header.html" --site-chrome "$pages/site-header.html" --catalogue "$catalogue" --base "$(BASE)" --channel "$(CHANNEL)" --out "$(TMP)"
     $(INDEX)
     "$(PYTHON)" "$(ASSEMBLE)" --check "$(TMP)"
     mkdir -p "$(BUILDS)"

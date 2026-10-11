@@ -19,7 +19,9 @@ it, so the two pages are the same. Each holds a script that replaces the locatio
 path without the prefix at the new address, its query and its fragment kept
 (/webcpp/libs/pratt/#pratt-limits becomes https://webcpporg.github.io/libs/pratt/#pratt-limits),
 and, for a browser that runs no script, a meta refresh to the new root and a link to it. Its
-canonical link names the new root, so that a search engine indexes the site there.
+canonical link names the new root, and it carries noindex, as every page of webcpporg.github.io
+does: the address is the development version's, which no search engine indexes (the owner,
+2026-10-11).
 
 The script's function target(location) stands between the comments /* target: begin */ and
 /* target: end */, so that tools/site/redirect_test.py can run it alone.
@@ -53,6 +55,7 @@ PAGE = '''<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>webcpp has moved</title>
 <link rel="canonical" href="{to_attribute}">
+<meta name="robots" content="noindex">
 <script>
 /* target: begin */
 function target(location) {{

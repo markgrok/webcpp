@@ -9,7 +9,7 @@
 that every link in it resolves.
 
 Usage: assemble.py --pages DIR --docs ROOT --report DIR|- --chrome FILE --site-chrome FILE
-                   --catalogue FILE --base URL --out DIR
+                   --catalogue FILE --base URL --channel preview|release --out DIR
        assemble.py --check DIR
 
 The first form lays the site out in DIR, which is empty or does not exist:
@@ -48,9 +48,19 @@ channel's absolute URL ending with "/":
                         BreadcrumbList.
 
 A page whose title does not start with "<name>: ", or is longer, with " - webcpp", than 60
-characters, fails, naming the library. The first form exits 0 with the site written; 1 when an
-input is missing or does not agree with the others, each fault named; 2 on a usage error or when
-DIR exists and is not empty. Its links are left for the second form, which b2 site runs once the
+characters, fails, naming the library.
+
+--channel is the site's (tools/site/site.jam). The preview, the development version, is never
+indexed (the owner, 2026-10-11): every page assemble.py lays out, of docs/, libs/ and report/,
+the report's pages as report.py wrote them included, gets <meta name="robots" content="noindex">
+in its head, a library's page in place of the "index, follow" its head has on the release. Then
+every page of the site, the site's own too, which its renderer writes for the channel it is given
+(site/src/head.ts), is checked: on the preview each must carry noindex and nothing else of robots,
+on the release none may carry noindex, and each page that does not hold is named.
+
+The first form exits 0 with the site written; 1 when an input is missing or does not agree with
+the others, or a page's robots with its channel, each fault named; 2 on a usage error or when DIR
+exists and is not empty. Its links are left for the second form, which b2 site runs once the
 indexing files, which the pages link, are written.
 
 The second form checks the site in DIR: the home links libraries/, and libraries/index.html links
@@ -81,6 +91,12 @@ LICENCE = 'https://www.boost.org/LICENSE_1_0.txt'
 PLATFORMS = {'emscripten': 'Emscripten', 'wasip2': 'WASI 0.2', 'wasip3': 'WASI 0.3',
              'native': 'native'}
 NO_RESULTS = 'No test results were given to this build'
+# What a page tells a search engine on each channel (site/src/head.ts).
+ROBOTS = {'preview': 'noindex', 'release': 'index, follow'}
+NOINDEX = '<meta name="robots" content="noindex">'
+# The robots metas of a page, whatever the order and quoting of their attributes.
+ROBOTS_META = re.compile(r'<meta\b(?=[^>]*\bname\s*=\s*["\']?robots\b)[^>]*>', re.I)
+CONTENT = re.compile(r'\bcontent\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))', re.I)
 
 
 class Failure(Exception):
@@ -153,6 +169,27 @@ def headed(text: str, name: str, chrome: str, root: str, head: str = '') -> str:
     return text.replace('</head>', f'{head}{stylesheet}</head>', 1)
 
 
+def robots_faults(site: Path, channel: str) -> list[str]:
+    """Each page of site whose robots metas are not its channel's: on the preview, noindex alone;
+    on the release, anything but noindex."""
+    faults = []
+    for page in sorted(site.rglob('*.html')):
+        name = page.relative_to(site).as_posix()
+        contents = []
+        for meta in ROBOTS_META.findall(page.read_text(encoding='utf-8')):
+            found = CONTENT.search(meta)
+            contents.append(next(group for group in found.groups() if group is not None)
+                            if found else '')
+        noindex = [content for content in contents if 'noindex' in content.lower()]
+        if channel == 'preview' and (not noindex or len(contents) != 1):
+            faults.append(f'{name}: no {NOINDEX}, which every page of the preview carries as its'
+                          ' only robots, the development version being never indexed'
+                          + (f' (its robots: {", ".join(contents)})' if contents else ''))
+        elif channel == 'release' and noindex:
+            faults.append(f'{name}: noindex, which no page of the release carries')
+    return faults
+
+
 def no_results() -> str:
     """The report's page when the build was given no results, which headed() then heads: the
     site's own style comes after the chrome's, whose light tokens it turns dark."""
@@ -177,8 +214,8 @@ def script_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False).replace('<', '\\u003c')
 
 
-def library_head(library: dict[str, Any], heading: str, base: str) -> str:
-    """The head of the page of library, whose own title is heading, served at base."""
+def library_head(library: dict[str, Any], heading: str, base: str, channel: str) -> str:
+    """The head of the page of library, whose own title is heading, served at base on channel."""
     title = f'{heading} - webcpp'
     canonical = base + library['page']
     image = f'{base}cards/{library["page"].rstrip("/")}.png'
@@ -225,7 +262,7 @@ def library_head(library: dict[str, Any], heading: str, base: str) -> str:
         f'<title>{html.escape(title, quote=False)}</title>',
         meta('name', 'description', library['description']),
         f'<link rel="canonical" href="{html.escape(canonical)}">',
-        meta('name', 'robots', 'index, follow'),
+        meta('name', 'robots', ROBOTS[channel]),
         meta('property', 'og:title', title),
         meta('property', 'og:description', library['description']),
         meta('property', 'og:url', canonical),
@@ -257,8 +294,8 @@ def page_title(text: str, name: str) -> str:
     return ' '.join(html.unescape(found.group(1)).split())
 
 
-def with_library_head(text: str, library: dict[str, Any],
-                      base: str) -> tuple[str, str, str]:
+def with_library_head(text: str, library: dict[str, Any], base: str,
+                      channel: str) -> tuple[str, str, str]:
     """The page of library without its own <title> and description, the fault of its title or
     "", and the site's head for it, which takes their place."""
     name = library['key']
@@ -273,11 +310,12 @@ def with_library_head(text: str, library: dict[str, Any],
                  'shorten the heading of the library\'s page')
     text = re.sub(r'<title>.*?</title>\n?', '', text, count=1, flags=re.S)
     text = re.sub(r'<meta name="description"[^>]*>\n?', '', text)
-    return text, fault, library_head(library, heading, base)
+    return text, fault, library_head(library, heading, base, channel)
 
 
 def assemble(pages: Path, docs: Path, report: Path | None, chrome: str, site_chrome: str,
-             catalogue: list[dict[str, Any]], base: str, out: Path) -> list[str]:
+             catalogue: list[dict[str, Any]], base: str, channel: str,
+             out: Path) -> list[str]:
     """Writes the site into out, which is empty or does not exist, and returns the libraries."""
     libraries = sorted(library.name for library in (docs / 'libs').glob('*') if library.is_dir())
     if not libraries:
@@ -310,13 +348,22 @@ def assemble(pages: Path, docs: Path, report: Path | None, chrome: str, site_chr
                     *sorted((out / 'libs').rglob('*.html'))]
     if not report:
         headed_pages.append(out / 'report/index.html')
+    # A page of report.py's is the site's own already, and is laid out as it was written, but for
+    # the preview's noindex.
+    noindex = f'{NOINDEX}\n' if channel == 'preview' else ''
+    for page in sorted((out / 'report').rglob('*.html')) if report and noindex else []:
+        name = page.relative_to(out).as_posix()
+        text = page.read_text(encoding='utf-8')
+        if '</head>' not in text:
+            raise Failure(f'{name}: no </head> to put the preview\'s noindex before')
+        page.write_text(text.replace('</head>', f'{noindex}</head>', 1), encoding='utf-8')
     for page in headed_pages:
         name = page.relative_to(out).as_posix()
         text = page.read_text(encoding='utf-8')
-        head = ''
+        head = noindex
         library = re.fullmatch(r'libs/([^/]+)/index\.html', name)
         if library:
-            text, fault, head = with_library_head(text, entries[library.group(1)], base)
+            text, fault, head = with_library_head(text, entries[library.group(1)], base, channel)
             if fault:
                 faults.append(fault)
         own = name == 'report/index.html'
@@ -325,6 +372,7 @@ def assemble(pages: Path, docs: Path, report: Path | None, chrome: str, site_chr
             text = text.replace('</head>', '<link rel="stylesheet" href="../assets/site.css">\n'
                                 '</head>', 1)
         page.write_text(text, encoding='utf-8')
+    faults += robots_faults(out, channel)
     if faults:
         raise Failure('\n'.join(faults))
     return libraries
@@ -428,9 +476,11 @@ def main(arguments: list[str]) -> int:
     parser.add_argument('--site-chrome', type=Path, metavar='FILE')
     parser.add_argument('--catalogue', type=Path, metavar='FILE')
     parser.add_argument('--base', metavar='URL')
+    parser.add_argument('--channel', choices=tuple(ROBOTS))
     parser.add_argument('--out', type=Path, metavar='DIR')
     options = parser.parse_args(arguments)
-    layout = ('pages', 'docs', 'report', 'chrome', 'site_chrome', 'catalogue', 'base', 'out')
+    layout = ('pages', 'docs', 'report', 'chrome', 'site_chrome', 'catalogue', 'base', 'channel',
+              'out')
     if options.check:
         given = [f'--{name.replace("_", "-")}' for name in layout
                  if getattr(options, name) is not None]
@@ -455,7 +505,7 @@ def main(arguments: list[str]) -> int:
     report = None if options.report == '-' else Path(options.report)
     try:
         assemble(options.pages, options.docs, report, chrome, site_chrome, catalogue,
-                 options.base, out)
+                 options.base, options.channel, out)
     except Failure as failure:
         print('\n'.join(f'assemble.py: {line}' for line in str(failure).split('\n')),
               file=sys.stderr)

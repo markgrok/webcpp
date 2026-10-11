@@ -6,7 +6,8 @@
 # https://www.boost.org/LICENSE_1_0.txt)
 
 """Checks tools/site/redirect.py: it writes index.html and 404.html, each with the meta refresh
-to the new address and its canonical link; the script of each maps a path under the prefix to the
+to the new address, its canonical link and noindex, as every page of webcpporg.github.io carries;
+the script of each maps a path under the prefix to the
 same path at the new address, its query and its fragment kept, the prefix itself to the new
 root; and --to without https://, or a --prefix that is not a path between slashes, fails and
 writes nothing. The script's target(location) is cut from each page between its markers and run
@@ -85,7 +86,7 @@ def targets(page: Path, urls: list[str]) -> list[str]:
     return json.loads(result.stdout)
 
 
-def test_both_pages_exist_with_the_refresh_and_the_canonical(root: Path) -> None:
+def test_both_pages_exist_with_the_refresh_the_canonical_and_noindex(root: Path) -> None:
     out = written(root)
     for name in PAGES:
         page = out / name
@@ -93,6 +94,7 @@ def test_both_pages_exist_with_the_refresh_and_the_canonical(root: Path) -> None
         text = page.read_text(encoding='utf-8')
         assert f'<meta http-equiv="refresh" content="0; url={TO}">' in text, text
         assert f'<link rel="canonical" href="{TO}">' in text, text
+        assert '<meta name="robots" content="noindex">' in text, text
 
 
 def test_a_page_and_its_fragment_map_to_the_root(root: Path) -> None:
@@ -155,7 +157,7 @@ def test_a_prefix_that_is_not_a_path_between_slashes_fails(root: Path) -> None:
 
 
 CASES = [
-    test_both_pages_exist_with_the_refresh_and_the_canonical,
+    test_both_pages_exist_with_the_refresh_the_canonical_and_noindex,
     test_a_page_and_its_fragment_map_to_the_root,
     test_the_prefix_maps_to_the_root,
     test_a_query_is_kept,

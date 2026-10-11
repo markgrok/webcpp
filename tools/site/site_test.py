@@ -12,7 +12,10 @@ the root, the docs index at docs/, every library's page under the site's header,
 saying no results were given, the indexing files, every link checked; run with -sWEBCPP_SITE_REPORT
 naming a report written from tools/report/samples/, as the CI's site job names the Report job's,
 its matrices pass valid-html; a page deleted from the site's pages/ between two runs is gone from
-the second bin/site/, its card and its line of the sitemap with it. -sWEBCPP_SITE=release without
+the second bin/site/, its card and its line of llms.txt with it. The preview, the default channel,
+is never indexed: every page carries noindex, and it writes no sitemap.xml, which its robots.txt
+does not name; the release (-sWEBCPP_SITE=release) has its sitemap, named by its robots.txt, and
+no page with noindex; both write llms.txt and libraries.json. -sWEBCPP_SITE=release without
 -sWEBCPP_SITE_VERSION fails, naming the option, and so does any channel but preview and release,
 naming the two.
 
@@ -32,6 +35,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import re
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -43,6 +47,8 @@ USER_CONFIG = ROOT / '.local/user-config.jam'
 # packages, which the copy links from the checkout's.
 IGNORED = shutil.ignore_patterns('.git', 'bin', 'build', 'node_modules', '.node-modules',
                                  '__pycache__', '.DS_Store', 'html', '.local')
+# The robots meta every page of the preview carries, and no page of the release.
+NOINDEX = '<meta name="robots" content="noindex">'
 # A page the first run builds and the second, once it is deleted, must not hold.
 EXTRA_PAGE = '\n'.join([
     '// Copyright (c) 2026 WebCpp.org',
@@ -134,6 +140,12 @@ def docs_fixture(scratch: Path, root: Path) -> Path:
     return docs
 
 
+def html_pages(site: Path) -> dict[str, str]:
+    """Every HTML page of site, by its path from the root, with its text."""
+    return {page.relative_to(site).as_posix(): page.read_text(encoding='utf-8')
+            for page in sorted(site.rglob('*.html'))}
+
+
 def test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page(scratch: Path) -> None:
     root = superproject(scratch)
     docs = docs_fixture(scratch, root)
@@ -145,8 +157,7 @@ def test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page(scratch: Path)
     libraries = sorted(build.parent.name for build in (root / 'libs').glob('*/build.jam'))
     for name in ('index.html', 'libraries/index.html', 'search/index.html', 'docs/index.html',
                  'report/index.html', 'assets/site.css', 'assets/chrome.css', 'assets/site.js',
-                 'robots.txt',
-                 'sitemap.xml', 'llms.txt', 'libraries.json', 'goes/index.html',
+                 'robots.txt', 'llms.txt', 'libraries.json', 'goes/index.html',
                  'cards/goes.png', *(f'libs/{library}/index.html' for library in libraries)):
         assert (site / name).is_file(), name
     assert 'No test results were given to this build' in (site / 'report/index.html').read_text()
@@ -166,7 +177,15 @@ def test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page(scratch: Path)
     commit = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True,
                             text=True, check=True).stdout.strip()
     assert commit[:7] in (site / 'index.html').read_text(), 'the band names the commit'
-    assert 'https://webcpporg.github.io/goes/' in (site / 'sitemap.xml').read_text()
+    # The preview is the development version, never indexed: every page says so, the libraries'
+    # and the report's included, and there is no sitemap to submit.
+    pages = html_pages(site.resolve())
+    assert len(pages) > 10, sorted(pages)
+    missing = [name for name, text in pages.items() if NOINDEX not in text]
+    assert not missing, missing
+    assert not (site / 'sitemap.xml').exists(), 'the preview writes no sitemap'
+    assert 'Sitemap' not in (site / 'robots.txt').read_text()
+    assert 'https://webcpporg.github.io/goes/' in (site / 'llms.txt').read_text()
 
     (root / 'site/pages/goes.oui').unlink()
     second = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}')
@@ -174,8 +193,30 @@ def test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page(scratch: Path)
                                     second.stderr[-3000:])
     assert not (site / 'goes').exists(), 'the deleted page is still in bin/site'
     assert not (site / 'cards/goes.png').exists(), 'the deleted page\'s card is still there'
-    assert 'goes/' not in (site / 'sitemap.xml').read_text()
+    assert 'goes/' not in (site / 'llms.txt').read_text()
     assert (site / 'index.html').is_file()
+
+
+def test_the_release_is_indexed_with_its_sitemap(scratch: Path) -> None:
+    root = superproject(scratch)
+    docs = docs_fixture(scratch, root)
+    result = b2(root, '-a', 'site', '-sWEBCPP_SITE=release', '-sWEBCPP_SITE_VERSION=0.0.0-test',
+                f'-sWEBCPP_SITE_DOCS={docs}')
+    assert result.returncode == 0, (result.returncode, result.stdout[-6000:], result.stderr[-3000:])
+    site = root / 'bin/site'
+    pages = html_pages(site.resolve())
+    assert len(pages) > 10, sorted(pages)
+    indexed = [name for name, text in pages.items()
+               if re.search(r'<meta name="robots" content="[^"]*noindex', text)]
+    assert not indexed, indexed
+    assert '<meta name="robots" content="index, follow">' in pages['index.html']
+    robots = (site / 'robots.txt').read_text()
+    assert 'Sitemap: https://webcpp.org/sitemap.xml' in robots, robots
+    sitemap = (site / 'sitemap.xml').read_text()
+    assert '<loc>https://webcpp.org/</loc>' in sitemap, sitemap
+    assert '<loc>https://webcpp.org/libraries/</loc>' in sitemap, sitemap
+    assert 'https://webcpp.org/libraries/' in (site / 'llms.txt').read_text()
+    assert (site / 'libraries.json').is_file()
 
 
 def test_a_failed_build_leaves_the_previous_bin_site_or_none(scratch: Path) -> None:
@@ -384,6 +425,7 @@ def test_a_channel_is_preview_or_release(scratch: Path) -> None:
 
 CASES: list[Callable[[Path], None]] = [
     test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page,
+    test_the_release_is_indexed_with_its_sitemap,
     test_a_failed_build_leaves_the_previous_bin_site_or_none,
     test_a_server_on_bin_site_answers_every_request_of_a_rebuild,
     test_valid_html_fails_the_build_naming_the_file,
