@@ -495,16 +495,28 @@ def test_wasi_sdk_is_told_by_the_compiler_itself(root):
 def test_wasm_compiler_not_from_wasi_sdk_fails_by_name(root):
     prepare(root)
     add_component_demo(root)
-    # A toolset of wasip2 whose compiler is not wasi-sdk's clang++: a script that runs the host's
-    # clang++, as em++ runs a clang of its own. clang-tidy would read its commands as native ones
-    # and give them the host's --target, so the database refuses them, naming the file and the
-    # compiler.
+    # A toolset of wasip2 whose compiler is not wasi-sdk's clang++: a script that runs a clang
+    # of another installation, as em++ runs a clang of its own, whose resource directory is that
+    # installation's, with no share/wasi-sysroot three levels above it. clang-tidy would read its
+    # commands as native ones and give them the host's --target, so the database refuses them,
+    # naming the file and the compiler. The clang it runs is wasi-sdk's, given the resource
+    # directory of the other installation, a link to wasi-sdk's own: it compiles what the
+    # Jamroot's check of Boost compiles for wasip2, whose -mllvm -wasm-use-legacy-eh=false the
+    # host's clang++ may not know (Clang 18 refuses it, and the check failed before the database
+    # could name the compiler).
     configured = user_config_text(root)
     using = re.search(r'^using clang : wasip2 : (\S+)', configured, re.MULTILINE)
     assert using is not None, configured
-    compiler = root / 'other sdk/bin/em++'
+    clang = wasi_sdk_tool('clang++')
+    resource = subprocess.run([clang, '-print-resource-dir'], capture_output=True, text=True,
+                              check=True).stdout.strip()
+    other = root / 'other sdk'
+    (other / 'lib/clang').mkdir(parents=True)
+    (other / 'lib/clang' / Path(resource).name).symlink_to(resource)
+    compiler = other / 'bin/em++'
     compiler.parent.mkdir(parents=True)
-    compiler.write_text('#!/bin/sh\nexec clang++ "$@"\n')
+    compiler.write_text(f'#!/bin/sh\nexec "{clang}" -resource-dir '
+                        f'"{other}/lib/clang/{Path(resource).name}" "$@"\n')
     compiler.chmod(0o755)
     harness.configure(root, configured.replace(using.group(0),
                                                f'using clang : wasip2 : "{compiler}"', 1))

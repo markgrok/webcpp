@@ -295,6 +295,8 @@ def test_lane_outside_test_or_example_is_refused(root):
 
 
 def test_b2_test_runs_no_node(root):
+    # A machine without Node has no emscripten toolset, whose node b2 runs as it configures it.
+    harness.without_emscripten(root)
     environment = without(root, 'node', 'npm')
     # The examples' outputs, which the twins are compared with, are the programs' own.
     result = harness.run_b2(root, '-a', f'{LIBRARY}/test', f'{LIBRARY}/example',

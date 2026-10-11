@@ -308,6 +308,9 @@ def link_emsdk(root: Path) -> None:
 # A line of a user-config.jam that configures Boost.
 USING_BOOST = re.compile(r'^\s*using\s+boost\b.*$', re.MULTILINE)
 
+# The statement of a user-config.jam that configures the emscripten toolset, over its lines.
+USING_EMSCRIPTEN = re.compile(r'^\s*using\s+emscripten\b.*?;\n', re.MULTILINE | re.DOTALL)
+
 
 def expect(result: subprocess.CompletedProcess, succeeded: bool, *texts: str) -> None:
     """Asserts that b2 succeeded or failed as expected and printed each text."""
@@ -320,6 +323,15 @@ def expect(result: subprocess.CompletedProcess, succeeded: bool, *texts: str) ->
 def without_boost() -> str:
     """The user-config of the superproject without its `using boost` line."""
     return USING_BOOST.sub('', user_config(ROOT).read_text())
+
+
+def without_emscripten(root: Path) -> None:
+    """Configures no emscripten toolset in the user-config.jam of the scratch superproject root,
+    as on a machine without Emscripten and Node: b2 runs the node of that toolset as it configures
+    it, in every run, as the CI's wrapper of .local/emscripten/node runs the node on PATH."""
+    text = user_config(root).read_text()
+    configure(root, USING_EMSCRIPTEN.sub('', text))
+    assert not USING_EMSCRIPTEN.search(user_config(root).read_text()), user_config(root)
 
 
 def configure(root: Path, text: str) -> None:

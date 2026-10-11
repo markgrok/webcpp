@@ -288,10 +288,7 @@ def test_a_drive_outside_every_lane_is_refused(root):
 def test_native_build_needs_no_emsdk(root):
     # Without `using emscripten`, a native build of a library that declares emscripten builds its
     # native programs, and asks for no Emscripten.
-    text = harness.user_config(root).read_text()
-    harness.configure(root, re.sub(r'^using emscripten\b.*?;\n', '', text,
-                                   flags=re.MULTILINE | re.DOTALL))
-    assert 'emscripten' not in harness.user_config(root).read_text()
+    harness.without_emscripten(root)
     result = harness.run_b2(root, '-a', 'libs/browser_demo/test', 'libs/browser_demo/example')
     harness.expect(result, True)
     assert passed(result) == TESTS | {NATIVE_ALONE}, (passed(result), result.stdout[-4000:])
