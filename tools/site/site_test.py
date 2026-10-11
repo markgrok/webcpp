@@ -21,12 +21,17 @@ of some cases to run only those."""
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
+import time
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
@@ -186,7 +191,83 @@ def test_a_failed_build_leaves_the_previous_bin_site_or_none(scratch: Path) -> N
     # it writes: html-validate is never invoked, so a report naming a file is only ever this one.
     assert 'html-validate' not in output, output[-4000:]
     assert site.is_dir(), 'bin/site must still exist: the previous build, never half of a new one'
-    assert (site / 'index.html').read_text() == before, 'bin/site must be the previous build, unchanged'
+    assert (site / 'index.html').read_text() == before, \
+        'bin/site must be the previous build, unchanged'
+
+
+def free_port() -> int:
+    """A port of 127.0.0.1 no one listens on, never the 8765 a developer's server may hold."""
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        return int(probe.getsockname()[1])
+
+
+def test_a_server_on_bin_site_answers_every_request_of_a_rebuild(scratch: Path) -> None:
+    # b2 site once removed bin/site, file by file, and then moved the new build there: a server
+    # running on it answered the requests of that window 404, and 503 once the directory itself
+    # was gone. bin/site is now a link that tools/swap.mjs renames onto each build in one step,
+    # so a server running across a rebuild answers every request 200. The docs carry thousands of
+    # small files, so that a swap that is not one rename leaves a window wide enough to be hit.
+    root = superproject(scratch)
+    docs = docs_fixture(scratch, root)
+    bulk = docs / 'doc/html/bulk'
+    bulk.mkdir()
+    for i in range(4000):
+        (bulk / f'{i}.txt').write_text(f'{i}\n')
+    first = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}')
+    assert first.returncode == 0, (first.returncode, first.stdout[-4000:], first.stderr[-2000:])
+    site = root / 'bin/site'
+    assert site.is_symlink(), 'bin/site is a link onto the last build'
+    port = free_port()
+    server = subprocess.Popen(['node', str(root / 'site/tools/serve.mjs'), str(site), str(port)],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    answers: Counter[int | str] = Counter()
+    rebuilding = threading.Event()
+    rebuilding.set()
+
+    def client(index: int) -> None:
+        # One connection kept alive, as a browser keeps one: a connection a request each would run
+        # out of the system's ports long before the rebuild ends.
+        paths = ['/', '/libraries/', f'/docs/bulk/{index * 37 % 4000}.txt', '/assets/site.css']
+        connection = http.client.HTTPConnection('127.0.0.1', port, timeout=10)
+        count = 0
+        while rebuilding.is_set():
+            try:
+                connection.request('GET', paths[count % len(paths)])
+                response = connection.getresponse()
+                response.read()
+                answers[response.status] += 1
+            except (OSError, http.client.HTTPException) as error:
+                answers[type(error).__name__] += 1
+                connection.close()
+                connection = http.client.HTTPConnection('127.0.0.1', port, timeout=10)
+            count += 1
+        connection.close()
+
+    try:
+        for _ in range(100):
+            try:
+                socket.create_connection(('127.0.0.1', port), timeout=1).close()
+                break
+            except OSError:
+                time.sleep(0.05)
+        clients = [threading.Thread(target=client, args=(i,)) for i in range(8)]
+        for thread in clients:
+            thread.start()
+        second = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}')
+        time.sleep(0.2)
+        rebuilding.clear()
+        for thread in clients:
+            thread.join()
+    finally:
+        server.terminate()
+        output = server.communicate()[0]
+    assert second.returncode == 0, (second.returncode, second.stdout[-4000:], second.stderr[-2000:])
+    assert sum(answers.values()) > 100, (answers, output)
+    assert set(answers) == {200}, (answers, output)
+    assert site.is_symlink(), 'bin/site is still a link'
+    builds = sorted(build.name for build in (root / 'bin/site.builds').iterdir())
+    assert builds == [site.resolve().name], ('only the build bin/site points to is kept', builds)
 
 
 def test_the_release_channel_needs_its_version(scratch: Path) -> None:
@@ -271,6 +352,7 @@ def test_a_channel_is_preview_or_release(scratch: Path) -> None:
 CASES: list[Callable[[Path], None]] = [
     test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page,
     test_a_failed_build_leaves_the_previous_bin_site_or_none,
+    test_a_server_on_bin_site_answers_every_request_of_a_rebuild,
     test_valid_html_fails_the_build_naming_the_file,
     test_valid_html_allows_trailing_whitespace_inside_a_librarys_pre,
     test_valid_html_still_fails_on_the_sites_own_trailing_whitespace,

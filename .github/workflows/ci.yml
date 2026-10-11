@@ -78,18 +78,22 @@ jobs:
       # The pages and the report built already, so b2 site builds no doc of its own. b2 needs a
       # toolset registered to load the project, though it compiles nothing here.
       - name: b2 site
+        id: site
         run: |
           python3 tools/ci/matrix.py register clang-18
           env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH \
             b2 --user-config=.local/user-config.jam -a toolset=clang-18 site \
             -sWEBCPP_SITE_DOCS=bin/pages -sWEBCPP_SITE_REPORT=bin/report
+          # bin/site is a link onto the build b2 site swapped in (tools/site/site.jam): the upload is
+          # given the build itself, never left to treat a link as its root.
+          echo "build=$(readlink -f bin/site)" >> "$GITHUB_OUTPUT"
 
       # Every file b2 site wrote, a hidden one included, which upload-artifact leaves out by default.
       - name: Upload the site
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: site
-          path: bin/site
+          path: ${{ steps.site.outputs.build }}
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
