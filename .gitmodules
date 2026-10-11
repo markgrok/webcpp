@@ -13,3 +13,6 @@
 [submodule "libs/trystero"]
 	path = libs/trystero
 	url = ../trystero.git
+[submodule "site"]
+	path = site
+	url = git@github.com:webcpporg/webcpporg.github.io.git
