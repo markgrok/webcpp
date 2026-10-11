@@ -840,7 +840,9 @@ def check_library_root(root: Path) -> None:
 def check_library_file(root: Path) -> None:
     """The release notes include a region of a library's changelog through
     {webcpp-root}/libs/<library>/...: a file the library's own git tracks, as libs/<library> is a
-    repository of its own. A file it does not track, a whole file and lines by number fail."""
+    repository of its own. A file it does not track, untracked or ignored, a whole file and lines
+    by number fail; under a directory of libs/ with no git of its own the file is the
+    superproject's, which does not track it, and under a library not there it is no file."""
     with tempfile.TemporaryDirectory(prefix='superproject ') as scratch:
         top = Path(scratch)
         subprocess.run(['git', 'init', '-q'], cwd=top, check=True)

@@ -440,12 +440,13 @@ def within(path: Path, roots: Iterable[Path]) -> bool:
     return any(target.is_relative_to(root.resolve()) for root in roots)
 
 
-def tracked_region_fault(path: Path, repository: Path, inside: str, owner: str, untracked: str,
+def tracked_region_fault(path: Path, repository: Path, inside: str, owners: tuple[str, str],
                          given: dict[str, str], library: Library) -> str | None:
     """What is wrong with an include of the file `path`, `inside` the repository, with the
     attributes `given`, or None: a region, by its tag, of a file the repository's own git tracks.
-    `owner` names the tree the include reaches in a fault, the superproject or the library, and
-    `untracked` is the fault of a file the repository does not track."""
+    `owners` names, in a fault, the tree the include reaches (the superproject or the library),
+    then the one whose git does not track the file (that tree, or its repository)."""
+    owner, untracked_owner = owners
     tracked = library.tracked_in(repository)
     if tracked is None:
         return (f'includes a file of {owner}, and {repository} is not the top of a git checkout '
@@ -454,10 +455,9 @@ def tracked_region_fault(path: Path, repository: Path, inside: str, owner: str, 
     # does not track is no file of a fresh clone.
     named = Path(os.path.normpath(path))
     base = Path(os.path.normpath(repository))
-    if not named.is_relative_to(base) or named.relative_to(base).as_posix() not in tracked:
-        return untracked
-    if inside not in tracked:
-        return untracked
+    if not named.is_relative_to(base) or named.relative_to(base).as_posix() not in tracked \
+            or inside not in tracked:
+        return f'includes a file {untracked_owner} does not track'
     if 'lines' in given:
         return (f'includes lines of a file of {owner} by number, which drift; name its '
                 'region with tag=<name>')
@@ -488,10 +488,8 @@ def superproject_fault(relative: str, given: dict[str, str], library: Library) -
         return 'includes a file that is not there'
     repository, inside = library.repository_of(
         path.resolve().relative_to(top.resolve()).as_posix())
-    return tracked_region_fault(
-        path, repository, inside, 'the superproject',
-        'includes a file the superproject does not track' if repository == top else
-        'includes a file its repository does not track', given, library)
+    owners = ('the superproject', 'the superproject' if repository == top else 'its repository')
+    return tracked_region_fault(path, repository, inside, owners, given, library)
 
 
 def library_file_fault(relative: str, given: dict[str, str], library: Library) -> str | None:
@@ -506,8 +504,7 @@ def library_file_fault(relative: str, given: dict[str, str], library: Library) -
     if not path.is_file():
         return 'includes a file that is not there'
     return tracked_region_fault(path, top, path.resolve().relative_to(top.resolve()).as_posix(),
-                                'the library', 'includes a file the library does not track',
-                                given, library)
+                                ('the library', 'the library'), given, library)
 
 
 def expanded(target: str, entries: dict[str, str], given: dict[str, str]) -> str:

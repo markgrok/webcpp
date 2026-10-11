@@ -1335,8 +1335,10 @@ build:
   and lines chosen by number, which drift, each fail, and so does a library
   directory with no git of its own; an attribute the page sets to either
   root is that root, checked the same way. Under `libs/<library>/`,
-  `{webcpp-root}` names a file the library's own git tracks, as the release
-  notes include a library's changelog;
+  `{webcpp-root}` names a file the library's own git tracks when
+  `libs/<library>` is a repository of its own, as the release notes include
+  a library's changelog, and one the superproject's git tracks when it is
+  not;
 - every `(doc: #anchor)` and `index.html#anchor` of the library's files
   names an anchor the page defines, and every `@see "<title>"` a section;
 - every `(doc: <library>#<anchor>)` of the library's files, and every link
