@@ -214,6 +214,50 @@ def test_valid_html_fails_the_build_naming_the_file(scratch: Path) -> None:
     assert f'libs/{libraries[0]}/index.html' in output, output[-4000:]
 
 
+# A page of the site's own, whose text holds a line of trailing whitespace: valid-html's two
+# passes (site/Jamfile) must still catch it there, on no page outside docs/ and libs/.
+TRAILING_PAGE = '\n'.join([
+    '// Copyright (c) 2026 WebCpp.org',
+    '//',
+    '// Distributed under the Boost Software License, Version 1.0. (See',
+    '// accompanying file LICENSE_1_0.txt or copy at',
+    '// https://www.boost.org/LICENSE_1_0.txt)',
+    '',
+    'root = Page("Trailing", "A page of the test of b2 site, whose text holds a line of trailing '
+    'whitespace, which valid-html must still catch on the site\'s own pages.", [text])',
+    'text = Text("line one\\nline two with trailing space \\nline three")',
+    '',
+])
+
+
+def test_valid_html_allows_trailing_whitespace_inside_a_librarys_pre(scratch: Path) -> None:
+    # The relaxed pass (.htmlvalidate.docs.json), for docs/ and libs/ alone, turns
+    # no-trailing-whitespace off: a listing of a library's guide may show it as content.
+    root = superproject(scratch)
+    docs = docs_fixture(scratch, root)
+    libraries = sorted(build.parent.name for build in (root / 'libs').glob('*/build.jam'))
+    page = docs / f'libs/{libraries[0]}/doc/html/index.html'
+    page.write_text(page.read_text().replace(
+        '<h2 id="usage">Usage</h2>',
+        '<h2 id="usage">Usage</h2><pre>\nline with trailing space \n</pre>'))
+    result = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}')
+    assert result.returncode == 0, (result.returncode, result.stdout[-4000:], result.stderr[-2000:])
+
+
+def test_valid_html_still_fails_on_the_sites_own_trailing_whitespace(scratch: Path) -> None:
+    # The strict pass (.htmlvalidate.json), for every page outside docs/ and libs/, keeps
+    # no-trailing-whitespace on: the site's own pages are React's, which writes no such line on
+    # its own, so one that holds any is a fault of the page's text, never formatting to allow.
+    root = superproject(scratch)
+    docs = docs_fixture(scratch, root)
+    (root / 'site/pages/trailing.oui').write_text(TRAILING_PAGE)
+    result = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}')
+    assert result.returncode != 0, (result.returncode, result.stdout[-4000:], result.stderr[-2000:])
+    output = result.stdout + result.stderr
+    assert 'no-trailing-whitespace' in output, output[-4000:]
+    assert 'trailing/index.html' in output, output[-4000:]
+
+
 def test_a_channel_is_preview_or_release(scratch: Path) -> None:
     root = superproject(scratch)
     result = b2(root, 'site', '-sWEBCPP_SITE=draft', f'-sWEBCPP_SITE_DOCS={scratch}')
@@ -228,6 +272,8 @@ CASES: list[Callable[[Path], None]] = [
     test_b2_site_builds_the_whole_site_and_forgets_a_deleted_page,
     test_a_failed_build_leaves_the_previous_bin_site_or_none,
     test_valid_html_fails_the_build_naming_the_file,
+    test_valid_html_allows_trailing_whitespace_inside_a_librarys_pre,
+    test_valid_html_still_fails_on_the_sites_own_trailing_whitespace,
     test_the_release_channel_needs_its_version,
     test_a_channel_is_preview_or_release,
 ]
