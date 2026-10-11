@@ -7,7 +7,8 @@
 
 """Checks doc-check.py: each rule fires on its own fault, and a whole page passes; a program that
 webcpp.link links and never runs is shown by its code, and has no output; a page shows a tagged
-region of a file the superproject's git tracks, {webcpp-root}, or its library's own, {library-root}.
+region of a file the superproject's git tracks, {webcpp-root}, or its library's own, {library-root},
+and, under {webcpp-root}/libs/<library>/, of a file that library's own git tracks.
 
 Each check runs on a library written to a scratch directory: its page under doc/, its examples
 under example/, at any depth, its twins under twins/, a header, a README and a git repository
@@ -836,45 +837,51 @@ def check_library_root(root: Path) -> None:
     (root / 'untracked/regions.jam').unlink()
 
 
-def check_superproject_library(root: Path) -> None:
-    """Under {webcpp-root}/libs/<library>/, the region is of a file that library's own git
-    tracks, not the superproject's, which tracks the library itself, as one gitlink: the index's
-    release notes reach a library's changelog so. A file that library does not track, untracked
-    or ignored, still fails, named by the library, not by the superproject."""
-    with tempfile.TemporaryDirectory(prefix='superproject library ') as scratch:
+def check_library_file(root: Path) -> None:
+    """The release notes include a region of a library's changelog through
+    {webcpp-root}/libs/<library>/...: a file the library's own git tracks, as libs/<library> is a
+    repository of its own. A file it does not track, a whole file and lines by number fail."""
+    with tempfile.TemporaryDirectory(prefix='superproject ') as scratch:
         top = Path(scratch)
         subprocess.run(['git', 'init', '-q'], cwd=top, check=True)
-        library = top / 'libs/demo'
-        region = '// tag::unreleased[]\n* Added something.\n// end::unreleased[]\n'
-        write(library / 'doc/changelog.adoc', region)
-        write(library / 'doc/untracked.adoc', region)
-        write(library / 'doc/ignored.adoc', region)
+        library = top / 'libs/lib'
+        changelog = ('// tag::unreleased[]\n* Added a line.\n// end::unreleased[]\n')
+        write(library / 'doc/changelog.adoc', changelog)
+        write(library / 'doc/untracked.adoc', changelog)
+        write(library / 'doc/ignored.adoc', changelog)
         write(library / '.gitignore', 'doc/ignored.adoc\n')
         subprocess.run(['git', 'init', '-q'], cwd=library, check=True)
         subprocess.run(['git', 'add', 'doc/changelog.adoc', '.gitignore'], cwd=library,
                        check=True)
-        # The superproject never tracks the library's files, whether or not it tracks the
-        # library itself as a gitlink: libs/config is untracked either way, until it is one.
         given = ('--webcpp-root', str(top))
-        line = NEXT + 2
-        write(root / 'doc/page.adoc',
-              PAGE + '\n[listing]\n----\ninclude::{webcpp-root}/libs/demo/doc/changelog.adoc'
-              '[tag=unreleased]\n----\n')
-        expect(check(root, '--complete', *given), 0, '')
-        for name in ('untracked', 'ignored'):
+        line = NEXT
+        write(root / 'doc/page.adoc', PAGE + '\ninclude::{webcpp-root}/libs/lib/doc/'
+                                             'changelog.adoc[tag=unreleased]\n')
+        expect(check(root, *given), 0, '')
+        for included, fault in (
+                ('untracked.adoc[tag=unreleased]', 'includes a file its repository does not '
+                                                   'track: {webcpp-root}/libs/lib/doc/'
+                                                   'untracked.adoc'),
+                ('ignored.adoc[tag=unreleased]', 'includes a file its repository does not '
+                                                 'track: {webcpp-root}/libs/lib/doc/'
+                                                 'ignored.adoc'),
+                ('changelog.adoc[]', 'includes a file of the superproject whole; name its region '
+                                     'with tag=<name>'),
+                ('changelog.adoc[lines=1..2]', 'includes lines of a file of the superproject by '
+                                               'number, which drift')):
             write(root / 'doc/page.adoc',
-                  PAGE + f'\n[listing]\n----\ninclude::{{webcpp-root}}/libs/demo/doc/{name}.adoc'
-                  '[tag=unreleased]\n----\n')
-            expect(check(root, *given), 1,
-                   f'page.adoc:{line}: includes a file libs/demo does not track: '
-                   f'{{webcpp-root}}/libs/demo/doc/{name}.adoc')
-        # A library with no git of its own, under a superproject that is: named by the library.
-        write(root / 'doc/page.adoc',
-              PAGE + '\n[listing]\n----\ninclude::{webcpp-root}/libs/absent/doc/x.adoc'
-              '[tag=unreleased]\n----\n')
-        expect(check(root, *given), 1,
-               f'page.adoc:{line}: includes a file that is not there: '
-               '{webcpp-root}/libs/absent/doc/x.adoc')
+                  PAGE + f'\ninclude::{{webcpp-root}}/libs/lib/doc/{included}\n')
+            expect(check(root, *given), 1, f'page.adoc:{line}: {fault}')
+        # A directory of libs/ with no git of its own is the superproject's, which tracks
+        # nothing there; one that is not there holds no file.
+        write(top / 'libs/plain/doc/changelog.adoc', changelog)
+        for included, fault in (
+                ('plain/doc/changelog.adoc[tag=unreleased]', 'includes a file the superproject '
+                                                             'does not track'),
+                ('absent/doc/changelog.adoc[tag=unreleased]', 'includes a file that is not '
+                                                              'there')):
+            write(root / 'doc/page.adoc', PAGE + f'\ninclude::{{webcpp-root}}/libs/{included}\n')
+            expect(check(root, *given), 1, f'page.adoc:{line}: {fault}')
     write(root / 'doc/page.adoc', PAGE)
 
 
@@ -939,7 +946,7 @@ def main() -> int:
         write(root / 'doc/page.adoc', PAGE)
         for part in (check_page, check_reference, check_examples, check_graph, check_references,
                      check_see_titles, check_readme, check_rendered, check_links,
-                     check_superproject, check_superproject_library, check_library_root,
+                     check_superproject, check_library_file, check_library_root,
                      check_without_git, check_linked):
             part(root)
             print(f'{part.__name__}: ok')

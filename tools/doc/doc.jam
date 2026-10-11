@@ -507,17 +507,17 @@ rule doc-check ( targets * : sources * : properties * )
     SCRIPT on $(targets) = [ path.native $(.here)/doc-check.py ] ;
     PAGE on $(targets) = [ path.native $(.source.$(id)) ] ;
     SECTIONS on $(targets) = [ natives $(.sections.$(id)) ] ;
-    # Each empty for the index page, which leaves its option out, and TWINS
-    # for a library that declares none. WEBCPP_ROOT is given to every
-    # page, the index included: its release notes include a library's
+    # Every page, the index included: its release notes include a library's
     # changelog through {webcpp-root}/libs/<library>/....
+    WEBCPP_ROOT on $(targets) = [ path.native $(.root) ] ;
+    # Each empty for the index page, which leaves its option out, and TWINS
+    # for a library that declares none.
     COMPLETE on $(targets) = ;
     EXAMPLES on $(targets) = ;
     TWINS on $(targets) = ;
     REPOSITORY on $(targets) = ;
     LIBRARY on $(targets) = ;
     README on $(targets) = ;
-    WEBCPP_ROOT on $(targets) = [ path.native $(.root) ] ;
     LIBRARY_ROOT on $(targets) = ;
     LINKED on $(targets) = ;
     if $(id) != index
