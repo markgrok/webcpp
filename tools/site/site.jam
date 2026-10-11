@@ -1,0 +1,274 @@
+# Copyright (c) 2026 WebCpp.org
+#
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# https://www.boost.org/LICENSE_1_0.txt)
+#
+# The rules of b2 site, which builds webcpp's whole site into bin/site/ at the
+# superproject's root, and of b2 site-serve, which serves it. The Jamroot
+# imports this file as the module site and declares the targets when the
+# site, site/ (webcpporg/webcpporg.github.io), is checked out:
+#
+#   site-declared.txt  the pairs "<library> <target>" the libraries declare,
+#                      as b2 declared-targets prints them (webcpp.declared);
+#   libraries.json     the site's catalogue, tools/site/catalogue.py;
+#   site               the site: the site's pages (/webcpp/site//pages, its
+#                      Jamfile), the docs index and every library's page, the
+#                      report, laid out into bin/site/ by tools/ci/assemble.py
+#                      once bin/site/ is removed, then the indexing files, then
+#                      every link checked;
+#   site-serve         bin/site/ served at http://127.0.0.1:8765/.
+#
+# The site's Jamfile declares context.json, what its pages are rendered with,
+# with write-context below, and pages, which renders them.
+#
+# b2 site builds the docs with b2 doc, in the layout of the site (doc.jam),
+# unless -sWEBCPP_SITE_DOCS=<dir> names pages built already, a superproject's
+# root or a copy of its doc/html and libs/<name>/doc/html, as the CI's job
+# that builds them hands them on. The report is -sWEBCPP_SITE_REPORT=<dir>,
+# what tools/report/report.py wrote, and without it the site's report/ says
+# no results were given. The channel is -sWEBCPP_SITE: preview, the default,
+# served at https://webcpporg.github.io/, or release, served at
+# https://webcpp.org/, which needs -sWEBCPP_SITE_VERSION=<version>; any other
+# value, and a version on preview, stop the build, named.
+#
+# Every JavaScript step is one of the site's npm scripts, which b2 runs
+# through site.npm and never repeats: the rendering, the indexing files and
+# the server are the site's. node and npm are those on PATH, as the
+# documentation's build runs Asciidoctor.js with the node on PATH.
+import errors ;
+import modules ;
+import os ;
+import path ;
+import type ;
+
+# The kinds of file the site's targets hand to b2 site, which a notfile takes
+# as its sources only when they have a type: the catalogue and the stamp of
+# the rendered pages.
+if ! [ type.registered JSON ]
+{
+    type.register JSON : json ;
+}
+if ! [ type.registered STAMP ]
+{
+    type.register STAMP : stamp ;
+}
+
+# This directory, the superproject's and the site's, absolute: an action
+# starts in the directory b2 was started in.
+.here = [ path.parent [ path.root [ path.make [ modules.binding $(__name__) ] ] [ path.pwd ] ] ] ;
+.root = [ path.parent [ path.parent $(.here) ] ] ;
+.site = $(.root)/site ;
+
+# What b2 site writes, and where b2 site-serve serves it.
+.out = [ path.native $(.root)/bin/site ] ;
+.port = 8765 ;
+
+.bases.preview = "https://webcpporg.github.io/" ;
+.bases.release = "https://webcpp.org/" ;
+
+if [ os.name ] = NT { .python = python ; } else { .python = python3 ; }
+
+.nl = "\n" ;
+
+# site.npm <script> : <arguments> ; the shell command that runs the site's
+# npm script <script>, `npm run <script> -- <arguments>`, in the site's
+# directory, for an action to run once the site's node packages are
+# installed: every target whose action runs one depends on
+# /webcpp/site//node-modules. Each argument is quoted for the shell, which
+# still expands a variable the action sets in it, as in $out/pages.
+rule npm ( script : arguments * )
+{
+    local site = [ path.native $(.site) ] ;
+    local command = npm --prefix \"$(site)\" run $(script) ;
+    if $(arguments)
+    {
+        command += -- \"$(arguments)\" ;
+    }
+    return $(command:J=" ") ;
+}
+
+# The channel -sWEBCPP_SITE names, preview when it names none, and the
+# release's version, checked.
+local rule channel ( )
+{
+    local channel = [ modules.peek : WEBCPP_SITE ] ;
+    local version = [ modules.peek : WEBCPP_SITE_VERSION ] ;
+    channel ?= preview ;
+    if $(channel[2]) || ! ( $(channel) in preview release )
+    {
+        errors.user-error "-sWEBCPP_SITE=$(channel:J= ) is no channel of the site: the"
+            "channels are preview, the default, built from main and served at"
+            "$(.bases.preview), and release, built from a release tag and served at"
+            "$(.bases.release)" ;
+    }
+    if $(channel) = release && ! $(version)
+    {
+        errors.user-error "-sWEBCPP_SITE=release builds a release, whose version its pages"
+            "carry: give it with -sWEBCPP_SITE_VERSION=<version>, such as 1.0.0" ;
+    }
+    if $(channel) = preview && $(version)
+    {
+        errors.user-error "-sWEBCPP_SITE_VERSION=$(version:J= ) is a release's version, and"
+            "the preview carries none: build the release with -sWEBCPP_SITE=release, or"
+            "leave the version out" ;
+    }
+    if $(version) && ( $(version[2]) ||
+        ! [ MATCH "^([0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?)$" : $(version) ] )
+    {
+        errors.user-error "-sWEBCPP_SITE_VERSION=$(version:J= ) is not a version such as"
+            "1.0.0 or 1.0.0-rc.1" ;
+    }
+    return $(channel) $(version) ;
+}
+
+# A directory given with -s<variable>=<dir>, absolute, as the system writes
+# it, or nothing when the variable is not given. b2 splits the value of -s at
+# its spaces, which a path may hold: the words are joined again.
+local rule given-directory ( variable )
+{
+    local value = [ modules.peek : $(variable) ] ;
+    if $(value)
+    {
+        value = $(value:J=" ") ;
+        local directory = [ path.native [ path.root [ path.make $(value) ] [ path.pwd ] ] ] ;
+        if ! [ path.exists $(directory) ]
+        {
+            errors.user-error "-s$(variable)=$(value) does not exist" ;
+        }
+        return $(directory) ;
+    }
+}
+
+# The requirements of the target site: b2 doc, unless -sWEBCPP_SITE_DOCS
+# names the pages it would build.
+rule requirements ( )
+{
+    if ! [ given-directory WEBCPP_SITE_DOCS ]
+    {
+        return <dependency>doc ;
+    }
+}
+
+rule write-declared ( targets * : sources * : properties * )
+{
+    # A library is a directory of libs/ with a build.jam, and its programs
+    # are declared under its test and example directories, as the Jamroot
+    # registers them for b2 declared-targets.
+    local directories ;
+    for local build in [ path.glob [ path.glob $(.root)/libs : * ] : build.jam ]
+    {
+        directories += [ path.glob [ path.parent $(build) ] : test example ] ;
+    }
+    PAIRS on $(targets) = [ modules.call-in webcpp : declared $(directories) ] ;
+}
+
+actions write-declared
+{
+    @($(STDOUT):E=$(PAIRS:J=$(.nl))$(.nl)) > "$(<)"
+}
+
+rule write-catalogue ( targets * : sources * : properties * )
+{
+    PYTHON on $(targets) = $(.python) ;
+    SCRIPT on $(targets) = [ path.native $(.here)/catalogue.py ] ;
+    LIBS on $(targets) = [ path.native $(.root)/libs ] ;
+}
+
+actions write-catalogue
+{
+    "$(PYTHON)" "$(SCRIPT)" --libs "$(LIBS)" --declared "$(>)" --out "$(<)"
+}
+
+# What the site's pages are rendered with (site/src/context.ts): the channel,
+# the superproject's commit and the date of that commit, the release's
+# version or null, and the catalogue, its source.
+rule write-context ( targets * : sources * : properties * )
+{
+    local channel = [ channel ] ;
+    CHANNEL on $(targets) = $(channel[1]) ;
+    VERSION on $(targets) = null ;
+    if $(channel[2])
+    {
+        VERSION on $(targets) = \"$(channel[2])\" ;
+    }
+    ROOT on $(targets) = [ path.native $(.root) ] ;
+}
+
+# The channel and the version are checked words, and git writes the commit
+# in hex and its date as YYYY-MM-DD: none needs escaping in JSON.
+actions write-context
+{
+    set -e
+    commit=`git -C "$(ROOT)" rev-parse HEAD`
+    date=`git -C "$(ROOT)" log -1 --format=%cs`
+    {
+        printf '{"channel": "%s", "commit": "%s", "date": "%s", "version": %s, "catalogue": ' "$(CHANNEL)" "$commit" "$date" '$(VERSION)'
+        cat "$(>)"
+        printf '}\n'
+    } > "$(<)"
+}
+
+rule assemble ( targets * : sources * : properties * )
+{
+    local channel = [ channel ] ;
+    local base = $(.bases.$(channel[1])) ;
+    local docs = [ given-directory WEBCPP_SITE_DOCS ] ;
+    docs ?= [ path.native $(.root) ] ;
+    local report = [ given-directory WEBCPP_SITE_REPORT ] ;
+    report ?= - ;
+    PYTHON on $(targets) = $(.python) ;
+    ASSEMBLE on $(targets) = [ path.native $(.root)/tools/ci/assemble.py ] ;
+    DOCS on $(targets) = $(docs) ;
+    REPORT on $(targets) = $(report) ;
+    BASE on $(targets) = $(base) ;
+    OUT on $(targets) = $(.out) ;
+    INDEX on $(targets) = [ npm build : --index $(.out) --base $(base) --catalogue $catalogue
+        --superproject [ path.native $(.root) ] ] ;
+}
+
+# The site's pages and the docs' header are where the target pages wrote them,
+# beside its stamp, and the catalogue is libraries.json: the action tells its
+# sources apart by their names. The catalogue is made absolute for the npm
+# script, which runs in the site's directory.
+#
+# The steps after the check of the links, each a check of the whole site,
+# come here in this order: the check that every page is valid HTML, then the
+# list the PWA precaches, written last so that it lists the final files.
+actions assemble
+{
+    set -e
+    for source in "$(>)"
+    do
+        case "$source" in
+            *.stamp) pages=`dirname "$source"` ;;
+            *libraries.json) catalogue="$source" ;;
+        esac
+    done
+    case "$catalogue" in
+        /*) ;;
+        *) catalogue="`pwd`/$catalogue" ;;
+    esac
+    rm -rf "$(OUT)"
+    "$(PYTHON)" "$(ASSEMBLE)" --pages "$pages/pages" --docs "$(DOCS)" --report "$(REPORT)" --chrome "$pages/docs-header.html" --catalogue "$catalogue" --base "$(BASE)" --out "$(OUT)"
+    $(INDEX)
+    "$(PYTHON)" "$(ASSEMBLE)" --check "$(OUT)"
+}
+
+# The address b2 site-serve serves the site at, which the Jamroot prints as
+# it loads: b2 shows an action's output only once the action ends, and the
+# server's ends when it is stopped.
+rule address ( )
+{
+    return "http://127.0.0.1:$(.port)/" ;
+}
+
+rule serve ( targets * : sources * : properties * )
+{
+    SERVE on $(targets) = [ npm serve : $(.out) $(.port) ] ;
+}
+
+actions serve
+{
+    $(SERVE)
+}

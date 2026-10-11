@@ -287,23 +287,51 @@ rule needs-page ( properties * )
 
 # Where a page links another, by -sWEBCPP_INDEX: tree, the default, where b2
 # builds each, the index at doc/html/index.html and a library's at
-# libs/<name>/doc/html/index.html, or site, where tools/ci/assemble.py
-# publishes them, the index at the site's root and a library's at
-# libs/<name>/. The index's table writes its links with two attributes,
-# {library-pages}<name>/{library-page}, and a library's page links another's
-# with two more, link:{webcpp-libs}/<name>/{webcpp-page}#<anchor>[...]:
-# {webcpp-libs} reaches libs/ from the page.
+# libs/<name>/doc/html/index.html, or site, where b2 site publishes them
+# (tools/ci/assemble.py), the index at docs/, beside the site's own pages at
+# its root, and a library's at libs/<name>/. The index's table writes its
+# links with two attributes, {library-pages}<name>/{library-page}, and a
+# library's page links another's with two more,
+# link:{webcpp-libs}/<name>/{webcpp-page}#<anchor>[...]: {webcpp-libs}
+# reaches libs/ from the page.
 .index-links.tree = library-pages=../../libs/ library-page=doc/html/index.html ;
-.index-links.site = library-pages=libs/ library-page= ;
+.index-links.site = library-pages=../libs/ library-page= ;
 .webcpp-libs.tree = ../../.. ;
 .webcpp-page.tree = doc/html/index.html ;
 .webcpp-libs.site = .. ;
 .webcpp-page.site = index.html ;
 
-# The layout -sWEBCPP_INDEX names, tree or site, tree when it names none.
+# Whether b2 site, or b2 site-serve, which builds it, is among the targets on
+# b2's command line: the words after b2's own name that are no option.
+local rule site-requested ( )
+{
+    local argv = [ modules.peek : ARGV ] ;
+    for local word in $(argv[2-])
+    {
+        if $(word) in site site-serve
+        {
+            return true ;
+        }
+    }
+}
+
+# The layout -sWEBCPP_INDEX names, tree or site; site when it names none and
+# b2 site is requested, so that b2 site alone builds the pages it publishes;
+# tree otherwise.
 local rule layout ( )
 {
     local links = [ modules.peek : WEBCPP_INDEX ] ;
+    local site = [ site-requested ] ;
+    if $(site) && $(links) && $(links) != site
+    {
+        errors.user-error "-sWEBCPP_INDEX=$(links:J= ) builds the pages for the tree, and b2"
+            "site publishes them where the site serves them: leave -sWEBCPP_INDEX out, or"
+            "give -sWEBCPP_INDEX=site" ;
+    }
+    if $(site)
+    {
+        links ?= site ;
+    }
     links ?= tree ;
     if ! $(.index-links.$(links)) || $(links[2])
     {

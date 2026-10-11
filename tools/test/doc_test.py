@@ -964,16 +964,19 @@ def test_index_lists_every_library(root):
     # And each library's page, which the index links to, is built with it.
     assert (root / PAGE).is_file()
     assert (other / 'doc/html/index.html').is_file()
-    # For the site, where each library's page is libs/<name>/ beside the index, the same index
-    # links there; tools/ci/assemble.py lays the site out so.
+    # For the site, where the index is docs/ and each library's page libs/<name>/, the same
+    # index links there; b2 site lays the site out so (tools/ci/assemble.py).
     result = harness.run_b2(root, 'doc', '-sWEBCPP_INDEX=site')
     harness.expect(result, True)
     html = (root / 'doc/html/index.html').read_text()
-    assert '<a href="libs/demo/">demo</a>' in html, html
-    assert '<a href="libs/other/">Other</a>' in html, html
+    assert '<a href="../libs/demo/">demo</a>' in html, html
+    assert '<a href="../libs/other/">Other</a>' in html, html
     assert '../../libs/' not in html, html
     harness.expect(harness.run_b2(root, 'doc', '-sWEBCPP_INDEX=elsewhere'), False,
                    '-sWEBCPP_INDEX=elsewhere is neither tree nor site')
+    # b2 site builds the pages for the site without the option, and refuses them for the tree.
+    harness.expect(harness.run_b2(root, 'doc', 'site', '-sWEBCPP_INDEX=tree'), False,
+                   '-sWEBCPP_INDEX=tree builds the pages for the tree, and b2 site publishes them')
     # Without it, the index links the pages in the tree again.
     harness.expect(harness.run_b2(root, 'doc'), True)
     html = (root / 'doc/html/index.html').read_text()

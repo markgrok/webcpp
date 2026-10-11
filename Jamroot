@@ -427,10 +427,37 @@ for local build in [ glob libs/*/build.jam ]
 }
 
 # The site, site/ (webcpporg/webcpporg.github.io), when it is checked out:
-# a project like a user's, which b2 site assembles (tools/site/site.jam).
+# a project like a user's, whose pages b2 site renders with the site's npm
+# scripts and lays out with every library's page and the report into
+# bin/site/, and b2 site-serve serves (tools/site/site.jam, which says what
+# each target does and what options they take).
 if [ glob site/Jamfile ]
 {
+    import tools/site/site ;
     use-project /webcpp/site : site ;
+    make site-declared.txt : : @site%write-declared : <webcpp-boost-check>off ;
+    make libraries.json : site-declared.txt : @site%write-catalogue : <webcpp-boost-check>off ;
+    always site-declared.txt libraries.json ;
+    notfile site : @site%assemble : libraries.json /webcpp/site//pages
+      : [ site.requirements ] <webcpp-boost-check>off ;
+    notfile site-serve : @site%serve
+      : : <dependency>site <dependency>/webcpp/site//node-modules <webcpp-boost-check>off ;
+    if site-serve in [ modules.peek : ARGV ]
+    {
+        ECHO "Serving bin/site at" [ site.address ] ;
+    }
+}
+else
+{
+    notfile site : @site-missing : : <webcpp-boost-check>off ;
+    notfile site-serve : @site-missing : : <webcpp-boost-check>off ;
+}
+
+# b2 site without the site checked out.
+rule site-missing ( targets * : sources * : properties * )
+{
+    errors.user-error "site/, the site's repository (webcpporg/webcpporg.github.io), is not"
+        "checked out, and b2 site builds its pages: git submodule update --init site" ;
 }
 
 alias test : $(.test) ;
@@ -493,4 +520,8 @@ notfile declared-lanes : @declared-lanes : : <webcpp-boost-check>off ;
 # when a test fails: the report's exit status is the verdict.
 
 explicit boost_version throw_exception boost_json emscripten-reference test example doc
-    install $(.install) declared-targets declared-lanes ;
+    install $(.install) declared-targets declared-lanes site site-serve ;
+if [ glob site/Jamfile ]
+{
+    explicit site-declared.txt libraries.json ;
+}
