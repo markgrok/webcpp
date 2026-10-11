@@ -10,12 +10,16 @@ to the new address and its canonical link; the script of each maps a path under 
 same path at the new address, its query and its fragment kept, the prefix itself to the new
 root; and --to without https://, or a --prefix that is not a path between slashes, fails and
 writes nothing. The script's target(location) is cut from each page between its markers and run
-with node on objects shaped like window.location. Run with the names of some cases to run only
-those."""
+with node on objects shaped like window.location. Both pages are valid HTML by the rules the
+site's own pages are checked with, site/.htmlvalidate.json, run with the site's html-validate,
+installed as b2 installs it (tools/node/install.py); without the site checked out at site/ there
+is no html-validate to run, which that case says, and passes. Run with the names of some cases to
+run only those."""
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -25,7 +29,9 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent.parent
 REDIRECT = HERE / 'redirect.py'
+SITE = ROOT / 'site'
 
 TO = 'https://webcpporg.github.io/'
 PREFIX = '/webcpp/'
@@ -114,6 +120,22 @@ def test_a_query_is_kept(root: Path) -> None:
         ]) == ['https://webcpporg.github.io/report/?lane=x'], name
 
 
+def test_both_pages_are_valid_html(root: Path) -> None:
+    if not (SITE / 'package-lock.json').is_file():
+        print(f'{SITE} is not checked out: no html-validate to check the pages with')
+        return
+    install = subprocess.run([sys.executable, str(ROOT / 'tools/node/install.py'), str(SITE)],
+                             capture_output=True, text=True, check=False, timeout=600)
+    assert install.returncode == 0, (install.returncode, install.stdout, install.stderr)
+    out = written(root)
+    result = subprocess.run([str(SITE / 'node_modules/.bin/html-validate'),
+                             '--config', str(SITE / '.htmlvalidate.json'),
+                             *(str(out / name) for name in PAGES)],
+                            capture_output=True, text=True, check=False, timeout=120,
+                            env={**os.environ, 'FORCE_COLOR': '0'})
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+
+
 def test_to_without_https_fails(root: Path) -> None:
     for to in ('http://webcpporg.github.io/', 'webcpporg.github.io/', 'https://'):
         out = root / 'redirect'
@@ -137,6 +159,7 @@ CASES = [
     test_a_page_and_its_fragment_map_to_the_root,
     test_the_prefix_maps_to_the_root,
     test_a_query_is_kept,
+    test_both_pages_are_valid_html,
     test_to_without_https_fails,
     test_a_prefix_that_is_not_a_path_between_slashes_fails,
 ]
