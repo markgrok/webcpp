@@ -627,19 +627,23 @@ actions rendered-check
     "$(PYTHON)" "$(SCRIPT)" --rendered "$(>[1])" --repository$(_)"$(REPOSITORY)" --library$(_)"$(LIBRARY)" --webcpp-libs$(_)"$(WEBCPP_LIBS)" --webcpp-page$(_)"$(WEBCPP_PAGE)" --linked-page$(_)"$(>[2-])"
 }
 
-rule install-packages ( targets * : sources * : properties * )
+rule install-packages-in ( targets * : sources * : properties * )
 {
     PYTHON on $(targets) = $(.python) ;
     SCRIPT on $(targets) = [ path.native $(.root)/tools/node/install.py ] ;
-    HERE on $(targets) = [ path.native $(.here) ] ;
 }
 
 # Installs the packages package-lock.json pins, from npm's cache when it holds
 # them, once per lockfile and never over an install in use, and links
-# node_modules to them (tools/node/install.py); the stamp says it ran.
-actions install-packages
+# node_modules to them (tools/node/install.py); the stamp says it ran. The
+# directory installed into is the one its sources, package.json and
+# package-lock.json, are found in: a Jamfile other than tools/doc's own uses
+# this rule too, and a module-level local set as doc.jam loads, such as
+# $(.here), would always be tools/doc's, never the caller's.
+actions install-packages-in
 {
     set -e
-    "$(PYTHON)" "$(SCRIPT)" "$(HERE)"
+    here=`dirname "$(>[1])"`
+    "$(PYTHON)" "$(SCRIPT)" "$here"
     echo installed > "$(<)"
 }

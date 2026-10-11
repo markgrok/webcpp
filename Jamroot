@@ -426,6 +426,13 @@ for local build in [ glob libs/*/build.jam ]
     .install += install-$(name) install-$(name)-licences ;
 }
 
+# The site, site/ (webcpporg/webcpporg.github.io), when it is checked out:
+# a project like a user's, which b2 site assembles (tools/site/site.jam).
+if [ glob site/Jamfile ]
+{
+    use-project /webcpp/site : site ;
+}
+
 alias test : $(.test) ;
 alias example : $(.example) ;
 alias doc : [ projects doc ] $(.doc) ;

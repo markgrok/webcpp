@@ -12,7 +12,7 @@
 # in two, never install over packages the other reads. It needs no Boost,
 # whose check the Jamroot's requirements would run.
 
-make node-modules.stamp : package.json package-lock.json : @webcpp-doc%install-packages
+make node-modules.stamp : package.json package-lock.json : @webcpp-doc%install-packages-in
   : <webcpp-boost-check>off ;
 alias node-modules : node-modules.stamp : <webcpp-boost-check>off ;
 explicit node-modules.stamp node-modules ;
