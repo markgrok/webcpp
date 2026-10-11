@@ -19,3 +19,6 @@
 [submodule "third_party/libs/JSON-Schema-Test-Suite"]
 	path = third_party/libs/JSON-Schema-Test-Suite
 	url = https://github.com/json-schema-org/JSON-Schema-Test-Suite.git
+[submodule "libs/config"]
+	path = libs/config
+	url = ../config.git
