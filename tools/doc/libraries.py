@@ -104,6 +104,24 @@ def ports(entry: dict[str, Any], origin: Path) -> str:
             f'{escaped(fields["language"])} ({escaped(fields["licence"])})')
 
 
+def meta_entries(origin: Path) -> list[dict[str, Any]]:
+    """The entries of a library's meta/libraries.json: itself, or every one of a list, Boost's
+    own shape for the file. origin must exist; raises Invalid when it does not, when it is not
+    JSON, or when it holds neither an object nor a list of objects. tools/site/catalogue.py
+    reads a library's meta the same way, through this function."""
+    if not origin.is_file():
+        raise Invalid(f'{origin}: there is no such file; every library of libs/ describes '
+                      'itself in meta/libraries.json')
+    try:
+        described = json.loads(origin.read_text(encoding='utf-8'))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise Invalid(f'{origin}: not JSON: {error}') from error
+    entries = described if isinstance(described, list) else [described]
+    if not entries or not all(isinstance(entry, dict) for entry in entries):
+        raise Invalid(f'{origin}: neither an object nor a list of objects')
+    return entries
+
+
 def page_of(library: Path, pages: dict[str, Path]) -> Path:
     """The page library's doc/Jamfile declares, as the build gives it in pages, which must be
     there."""
@@ -129,17 +147,8 @@ def rows(root: Path, pages: dict[str, Path], left_out: dict[str, str] | None = N
     for build in sorted((root / 'libs').glob('*/build.jam')):
         library = build.parent
         origin = library / 'meta/libraries.json'
-        if not origin.is_file():
-            raise Invalid(f'{origin}: there is no such file; every library of libs/ describes '
-                          'itself in meta/libraries.json')
+        entries = meta_entries(origin)
         page_of(library, pages)
-        try:
-            described = json.loads(origin.read_text(encoding='utf-8'))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise Invalid(f'{origin}: not JSON: {error}') from error
-        entries = described if isinstance(described, list) else [described]
-        if not entries or not all(isinstance(entry, dict) for entry in entries):
-            raise Invalid(f'{origin}: neither an object nor a list of objects')
         page = f'{{library-pages}}{library.name}/{{library-page}}'
         for entry in entries:
             name = escaped(text_field(entry, 'name', origin))
