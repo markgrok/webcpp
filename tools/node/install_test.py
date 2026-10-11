@@ -7,7 +7,8 @@
 
 """Checks tools/node/install.py with a stand-in for npm, first on PATH, which writes a package into
 node_modules after a moment and counts its runs: the packages are installed once per lockfile and
-linked at node_modules, and a second run installs nothing; installs at once run npm once and all
+linked at node_modules, and a second run installs nothing; npm ci runs with the packages'
+telemetry turned off, whatever the caller's environment says; installs at once run npm once and all
 succeed; the install of a lockfile that changed is kept for one generation more, for a build that
 still uses it, and then pruned, as is at once the directory a killed npm ci left, even one it made
 read-only; a node_modules that npm ci made in the directory itself gives way to the link; a failed
@@ -34,16 +35,22 @@ import install as installer
 SCRIPT = Path(__file__).resolve().parent / 'install.py'
 
 # The stand-in for npm: `npm ci` writes node_modules/pinned/index.js holding package-lock.json's
-# text after a second, and appends a line to the file NPM_RUNS names; NPM_FAILS makes it fail.
+# text after a second, and appends a line to the file NPM_RUNS names and, to NPM_RUNS.telemetry,
+# the values it was given of the variables that turn the packages' telemetry off; NPM_FAILS makes
+# it fail.
 FAKE_NPM = """#!{python}
 import os
 import sys
 import time
 from pathlib import Path
 
+QUIET = ('OPENUI_TELEMETRY_DISABLED', 'DO_NOT_TRACK')
+
 assert sys.argv[1] == 'ci', sys.argv
 with open(os.environ['NPM_RUNS'], 'a') as runs:
     runs.write(os.getcwd() + '\\n')
+with open(os.environ['NPM_RUNS'] + '.telemetry', 'a') as telemetry:
+    telemetry.write(' '.join(os.environ.get(name, '-') for name in QUIET) + '\\n')
 if os.environ.get('NPM_FAILS'):
     print('npm error code E404')
     sys.exit(1)
@@ -95,6 +102,11 @@ def runs(scratch: Path) -> int:
     return len(counted.read_text().splitlines()) if counted.is_file() else 0
 
 
+def telemetry(scratch: Path) -> list[str]:
+    """What each npm ci was given of OPENUI_TELEMETRY_DISABLED and DO_NOT_TRACK, - for unset."""
+    return (scratch / 'runs.telemetry').read_text().splitlines()
+
+
 def installs(directory: Path) -> list[str]:
     """What .node-modules holds, but its lock and the name of the previous install."""
     return sorted(name for name in os.listdir(directory / '.node-modules')
@@ -117,6 +129,18 @@ def test_installed_once_and_linked(scratch: Path) -> None:
     assert runs(scratch) == 1, runs(scratch)
     assert linked(directory) == '{"lock": "one"}\n'
     assert len(installs(directory)) == 1, installs(directory)
+
+
+def test_npm_ci_runs_with_telemetry_off(scratch: Path) -> None:
+    # A package's install script may report the install (@openuidev/lang-core's postinstall posts
+    # to PostHog), unless the environment turns it off: the build reaches no analytics, whatever
+    # the environment of the build says.
+    env = environment(scratch)
+    env['OPENUI_TELEMETRY_DISABLED'] = '0'
+    env.pop('DO_NOT_TRACK', None)
+    result = install(project(scratch), env)
+    assert result.returncode == 0, result
+    assert telemetry(scratch) == ['1 1'], telemetry(scratch)
 
 
 def test_installs_at_once_run_npm_once(scratch: Path) -> None:
@@ -333,6 +357,7 @@ def test_imported_without_fcntl(scratch: Path) -> None:
 
 CASES: list[Case] = [
     test_installed_once_and_linked,
+    test_npm_ci_runs_with_telemetry_off,
     test_installs_at_once_run_npm_once,
     test_a_changed_lockfile_keeps_the_previous_generation,
     test_what_a_killed_install_left_is_pruned,

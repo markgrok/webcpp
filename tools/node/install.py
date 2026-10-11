@@ -41,6 +41,9 @@ reader may find none for that moment. An entry that Windows will not move or rem
 process has a file open in it, is named on stderr and left for a later run. These Windows paths
 are checked with stand-ins for msvcrt only, never on Windows itself.
 
+npm ci runs with OPENUI_TELEMETRY_DISABLED=1 and DO_NOT_TRACK=1 in its environment, which turn
+off the telemetry a package's install script would send.
+
 Exit 0 when the link names the install; 1, naming the cause, when npm ci fails, with its output,
 the link left as it was, when npm, a lock or a link cannot be had, or when the system refuses to
 make, move or remove a file or a directory (permissions, a full disk); 2 on a usage error.
@@ -63,6 +66,10 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 INSTALLS = '.node-modules'
+# What turns off the telemetry a package's install script sends: @openuidev/lang-core's
+# postinstall reports each install to PostHog unless one of these is set, and a build reaches no
+# analytics, whatever the environment it runs in says.
+QUIET = {'OPENUI_TELEMETRY_DISABLED': '1', 'DO_NOT_TRACK': '1'}
 LOCK = '.lock'
 # The file that names the previous install, which a running build may still read.
 PREVIOUS = '.previous'
@@ -256,7 +263,7 @@ def installed(directory: Path, name: str) -> Path:
             shutil.copy2(directory / file, work / file)
         ran = subprocess.run([npm, 'ci', '--no-audit', '--no-fund', '--prefer-offline',
                               '--loglevel=error'], cwd=work, capture_output=True, text=True,
-                             check=False)
+                             check=False, env={**os.environ, **QUIET})
         if ran.returncode != 0:
             raise RuntimeError(f'npm ci failed in {directory}:\n{ran.stdout}{ran.stderr}')
         # A lockfile with no package still has an install, empty.
