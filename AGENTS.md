@@ -688,6 +688,65 @@ than leave it green on the rest.
   literal that opens a line with `R"({` or `R"([` has its members four spaces
   deeper than that line, one per line, and closes at that line's indentation.
 
+### Bringing a C library into webcpp
+
+A webcpp library that builds on a C library (webcpp::crypto on BearSSL and
+libsecp256k1, for example) brings it in this way, so that the C code stays
+exactly its authors' and the program carries only what it calls.
+
+1. The C library is a submodule under `third_party/libs/<name>`, pinned at a
+   commit and never edited. When upstream is not on GitHub, an unmodified
+   `webcpporg/<name>` mirror stands in (BearSSL's is `webcpporg/bearssl`),
+   refreshed only when the pin moves.
+2. `third_party/Jamfile` builds it from its own sources, file by file, as a
+   static library, in the library's own C dialect, on every target and with
+   every file: a file that does not apply to a target still compiles, to the
+   stubs other files call. A single unity source is not used.
+3. Every file is compiled with `-ffunction-sections -fdata-sections` (`/Gy
+   /Gw` on MSVC); upstream's warnings are not webcpp's (`<warnings>off`); each
+   define the library cannot work out for itself on a target sits beside the
+   sources with its reason (BearSSL's `BR_USE_GETENTROPY=1` on WebAssembly).
+4. Its usage requirements give the public include directory, the define
+   `WEBCPP_<LIB>_HAS_<NAME>=1`, and the link-time removal of unused sections
+   (`-Wl,--gc-sections`, `-Wl,-dead_strip`, `/OPT:REF`).
+5. A program names the C library in its own Jamfile, beside the webcpp library
+   that uses it, so that its choice is explicit:
+   `exe app : app.cpp /webcpp/crypto//crypto /third_party//bearssl ;`. A
+   library named and never called adds no byte to the program.
+6. Three layers stop a wrong build, each saying exactly what to add:
+   - at compile time, the backend's header checks `WEBCPP_<LIB>_HAS_<NAME>`
+     and `#error`s with the Jamfile line to add;
+   - at link time, every function that calls the C library references a
+     canary, `webcpp_<lib>_<name>_<commit7>_<configuration>__add_third_party_<name>_to_your_link`,
+     defined by a small file of webcpp's that the Jamfile adds to the library,
+     so that a missing library, or one of another commit or configuration,
+     fails to link with that name;
+   - on MSVC, the header and the canary carry `#pragma
+     detect_mismatch("webcpp_<lib>_backend_<name>", "<name>-<commit7>-<configuration>")`.
+7. A library webcpp does not build (OpenSSL) is found by `webcpp.external`,
+   linked shared or static by a propagated feature, refused on WebAssembly,
+   and announces itself by the same `HAS` define. When a program names it and
+   the machine lacks it, the build stops with the instruction (how to install
+   it, `-s<NAME>_ROOT=<dir>`, or another backend): it is never left out in
+   silence. Only webcpp's own tests and examples are left out, as chapter 9
+   says, and the CI requires them anyway.
+8. The webcpp library's `config.hpp` chooses the default backend from the
+   target and the `HAS` defines, and refuses impossible combinations with
+   `#error`. The backend is named after the C library (`backends::bearssl`),
+   never after a quality.
+9. The documentation gives, per backend, its Jamfile line, what it exports
+   (headers and functions), and every message above with its fix, written so
+   that an AI agent writes a correct Jamfile at once.
+10. One copy per program: webcpp's build of a C library is never linked
+    together with another copy of it.
+11. The CI proves, on every target: the C library's own tests pass on
+    webcpp's build; a program that uses it runs; one that names it without
+    calling it is byte-identical to one without it; each message above comes
+    from a test of its own, in a directory of its own; the canary's commit is
+    the submodule's.
+12. Moving a pin is a change of its own: the submodule, the canary's commit,
+    the tests on every target and the size table.
+
 ### Exceptions and RTTI
 
 - **Every target builds with exceptions on.** Whether a program uses them is

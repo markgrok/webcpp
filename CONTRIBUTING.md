@@ -54,6 +54,12 @@ Each line is a rule of AGENTS.md, named by its chapter.
 - **Written for the web.** Memory, I/O and scheduling are the user's to
   customize, and on emscripten a library uses what the browser offers
   (chapter 6).
+- **A C library is brought in as its authors wrote it:** a pinned submodule,
+  never edited (an unmodified `webcpporg` mirror when upstream is not on
+  GitHub), built file by file by webcpp's Jamfile with function sections, named
+  by the program in its own Jamfile (`/third_party//<name>`), and guarded by a
+  compile-time check, a link-time canary and, on MSVC, `detect_mismatch`, each
+  saying what to add (chapter 6, "Bringing a C library into webcpp").
 - **Types of a fixed meaning:** fixed-width integers from `<cstdint>`,
   `std::size_t` for sizes and indices, and plain `int` or `long` only where
   an interface asks for them (chapter 6).
