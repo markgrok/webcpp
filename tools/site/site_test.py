@@ -8,11 +8,13 @@
 """Checks `b2 site` (tools/site/site.jam), in a scratch copy of the superproject, committed to a
 git repository of its own, whose path holds a space: run with -sWEBCPP_SITE_DOCS naming a fixture
 of the pages `b2 doc -sWEBCPP_INDEX=site` writes, it writes bin/site/ whole, the site's pages at
-the root, the docs index at docs/, every library's page under the site's header, the report's
-page saying no results were given, the indexing files, every link checked; a page deleted from
-the site's pages/ between two runs is gone from the second bin/site/, its card and its line of
-the sitemap with it. -sWEBCPP_SITE=release without -sWEBCPP_SITE_VERSION fails, naming the
-option, and so does any channel but preview and release, naming the two.
+the root, the docs index at docs/, every library's page under the site's header, the report's page
+saying no results were given, the indexing files, every link checked; run with -sWEBCPP_SITE_REPORT
+naming a report written from tools/report/samples/, as the CI's site job names the Report job's,
+its matrices pass valid-html; a page deleted from the site's pages/ between two runs is gone from
+the second bin/site/, its card and its line of the sitemap with it. -sWEBCPP_SITE=release without
+-sWEBCPP_SITE_VERSION fails, naming the option, and so does any channel but preview and release,
+naming the two.
 
 It needs b2, node and npm, and the site checked out at site/; without the site there is nothing
 to build, which it says, and passes. The site's node packages are linked into the copy from the
@@ -345,6 +347,31 @@ def test_valid_html_still_fails_on_the_sites_own_trailing_whitespace(scratch: Pa
     assert 'trailing/index.html' in output, output[-4000:]
 
 
+def test_valid_html_accepts_a_report_with_results(scratch: Path) -> None:
+    # Without -sWEBCPP_SITE_REPORT the report's page only says that no results were given; the
+    # CI's site job gives it the Report job's pages, whose matrices are tables. valid-html's strict
+    # pass reads them as it reads every page outside docs/ and libs/, so they are built here from
+    # the samples of tools/report/samples/, demo's, with demo in libs/ as the samples have it,
+    # whose page the report links.
+    root = superproject(scratch)
+    shutil.copytree(ROOT / 'tools/test/fixtures/demo', root / 'libs/demo', ignore=IGNORED)
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'demo')
+    docs = docs_fixture(scratch, root)
+    report = scratch / 'report'
+    samples = ROOT / 'tools/report/samples'
+    written = subprocess.run([sys.executable, str(ROOT / 'tools/report/report.py'),
+                              '--lane', f'native={samples / "native-pass.xml"}',
+                              '--lane', f'wasip2={samples / "wasip2-pass.xml"}',
+                              '--out', str(report)], capture_output=True, text=True, check=False)
+    assert written.returncode == 0, (written.stdout, written.stderr)
+    result = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}', f'-sWEBCPP_SITE_REPORT={report}')
+    assert result.returncode == 0, (result.returncode, result.stdout[-6000:], result.stderr[-2000:])
+    site = root / 'bin/site/report'
+    for name in ('index.html', 'demo.html'):
+        assert '<table class="matrix"' in (site / name).read_text(), name
+
+
 def test_a_channel_is_preview_or_release(scratch: Path) -> None:
     root = superproject(scratch)
     result = b2(root, 'site', '-sWEBCPP_SITE=draft', f'-sWEBCPP_SITE_DOCS={scratch}')
@@ -362,6 +389,7 @@ CASES: list[Callable[[Path], None]] = [
     test_valid_html_fails_the_build_naming_the_file,
     test_valid_html_allows_trailing_whitespace_inside_a_librarys_pre,
     test_valid_html_still_fails_on_the_sites_own_trailing_whitespace,
+    test_valid_html_accepts_a_report_with_results,
     test_the_release_channel_needs_its_version,
     test_a_channel_is_preview_or_release,
 ]

@@ -38,6 +38,12 @@ NOT_BUILT = ("Not built in this lane, as when it does not declare the lane's tar
 
 OUTSIDE = 'outside failure'
 
+# html-validate's directive, before a matrix inside its .scroll: no-redundant-role is off from
+# there to the end of that block, the matrix alone (table, below).
+REDUNDANT_ROLES = ('<!-- [html-validate-disable-block no-redundant-role: the explicit roles keep '
+                   'the matrix a table for a screen reader when a phone lays its rows out as '
+                   'cards] -->')
+
 # Where a long name may break: an empty element to which the style gives a zero-width space, with
 # empty alternative text, as the documentation's pages break a name (tools/doc/postprocess.mjs).
 # Not a <wbr>, after which WebKit paints a part of a name twice at some widths, and not a U+200B
@@ -340,12 +346,15 @@ def table(heads: list[str], lanes: list[Lane],
           rows: list[tuple[list[str], list[str]]]) -> list[str]:
     """A matrix: heads name the columns before the lanes, and each row is the cells before the
     lanes, the first its name, and one cell per lane. The roles are explicit, so that the table
-    stays one for a screen reader when a phone lays its rows out as cards."""
+    stays one for a screen reader when a phone lays its rows out as cards: a browser may drop a
+    table's semantics once its parts are given another display, as WebKit did before Safari 17.
+    html-validate calls each such role redundant (no-redundant-role), so the matrix carries the
+    directive that turns that rule off for itself alone, and gives the reason."""
     first, *others = heads
     head = (f'<th scope="col" role="columnheader" class="name">{e(first)}</th>'
             + ''.join(f'<th scope="col" role="columnheader">{e(text)}</th>' for text in others)
             + ''.join(lane_header(lane) for lane in lanes))
-    lines = ['<div class="scroll">', '<table class="matrix" role="table">',
+    lines = ['<div class="scroll">', REDUNDANT_ROLES, '<table class="matrix" role="table">',
              f'<thead role="rowgroup"><tr role="row">{head}</tr></thead>',
              '<tbody role="rowgroup">']
     for before, cells in rows:
