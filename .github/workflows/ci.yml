@@ -19,7 +19,8 @@
 #            the deploy key of that repository, the secret SITE_DEPLOY_KEY.
 #   pages    once publish has succeeded, deploys this repository's own Pages, the old address
 #            https://webcpporg.github.io/webcpp/, as tools/site/redirect.py's two pages, which
-#            send every path under /webcpp/ to the same path at the root.
+#            send every path under /webcpp/ to the same path at the root, and carry noindex as
+#            every page of the preview does.
 #
 # The site is published whenever the pages were built, a red matrix included: the matrix is
 # there to show what fails.
