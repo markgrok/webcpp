@@ -143,6 +143,14 @@ DIAGNOSTIC = re.compile(r'^ {4}\d+\) ', re.MULTILINE)
 # does not mark as the header: Asciidoctor would show it as one more row.
 NAMED_COLUMNS = re.compile(r'^\[cols="([^"]*)"\]\n\|===\n\| Name\b', re.MULTILINE)
 
+# An anchor MrDocs writes with characters an id does not hold, as [#<scope>-operator[]] for an
+# operator[] brought in by a using-declaration: the whole line, its ] included.
+ODD_ANCHOR = re.compile(r'^\[#([^\n]*[^\w\n-][^\n]*)\]$', re.MULTILINE)
+
+# What an operator's characters become in an anchor, as MrDocs names the operators it anchors
+# itself (operator_subs, operator_call); any other character an id does not hold becomes _.
+ANCHOR_WORDS = {'[]': '_subs', '()': '_call'}
+
 # A section of MrDocs's reference: its anchor, [#<anchor>], then its title, == <title>.
 SECTION = re.compile(r'^\[#([^\]\n]+)\]\n== ', re.MULTILINE)
 
@@ -237,12 +245,29 @@ def unnested(text: str) -> str:
         text = flat
 
 
+def plain_anchor(anchor: str) -> str:
+    """The anchor with each run MrDocs left that an id does not hold written in letters."""
+    for word, letters in ANCHOR_WORDS.items():
+        anchor = anchor.replace(word, letters)
+    return re.sub(r'[^\w-]', '_', anchor)
+
+
+def plain_anchors(text: str) -> str:
+    """The text with each anchor of characters an id does not hold renamed, at its section and at
+    every link to it."""
+    for odd in {match.group(1) for match in ODD_ANCHOR.finditer(text)}:
+        plain = plain_anchor(odd)
+        text = text.replace(f'[#{odd}]', f'[#{plain}]').replace(f'link:#{odd}[', f'link:#{plain}[')
+    return text
+
+
 def finished(text: str, library: str) -> str:
     """MrDocs's reference as the page shows it: from the library's namespace, the sections of the
     global namespace and of webcpp left out, but for the table of the library's macros, which
     becomes a section of its own; each link to them their text; each link inside another's text
     its text; and the first row of each table, which names its columns, the table's header; and
     each apostrophe of its prose in a word as Asciidoctor reads the guide's."""
+    text = plain_anchors(text)
     starts = [match.start() for match in SECTION.finditer(text)]
     kept = [text[:starts[0]] if starts else text]
     for start, end in zip(starts, [*starts[1:], len(text)]):

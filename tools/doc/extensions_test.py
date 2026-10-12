@@ -387,6 +387,22 @@ def test_a_link_inside_a_link_of_a_synopsis_is_its_text(_: None) -> None:
     assert result.returncode == 0, result.stdout
 
 
+def test_an_anchor_with_brackets_becomes_one_asciidoctor_reads(_: None) -> None:
+    # MrDocs names the section of an operator[] a class brings in with a using-declaration
+    # [#...-operator[]], whose ] Asciidoctor reads as the end of the anchor and of each link to
+    # it. The reference gives the section an anchor of the characters an id holds, and its links
+    # follow it.
+    mrdocs = ('[#webcpp-sample-value]\n== value\n\n'
+              '[%header,cols="1,4"]\n|===\n| Name| Description\n'
+              '| link:#webcpp-sample-value-operator[][`operator&lsqb;&rsqb;`] \n'
+              '| Navigation&period;\n|===\n\n'
+              '[#webcpp-sample-value-operator[]]\n== operator&lsqb;&rsqb;\n\nNavigation&period;\n')
+    page = body(convert(reference.finished(mrdocs, 'sample')))
+    assert 'id="webcpp-sample-value-operator_subs"' in page, page
+    assert '<a href="#webcpp-sample-value-operator_subs">' in page, page
+    assert '#webcpp-sample-value-operator"' not in page, page
+
+
 def test_reference_apostrophes_read_as_the_guide_s(_: None) -> None:
     # MrDocs writes each ' as &apos;, which Asciidoctor's replacements, which make the guide's
     # apostrophe curly, never see. Its reference, as reference.py finishes it, shows the same
@@ -673,6 +689,7 @@ CASES: list[Callable[[None], None]] = [
     test_code_in_a_heading_is_broken_once,
     test_linked_code_is_whole_or_breaks_between_its_parts,
     test_a_link_inside_a_link_of_a_synopsis_is_its_text,
+    test_an_anchor_with_brackets_becomes_one_asciidoctor_reads,
     test_reference_apostrophes_read_as_the_guide_s,
     test_prose_apostrophes_that_asciidoctor_leaves_straight_are_curly,
     test_a_quote_of_several_words_keeps_its_closing_quote,
