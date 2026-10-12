@@ -149,6 +149,8 @@ at once.
 slices of a suite's cases.
 * Fixed the site refusing the report's page of a failure: its title now fits
 in 70 characters, and no line of its output ends in whitespace.
+* Changed the libraries' CI to check out the superproject's submodules without
+theirs, so a pinned third-party repository's own submodules are not fetched.
 
 [#webcpp-0-1-0-compilers-tested]
 == Compilers tested

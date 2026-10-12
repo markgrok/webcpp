@@ -110,13 +110,15 @@ jobs:
     steps:
       # The superproject is the caller's commit when it calls this workflow itself, and main
       # when a library does, the branch this workflow is called at.
+      # The superproject's submodules, not theirs: a pinned third-party repository may carry
+      # submodules of its own (nativejson-benchmark has 45) that no build reads.
       - &superproject
         name: Check out the superproject
         if: inputs.library == ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          submodules: recursive
+          submodules: true
       - &superproject-for-library
         name: Check out the superproject
         if: inputs.library != ''
@@ -125,7 +127,7 @@ jobs:
           persist-credentials: false
           repository: webcpporg/webcpp
           ref: main
-          submodules: recursive
+          submodules: true
       - &make-room
         name: Make room for the library
         if: inputs.library != ''
@@ -474,7 +476,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          submodules: recursive
+          submodules: true
           fetch-depth: 0
       - name: Check out the superproject
         if: inputs.library != ''
@@ -483,7 +485,7 @@ jobs:
           persist-credentials: false
           repository: webcpporg/webcpp
           ref: main
-          submodules: recursive
+          submodules: true
           fetch-depth: 0
       - *make-room
       - name: Check out the library
