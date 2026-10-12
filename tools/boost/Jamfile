@@ -167,9 +167,10 @@ rule cobalt-sources ( )
     return $(sources) ;
 }
 
-# Boost.Cobalt throws, through boost::throw_exception and std::rethrow_exception,
-# so it is refused without exceptions, as Boost.Locale is; a program that uses it
-# declares <exception-handling>on in its own requirements.
+# Boost.Cobalt throws, through boost::throw_exception and
+# std::rethrow_exception, so it is refused without exceptions, as Boost.Locale
+# is; a program that uses it declares <exception-handling>on in its own
+# requirements.
 rule cobalt-configuration ( properties * )
 {
     if <exception-handling>off in $(properties)

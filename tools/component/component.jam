@@ -341,15 +341,22 @@ local rule generate ( key )
         \"$(.arguments.$(key))\" ;
     local recorded = [ quoted "arguments $(words:J= )" ] ;
     local shell = [ quoted $(out) $(wit) $(world-file) $(tool) $(rename) ] ;
+    # Several b2 processes load the Jamfiles at once (the lint's shards each
+    # run b2), so nothing here is shared until the last step: the bindings are
+    # written in a scratch directory of this process alone, beside out, and
+    # published by one rename. A process that loses that rename has written the
+    # same bytes the winner did, so losing is not an error.
     local command = "set -e
 out=$(shell[1])
-work=\"${out}.work\"
 wit=$(shell[2])
 world=$(shell[3])
 tool=$(shell[4])
 rename=$(shell[5])
-rm -rf \"${work}\"
-mkdir -p \"${work}\"
+mkdir -p \"`dirname \"${out}\"`\"
+work=`mktemp -d \"${out}.XXXXXX\"`
+locked=
+trap 'rm -rf \"${work}\"; if [ -n \"${locked}\" ]; then rmdir \"${out}.lock\"; fi' EXIT
+chmod 755 \"${work}\"
 {
     printf 'world %s %s\\n' \"${world}\" \"`cksum < \"${world}\"`\"
     printf 'wit %s\\n' \"${wit}\"
@@ -357,11 +364,14 @@ mkdir -p \"${work}\"
     printf 'wit-bindgen %s\\n' \"`\"${tool}\" --version`\"
     printf '%s\\n' $(recorded:J= )
 } > \"${work}/inputs\"
-if [ -f \"${out}/inputs\" ] && cmp -s \"${work}/inputs\" \"${out}/inputs\" \\
-    && [ -f \"${out}/${rename}.h\" ] && [ -f \"${out}/${rename}.c\" ] \\
-    && [ -f \"${out}/${rename}_component_type.o\" ]
+current ()
+{
+    [ -f \"${out}/inputs\" ] && cmp -s \"${work}/inputs\" \"${out}/inputs\" \\
+        && [ -f \"${out}/${rename}.h\" ] && [ -f \"${out}/${rename}.c\" ] \\
+        && [ -f \"${out}/${rename}_component_type.o\" ]
+}
+if current
 then
-    rm -rf \"${work}\"
     exit 0
 fi
 mkdir \"${work}/wit\"
@@ -369,12 +379,57 @@ cp \"${world}\" \"${work}/wit/\"
 ln -s \"${wit}\" \"${work}/wit/deps\"
 \"${tool}\" c $(arguments:J= ) --out-dir \"${work}\" \"${work}/wit\" > \"${work}/log\" 2>&1 || {
     cat \"${work}/log\"
-    rm -rf \"${work}\"
     exit 1
 }
 rm -f \"${work}/log\"
-rm -rf \"${out}\"
-mv \"${work}\" \"${out}\"" ;
+while true
+do
+    # Losing the race: the rename of a directory onto a complete one fails, or
+    # (GNU mv) puts the scratch directory inside it, which is taken out again;
+    # the winner's identical output stands.
+    if mv \"${work}\" \"${out}\" 2> /dev/null
+    then
+        if [ ! -d \"${out}/${work##*/}\" ]
+        then
+            exit 0
+        fi
+        mv \"${out}/${work##*/}\" \"${work}\" 2> /dev/null || true
+    fi
+    if current
+    then
+        exit 0
+    fi
+    # What is there is stale, so replacing it is the one step that cannot be
+    # a rename: a process at a time does it, under a lock directory that the
+    # others wait on until the output is current. A lock older than a minute
+    # belongs to a process that died, and is broken.
+    waited=0
+    until mkdir \"${out}.lock\" 2> /dev/null
+    do
+        if current
+        then
+            exit 0
+        fi
+        waited=`expr ${waited} + 1`
+        if [ ${waited} -gt 600 ]
+        then
+            rm -rf \"${out}.lock\"
+            waited=0
+        fi
+        sleep 0.1
+    done
+    locked=1
+    if ! current
+    then
+        rm -rf \"${out}\"
+        if mv \"${work}\" \"${out}\" 2> /dev/null
+        then
+            exit 0
+        fi
+    fi
+    rmdir \"${out}.lock\"
+    locked=
+done" ;
     local written = [ SHELL $(command) : exit-status ] ;
     if $(written[2]) != 0
     {
