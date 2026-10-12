@@ -411,8 +411,9 @@ use-project /webcpp/boost-libraries : tools/boost ;
 # Boost.URL, Boost.Charconv, Boost.Locale and Boost.Cobalt, compiled: a library
 # that needs one puts <library>/webcpp//boost_url, boost_charconv, boost_locale
 # or boost_cobalt in its main target's usage requirements, as one that needs
-# Boost.JSON does with boost_json. Each alias checks the sources before anything is
-# built; what Boost.Locale gives on each target is AGENTS.md chapter 2's table.
+# Boost.JSON does with boost_json. Each alias checks the sources before anything
+# is built; what Boost.Locale gives on each target is AGENTS.md chapter 2's
+# table.
 for local name in boost_url boost_charconv boost_locale boost_cobalt
 {
     alias $(name) : tools/boost//$(name) : <conditional>@boost-source-usable ;
