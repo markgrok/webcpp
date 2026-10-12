@@ -88,6 +88,8 @@ Boost's.
 for every target.
 * Added `/webcpp//boost_locale`, Boost.Locale without ICU built from Boost's
 sources for every target; a program that uses it needs exceptions.
+* Added `/webcpp//boost_cobalt`, Boost.Cobalt built from Boost's sources for
+native programs, which need exceptions.
 * Fixed a lane's alias and a library's generated files running the
 configuration check of Boost, which neither needs.
 * Added `webcpp.data`, which gives a test a directory of the host's at the

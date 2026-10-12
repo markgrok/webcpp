@@ -107,7 +107,8 @@ webcpp/
     boost_json.cpp    Boost.JSON's definitions, built as /webcpp//boost_json (chapter 2)
     boost_test_runner.cpp  Boost.Test's header-only framework, for webcpp.boost-test (chapter 9)
     boost/            Jamfile: the compiled Boost libraries built from Boost's sources
-                      (/webcpp//boost_url, boost_charconv and boost_locale)
+                      (/webcpp//boost_url, boost_charconv, boost_locale and
+                      boost_cobalt)
     oracle/           the shared oracle (chapter 5): oracle.jam, twins.py, compare.py and their
                       tests
     lint/             lint.sh, rules.py, compile_commands.py and their test
@@ -290,8 +291,8 @@ cannot read stops the build too, naming the directory.
 
 **Boost's sources.** A compiled Boost library that a webcpp library needs is
 built from Boost's own sources, for every target, as Boost.JSON's definitions
-are: `/webcpp//boost_url`, `/webcpp//boost_charconv` and
-`/webcpp//boost_locale` (`tools/boost/Jamfile`). An installed Boost has none
+are: `/webcpp//boost_url`, `/webcpp//boost_charconv`, `/webcpp//boost_locale`
+and `/webcpp//boost_cobalt` (`tools/boost/Jamfile`). An installed Boost has none
 (Homebrew's ships its own `libboost_url` and no `libs/url/src`), so the build
 reads them from `-sBOOST_SOURCE=<dir>` on b2's command line (or `-s
 BOOST_SOURCE=<dir>`), which wins, else `BOOST_SOURCE` as a user-config.jam's
@@ -2677,10 +2678,10 @@ What webcpp does not have yet, and the chapters that mention it:
   user's allocator, applied first to xactor, xstate and wasi, whose response
   holds its body as a `std::string`; pratt is born with the rule, and
   trystero through `std::pmr` (chapter 6).
-- **Compiled Boost libraries.** Boost.URL, Boost.Charconv and Boost.Locale
-  are built from Boost's sources (`/webcpp//boost_url`,
-  `/webcpp//boost_charconv`, `/webcpp//boost_locale`). Boost.Locale has no
-  build without exceptions, and it is not yet measured on Windows. A
+- **Compiled Boost libraries.** Boost.URL, Boost.Charconv, Boost.Locale and
+  Boost.Cobalt are built from Boost's sources (`/webcpp//boost_url`,
+  `/webcpp//boost_charconv`, `/webcpp//boost_locale`, `/webcpp//boost_cobalt`).
+  Boost.Locale and Boost.Cobalt have no build without exceptions, and it is not yet measured on Windows. A
   Boost.Test suite still compiles the framework's header-only form (chapters
   2 and 9).
 - **Bundled toolchains.** Each toolchain is installed by hand and configured

@@ -408,12 +408,12 @@ rule boost-source-usable ( properties * )
 # Boost's compiled libraries, built from those sources (tools/boost/Jamfile).
 use-project /webcpp/boost-libraries : tools/boost ;
 
-# Boost.URL, Boost.Charconv and Boost.Locale, compiled: a library that needs
-# one puts <library>/webcpp//boost_url, boost_charconv or boost_locale in its
-# main target's usage requirements, as one that needs Boost.JSON does with
-# boost_json. Each alias checks the sources before anything is built; what
-# Boost.Locale gives on each target is AGENTS.md chapter 2's table.
-for local name in boost_url boost_charconv boost_locale
+# Boost.URL, Boost.Charconv, Boost.Locale and Boost.Cobalt, compiled: a library
+# that needs one puts <library>/webcpp//boost_url, boost_charconv, boost_locale
+# or boost_cobalt in its main target's usage requirements, as one that needs
+# Boost.JSON does with boost_json. Each alias checks the sources before anything is
+# built; what Boost.Locale gives on each target is AGENTS.md chapter 2's table.
+for local name in boost_url boost_charconv boost_locale boost_cobalt
 {
     alias $(name) : tools/boost//$(name) : <conditional>@boost-source-usable ;
 }
@@ -743,7 +743,7 @@ actions dist
 notfile dist : @dist : : <dependency>doc <webcpp-boost-check>off ;
 
 explicit boost_version throw_exception boost_json boost_url boost_charconv
-    boost_locale emscripten-reference test example doc install $(.install)
+    boost_locale boost_cobalt emscripten-reference test example doc install $(.install)
     declared-targets declared-lanes site site-serve check-release whats-new
     dist ;
 if [ glob site/Jamfile ]
