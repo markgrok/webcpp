@@ -289,7 +289,29 @@ def test_third_party_is_linked_and_made_a_case_s_own(root):
     assert (checkout / 'JSON-Schema-Test-Suite/tests/draft2020-12/type.json').is_file()
 
 
+def test_a_shard_runs_its_slice_of_the_cases(root):
+    """--shard K/N picks the K-th of N interleaved slices, so the N shards run each case once.
+
+    Tip: the CI runs a suite in N jobs at once, each with its own --shard, and a case run twice or
+    never would be a verdict the whole suite did not give.
+    """
+    del root
+    names = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+    shards = [harness.select_cases(names, ['--shard', f'{k}/3']) for k in (1, 2, 3)]
+    assert shards == [(['a', 'd', 'g'], ''), (['b', 'e'], ''), (['c', 'f'], '')], shards
+    assert sorted(sum((chosen for chosen, _ in shards), [])) == names
+    assert harness.select_cases(names, []) == (names, '')
+    assert harness.select_cases(names, ['b', 'f']) == (['b', 'f'], '')
+    assert harness.select_cases(names, ['b', 'c', 'e', '--shard', '2/3']) == (['b', 'e'], '')
+    for bad in (['--shard'], ['--shard', '0/3'], ['--shard', '4/3'], ['--shard', 'x']):
+        chosen, error = harness.select_cases(names, bad)
+        assert chosen == [] and error, (bad, chosen, error)
+    chosen, error = harness.select_cases(names, ['z'])
+    assert chosen == [] and 'z' in error, error
+
+
 CASES = [
+    test_a_shard_runs_its_slice_of_the_cases,
     test_every_b2_gets_one_environment,
     test_emscripten_cache_is_the_shells_else_one_per_run,
     test_link_emsdk_links_the_emsdk_it_is_given,

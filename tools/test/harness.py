@@ -454,22 +454,51 @@ def add_library(root: Path, name: str, jamfile: str, sources: dict[str, str]) ->
         (root / 'libs' / name / 'test' / source).write_text(text)
 
 
+def select_cases(names: Sequence[str], argv: Sequence[str]) -> tuple[list[str], str]:
+    """The names of the cases a run takes from argv, in order, and an empty string; or an empty
+    list and what is wrong with argv.
+
+    argv holds case names, which keep only those, and `--shard K/N`, which keeps the K-th of N
+    interleaved slices of the cases: the case at index i is in shard i % N + 1, as tools/lint's
+    shards slice their files. The N shards of a suite together run each of its cases once.
+    """
+    args = list(argv)
+    k, n = 1, 1
+    if '--shard' in args:
+        at = args.index('--shard')
+        value = args[at + 1] if at + 1 < len(args) else ''
+        shard = re.fullmatch(r'([1-9][0-9]*)/([1-9][0-9]*)', value)
+        if not shard or int(shard.group(1)) > int(shard.group(2)):
+            return [], f'--shard takes K/N with 1 <= K <= N, not {value!r}'
+        k, n = int(shard.group(1)), int(shard.group(2))
+        del args[at:at + 2]
+    unknown = set(args) - set(names)
+    if unknown:
+        return [], f'no case named {", ".join(sorted(unknown))}'
+    return [name for i, name in enumerate(names)
+            if (not args or name in args) and i % n == k - 1], ''
+
+
 def run_cases(label: str, cases: Sequence[Callable[[Path], None]], argv: Sequence[str],
               fixtures: Sequence[str] = ('demo',)) -> int:
-    """Runs each of cases, or only those argv names, and returns the exit status of the run.
+    """Runs each of cases, or those argv chooses (select_cases), and returns the exit status of the
+    run.
 
     Each case receives a scratch superproject of its own, with the fixture libraries named in
     fixtures (demo, unless the test names others), which is removed after it. The run prints
     "<case>: ok" after each case and "<label>: ok" at its end; a case that fails raises, which
-    ends the run there. A name in argv that is no case's makes it print the unknown names and
-    return 2 before any case runs.
+    ends the run there. An argv select_cases refuses, a name no case has or a wrong --shard,
+    makes it print why and return 2 before any case runs, as does a run without --shard that
+    chooses no case, which would pass having run nothing; a shard may be empty.
     """
-    unknown = set(argv) - {case.__name__ for case in cases}
-    if unknown:
-        print(f'{label}: no case named {", ".join(sorted(unknown))}', file=sys.stderr)
+    chosen, error = select_cases([case.__name__ for case in cases], argv)
+    if not chosen and not error and '--shard' not in argv:
+        error = 'no case chosen'
+    if error:
+        print(f'{label}: {error}', file=sys.stderr)
         return 2
     for case in cases:
-        if argv and case.__name__ not in argv:
+        if case.__name__ not in chosen:
             continue
         root = scratch_superproject(*fixtures)
         try:
