@@ -189,8 +189,9 @@ def container_tag() -> str:
 CONTAINER_IMAGE = container_tag()
 
 # The own lanes whose driver meets a browser, (library, lane), which the CI's chrome action gives
-# its pinned chrome-headless-shell, as CHROME: trystero's interop, natively and on emscripten.
-CHROME_LANES = {('trystero', 'interop')}
+# its pinned chrome-headless-shell, as CHROME: trystero's interop, natively and on emscripten, and
+# document's js, whose examples Playwright runs in Chrome.
+CHROME_LANES = {('document', 'js'), ('trystero', 'interop')}
 
 # MSVC's lanes build 64-bit programs, embed their manifest with the linker and abbreviate b2's
 # paths against Windows's MAX_PATH, as xstate-cpp's green Windows jobs did. b2 abbreviates each

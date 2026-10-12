@@ -635,6 +635,10 @@ def test_compile_database_gives_each_target_its_aggregate(root):
     assert ['-fno-exceptions' in command for command in page] == [False, True], page
     for command in page:
         assert compile_commands.wasi_sdk(command[0]), command
+        # An Emscripten setting such as -sWASM_WORKERS is em++'s, which gives clang the words it
+        # stands for, and clang refuses the setting itself.
+        assert '-sWASM_WORKERS' not in command, command
+        assert '-D__EMSCRIPTEN_SHARED_MEMORY__=1' in command, command
     # The programs both targets build are analysed natively, as before.
     for command in by_file[root / 'libs/browser_demo/test/reads_test.cpp']:
         assert 'wasm32-unknown-emscripten' not in command, command

@@ -368,6 +368,65 @@ def test_twins_declared_once_per_library(root):
                    'one set of twins')
 
 
+def add_package_directory(root: Path) -> Path:
+    """Adds to oracle_demo a Jamfile under test/js whose original is pinned in the package one
+    level up, js/, as document's test/js runs the tests of js/. Returns that package's directory."""
+    package = root / LIBRARY / 'js'
+    package.mkdir()
+    for name in ('package.json', 'package-lock.json'):
+        shutil.copy2(root / ORACLE / name, package / name)
+    (package / 'prog').mkdir()
+    (package / 'prog/Jamfile').write_text('exe prog : prog.cpp ;\nexplicit prog ;\n')
+    (package / 'prog/prog.cpp').write_text(PLAIN_SOURCE)
+    driver = root / LIBRARY / 'test/js'
+    driver.mkdir()
+    (driver / 'drive.mjs').write_text('')
+    (driver / 'Jamfile').write_text('import webcpp ;\n'
+                                    '\n'
+                                    'webcpp.original node : ../../js ;\n'
+                                    'webcpp.drive prebuilt : ../../js/prog//prog : : drive.mjs ;\n'
+                                    'webcpp.drive linked : plain.cpp : : drive.mjs ;\n'
+                                    'webcpp.lane setup : node-modules ;\n'
+                                    'webcpp.lane driven : prebuilt linked : native ;\n')
+    (driver / 'plain.cpp').write_text(PLAIN_SOURCE)
+    return package
+
+
+def test_original_is_pinned_in_the_directory_it_names(root):
+    # A test Jamfile whose original is pinned elsewhere, as document's test/js runs the tests of
+    # js/: the lane is declared, node-modules installs in that directory, and a lockfile that is
+    # not there is named with the directory.
+    package = add_package_directory(root)
+    result = harness.run_b2(root, '-d0', 'declared-lanes')
+    harness.expect(result, True)
+    assert 'oracle_demo setup libs/oracle_demo/test/js original\n' in result.stdout, result.stdout
+    result = harness.run_b2(root, '-a', f'{LIBRARY}/test/js//setup')
+    harness.expect(result, True)
+    assert (package / 'node_modules').exists(), result.stdout[-4000:]
+    assert not (root / LIBRARY / 'test/js/node_modules').exists()
+    lockfile = package / 'package-lock.json'
+    text = lockfile.read_bytes()
+    lockfile.unlink()
+    result = harness.run_b2(root, '-d0', 'declared-lanes')
+    harness.expect(result, False, 'libs/oracle_demo/js/package-lock.json', 'does not exist')
+    lockfile.write_bytes(text)
+
+
+def test_a_driven_test_of_prebuilt_programs_links_no_handler(root):
+    # A build without exceptions links the handler into a program the test builds from sources,
+    # and into none that its sources name by a target of another project: that program is linked
+    # there, and a handler linked here would make the script's program not that program.
+    add_package_directory(root)
+    request = ('-n', '-a', 'exception-handling=off')
+    result = harness.run_b2(root, *request, f'{LIBRARY}/test/js//prebuilt')
+    harness.expect(result, True)
+    assert 'throw_exception' not in result.stdout, result.stdout[-4000:]
+    assert 'prog' in result.stdout, result.stdout[-4000:]
+    result = harness.run_b2(root, *request, f'{LIBRARY}/test/js//linked')
+    harness.expect(result, True)
+    assert 'throw_exception' in result.stdout, result.stdout[-4000:]
+
+
 CASES = [
     test_lane_runs_twins_and_cases_green,
     test_twin_difference_fails_the_lane,
@@ -385,6 +444,8 @@ CASES = [
     test_missing_lockfile_names_it,
     test_rules_in_their_order,
     test_twins_declared_once_per_library,
+    test_original_is_pinned_in_the_directory_it_names,
+    test_a_driven_test_of_prebuilt_programs_links_no_handler,
 ]
 
 

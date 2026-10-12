@@ -165,6 +165,10 @@ MARKER = re.compile(r'^\(failed-as-expected\) (.+)$')
 ALONE = re.compile(rf'^{BUILD_DIR}/libs/([^/]+)/.*/(alone-[^/]+)\.cpp$')
 ALONE_OBJECT = re.compile(rf'^{BUILD_DIR}/(libs/.+?)/(alone-[^/]+)\.test/')
 
+# An Emscripten setting on a compile command, -sWASM_WORKERS or -sSTACK_SIZE=1MB: em++ reads it and
+# gives clang the words it stands for (--cflags), and clang refuses it.
+SETTING = re.compile(r'-s[A-Z][A-Z0-9_]*(=.*)?')
+
 # A line of `b2 declared-targets`: a library and a target its programs are built for.
 DECLARED = re.compile(rf'([a-z][a-z0-9_]*) ({"|".join(TARGETS)})')
 
@@ -383,9 +387,9 @@ def analysed(target: str, source: str, words: list[str], wasi_clang: str | None)
     """The command the lint analyses for the command words, which compiles source for target:
     words itself, natively or when wasi-sdk's clang++ is its compiler; for Emscripten's em++,
     words with em++ replaced by wasi_clang, wasi-sdk's clang++, and the words em++ --cflags
-    prints for the command's own options before b2's own words. Any other compiler of a
-    WebAssembly command fails, as an emscripten command does when wasi_clang is not wasi-sdk's
-    clang++."""
+    prints for the command's own options before b2's own words, less the settings (-sWASM_WORKERS)
+    that em++ alone reads. Any other compiler of a WebAssembly command fails, as an emscripten
+    command does when wasi_clang is not wasi-sdk's clang++."""
     check_compiler(target, source, words)
     if target == 'native' or wasi_sdk(words[0]):
         return words
@@ -395,7 +399,8 @@ def analysed(target: str, source: str, words: list[str], wasi_clang: str | None)
         raise Failure(f'{source} is compiled for {target} by Emscripten\'s em++, {words[0]}, '
                       'which clang-tidy cannot run: the database gives its command wasi-sdk\'s '
                       f'clang++, and {given}; the lint gives the clang++ beside its clang-tidy')
-    return [wasi_clang, *emscripten_words(words[0], options_of(words)[1:]), *words[1:]]
+    return [wasi_clang, *emscripten_words(words[0], options_of(words)[1:]),
+            *(word for word in words[1:] if not SETTING.fullmatch(word))]
 
 
 def output_of(words: list[str]) -> str:

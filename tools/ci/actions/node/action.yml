@@ -22,4 +22,5 @@ runs:
           tools/doc/package-lock.json
           tools/lint/package-lock.json
           libs/*/test/oracle/package-lock.json
+          libs/*/js/package-lock.json
           site/package-lock.json

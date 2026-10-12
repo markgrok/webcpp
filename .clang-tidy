@@ -6,9 +6,9 @@
 # those by pattern, and says so when it does.
 #
 # HeaderFilterRegex reports what is found in the libraries' public headers
-# and in the headers of their tests and examples (libs/xactor/test/require.hpp),
-# and nothing in Boost's or the standard library's, which webcpp does not
-# change.
+# and in the headers of their tests and examples (libs/xactor/test/require.hpp)
+# and of a JavaScript module (libs/document/js/binding.hpp), and nothing in
+# Boost's or the standard library's, which webcpp does not change.
 #
 # performance-enum-size is off because a library's error enum (xactor::errc,
 # and each library's own) has to be int:
@@ -53,7 +53,7 @@ Checks: >
   -readability-redundant-member-init
 
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(^|/)(include/webcpp|libs/[^/]+/(test|example))/'
+HeaderFilterRegex: '(^|/)(include/webcpp|libs/[^/]+/(test|example|js))/'
 FormatStyle: file
 
 CheckOptions:

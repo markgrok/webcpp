@@ -11,5 +11,6 @@ import webcpp ;
 webcpp.targets native emscripten ;
 
 webcpp.example hello.cpp ;
-# A page's program, for a browser alone: it is linked, and never run.
-webcpp.link page : page.cpp : <linkflags>-sENVIRONMENT=web : emscripten ;
+# A page's program, for a browser alone: it is linked, and never run. Its
+# Emscripten setting for workers is one that em++ alone reads when it compiles.
+webcpp.link page : page.cpp : <linkflags>-sENVIRONMENT=web <cxxflags>-sWASM_WORKERS : emscripten ;

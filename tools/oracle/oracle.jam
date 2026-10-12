@@ -126,32 +126,49 @@ local rule update-expected ( current : key )
     }
 }
 
-# webcpp.original <word> + ; how a program of the original's language runs,
-# and the explicit target node-modules.
-rule original ( found + : words + )
+# webcpp.original <word> + [ : <directory> ] ; how a program of the original's
+# language runs, and the explicit target node-modules. The original is pinned
+# by package.json and package-lock.json beside the Jamfile, or in <directory>,
+# relative to it, when a library's package is not the oracle's (document's
+# test/js runs the tests of js/, whose package pins Playwright and
+# TypeScript).
+rule original ( found + : words + : directory ? )
 {
     local key = $(found[3]) ;
     if $(.original.$(key))
     {
         errors.user-error "webcpp.original is called twice in $(found[4])" ;
     }
+    local package = $(found[2]) ;
+    local shown = $(key) ;
+    if $(directory)
+    {
+        package = [ path.root [ path.make $(directory) ] $(found[2]) ] ;
+        shown = [ path.join $(key) [ path.make $(directory) ] ] ;
+    }
     for local name in package.json package-lock.json
     {
-        if ! [ CHECK_IF_FILE [ path.native $(found[2])/$(name) ] ]
+        if ! [ CHECK_IF_FILE [ path.native $(package)/$(name) ] ]
         {
-            errors.user-error "webcpp.original: $(key)/$(name) does not exist; the original is"
-                "pinned by package.json and package-lock.json beside the oracle's Jamfile" ;
+            errors.user-error "webcpp.original: $(shown)/$(name) does not exist; the original is"
+                "pinned by package.json and package-lock.json beside the oracle's Jamfile,"
+                "or in the directory webcpp.original names" ;
         }
     }
     .original.$(key) = $(words) ;
-    .location.$(key) = $(found[2]) ;
+    .location.$(key) = $(package) ;
     # A stamp of the build directory's, which the action touches once npm ci
     # has succeeded: newer than the lockfile until the lockfile changes. Not
     # a file of npm's, which npm may not write. One per Jamfile, whatever the
     # toolset, as node_modules is; building with -a, or removing the stamp,
     # installs again.
     local build-dir = [ path.root [ $(found[1]).build-dir ] [ path.pwd ] ] ;
-    make node-modules.stamp : package-lock.json : @webcpp-oracle%npm-ci
+    local lockfile = package-lock.json ;
+    if $(directory)
+    {
+        lockfile = $(directory)/package-lock.json ;
+    }
+    make node-modules.stamp : $(lockfile) : @webcpp-oracle%npm-ci
       : <location>$(build-dir) <webcpp-oracle>$(key) <webcpp-boost-check>off ;
     alias node-modules : node-modules.stamp : <webcpp-boost-check>off ;
     $(found[1]).mark-target-as-explicit node-modules.stamp node-modules ;

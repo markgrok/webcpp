@@ -1084,10 +1084,11 @@ def test_a_container_lane_has_its_image_from_the_cache(_):
 
 
 def test_a_browser_lane_has_the_pinned_chrome(root):
-    # An own lane whose driver meets a browser, trystero's interop (CHROME_LANES), says chrome,
-    # on every target it runs on, and its job installs the pinned chrome-headless-shell, which
-    # gives CHROME; no other own lane does, and no job names the image's Chrome.
-    assert matrix.CHROME_LANES == {('trystero', 'interop')}, matrix.CHROME_LANES
+    # An own lane whose driver meets a browser, trystero's interop and document's js
+    # (CHROME_LANES), says chrome, on every target it runs on, and its job installs the pinned
+    # chrome-headless-shell, which gives CHROME; no other own lane does, and no job names the
+    # image's Chrome.
+    assert matrix.CHROME_LANES == {('document', 'js'), ('trystero', 'interop')}, matrix.CHROME_LANES
     boost_only(root)
     external_library(root)
     oracle_library(root, 'beta')

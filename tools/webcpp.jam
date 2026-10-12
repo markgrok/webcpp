@@ -858,10 +858,10 @@ rule index ( page )
 
 # How a program of the original's language runs, and the target node-modules
 # (tools/oracle/oracle.jam). Each oracle rule is told where its Jamfile is.
-rule original ( words + )
+rule original ( words + : directory ? )
 {
     local found = [ where ] ;
-    webcpp-oracle.original $(found) : $(words) ;
+    webcpp-oracle.original $(found) : $(words) : $(directory) ;
     runs-original $(found) : node-modules update-expected ;
 }
 
@@ -942,7 +942,24 @@ rule drive ( name : sources + : requirements * : script : arguments * : targets 
     local only = [ program drive : $(name) : $(targets) ] ;
     lane-only-program $(found) : $(name) : "webcpp.drive $(name)" : $(built-for) ;
     runs-original $(found) : $(name) ;
-    webcpp-drive.drive $(found) : $(name) : $(sources) : $(requirements) $(.handler)
+    # A program the test links gets the handler of a build without exceptions.
+    # Sources that are all targets of other projects (js//module) are linked
+    # there, with their own requirements: a handler linked here would make the
+    # program the script gets one that is not that module.
+    local handler = $(.handler) ;
+    local prebuilt = true ;
+    for local source in $(sources)
+    {
+        if ! [ MATCH "(//)" : $(source) ]
+        {
+            prebuilt = ;
+        }
+    }
+    if $(prebuilt)
+    {
+        handler = ;
+    }
+    webcpp-drive.drive $(found) : $(name) : $(sources) : $(requirements) $(handler)
         : $(script) : $(arguments) : $(original) : $(only) ;
 }
 

@@ -923,7 +923,8 @@ def test_node_caches_every_lock_file_npm_ci_reads(_: Path) -> None:
     assert paths, action
     listed = [line.strip() for line in paths.group(1).splitlines()]
     assert listed == ['tools/doc/package-lock.json', 'tools/lint/package-lock.json',
-                      'libs/*/test/oracle/package-lock.json', 'site/package-lock.json'], listed
+                      'libs/*/test/oracle/package-lock.json', 'libs/*/js/package-lock.json',
+                      'site/package-lock.json'], listed
 
 
 def test_emsdk_configure_fails_naming_both_versions(scratch: Path) -> None:
