@@ -25,3 +25,6 @@
 [submodule "third_party/libs/nativejson-benchmark"]
 	path = third_party/libs/nativejson-benchmark
 	url = https://github.com/miloyip/nativejson-benchmark.git
+[submodule "libs/document"]
+	path = libs/document
+	url = ../document.git

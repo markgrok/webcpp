@@ -16,6 +16,9 @@ are their changelogs' "Unreleased" sections.
 * link:{library-pages}config/{library-page}[config]: webcpp's configuration,
 which every library includes first: the target, exceptions and the version,
 from R.
+* link:{library-pages}document/{library-page}[document]: a header-only JSON
+document for {cpp}20 that behaves as JavaScript does, exact in decimal, in one
+relocatable binary image, with a JavaScript module, from R.
 * link:{library-pages}pratt/{library-page}[pratt]: a header-only
 Pratt-parsing engine for {cpp}20, with a decimal calculator built on it,
 from R.
