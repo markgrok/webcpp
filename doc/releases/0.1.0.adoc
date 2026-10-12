@@ -143,6 +143,8 @@ driver meets a browser.
 build trystero's external libraries, pinned, with each lane's compilers.
 * Changed the Node package installer to run `npm ci` with `DO_NOT_TRACK=1`,
 so that no install script reports an install.
+* Changed CI to run the lint and the tests of the tools in eight shards each,
+at once.
 * Added `--shard K/N` to the tests of the tools, which runs the K-th of N
 slices of a suite's cases.
 

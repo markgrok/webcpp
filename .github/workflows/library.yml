@@ -59,7 +59,7 @@
 #   tools       for the superproject only: every tools/**/*_test.py, the tests of the build,
 #               the oracle, the lint, the report, the documentation, the components and the
 #               CI's own scripts, with every tool a lane, the docs or the lint uses.
-#   lint        tools/lint/lint.sh in four shards, each analysing a quarter of the files with
+#   lint        tools/lint/lint.sh in eight shards, each analysing an eighth of the files with
 #               clang-tidy and running every other rule; with the full history, which the
 #               banned-word rule reads, and the toolsets and tools of the WASI lanes, whose
 #               commands it analyses, and of the emscripten lane, without its system libraries,
@@ -465,7 +465,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       # The whole history, of the superproject and of every library: the banned-word rule reads
       # every commit, not only the tree.
@@ -549,10 +549,14 @@ jobs:
             --clang-tidy .local/wasi-sdk/bin/clang-tidy --shard "$SHARD"
 
   tools:
-    name: Tests of the tools
+    name: Tests of the tools (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.library == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - *superproject
       - *boost
@@ -574,18 +578,31 @@ jobs:
       # The toolsets the tests build with, Clang 18 the default, emscripten among them, which the
       # tests of the emscripten target build with (tools/test/emscripten_test.py), sharing the
       # cache of system libraries the emsdk action restores (EM_CACHE, tools/test/harness.py),
-      # and the clang++ that tools/doc/doc_comments.py finds on PATH. Every test runs, and each
-      # failure is named.
+      # and the clang++ that tools/doc/doc_comments.py finds on PATH. The shards split the tests:
+      # a suite run by harness.run_cases runs its slice of cases in every shard (--shard K/N), and
+      # every other suite runs whole in one shard, in turn, so the N shards run each case once.
+      # Each failure is named.
       - name: Tests of the tools
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ strategy.job-total }}
         run: |
           python3 tools/ci/matrix.py register clang-18 wasip2 wasip3 emscripten
           mkdir -p "$RUNNER_TEMP/bin"
           ln -sf /usr/bin/clang++-18 "$RUNNER_TEMP/bin/clang++"
           export PATH="$RUNNER_TEMP/bin:$PATH"
           failed=()
+          whole=0
           while IFS= read -r test; do
-            echo "::group::$test"
-            python3 "$test" || failed+=("$test")
+            if grep -q 'run_cases(' "$test"; then
+              args=(--shard "$SHARD/$SHARDS")
+            else
+              whole=$((whole + 1))
+              [ $(((whole - 1) % SHARDS + 1)) -eq "$SHARD" ] || continue
+              args=()
+            fi
+            echo "::group::$test ${args[*]}"
+            python3 "$test" "${args[@]}" || failed+=("$test")
             echo "::endgroup::"
           done < <(find tools -name '*_test.py' -not -path '*/node_modules/*' | sort)
           if [ "${#failed[@]}" -ne 0 ]; then

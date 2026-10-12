@@ -2066,7 +2066,7 @@ jobs:
   `external` is `true`, the
   external libraries, built with Clang 18, whose headers the reference of
   the library, or of a library it uses, parses.
-- **lint:** `tools/lint/lint.sh` in four shards (`--shard 1/4` to `4/4`),
+- **lint:** `tools/lint/lint.sh` in eight shards (`--shard 1/8` to `8/8`),
   with wasi-sdk's clang-format and clang-tidy, Node, Clang 18 as b2's default
   toolset and the wasip2 and wasip3 toolsets after it (`matrix.py register
   clang-18 wasip2 wasip3`), wit-bindgen and the WASI WIT, which the WASI dry
@@ -2079,11 +2079,15 @@ jobs:
   and the full history
   (`fetch-depth: 0`) of the superproject and of the library, since the
   banned-word rule reads every commit.
-- **tools,** for the superproject only: every `tools/**/*_test.py`, with
-  Clang 18 and the wasip2, wasip3 and emscripten toolsets, wasi-sdk,
-  wasmtime, wit-bindgen, the WASI WIT, emsdk, Node and MrDocs, each failure
-  named; the tests of the emscripten target share the cache the emsdk action
-  restores (chapter 1).
+- **tools,** for the superproject only: every `tools/**/*_test.py`, in
+  eight shards, with Clang 18 and the wasip2, wasip3 and emscripten
+  toolsets, wasi-sdk, wasmtime, wit-bindgen, the WASI WIT, emsdk, Node and
+  MrDocs, each failure named; the tests of the emscripten target share the
+  cache the emsdk action restores (chapter 1). A suite run by
+  `harness.run_cases` runs its slice of cases in every shard (`--shard
+  K/N`, which a run by hand takes too); every other suite runs whole in one
+  shard, in turn. A run without `--shard` that chooses no case fails, since
+  it would pass having run nothing.
 - **actionlint:** actionlint 1.7.12, downloaded and checked against its
   SHA-256, on every workflow of the superproject and of `libs/*`, with
   `.github/actionlint.yaml`. It also runs clean locally before a workflow
