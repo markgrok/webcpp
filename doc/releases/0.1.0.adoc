@@ -147,6 +147,8 @@ so that no install script reports an install.
 at once.
 * Added `--shard K/N` to the tests of the tools, which runs the K-th of N
 slices of a suite's cases.
+* Fixed the site refusing the report's page of a failure: its title now fits
+in 70 characters, and no line of its output ends in whitespace.
 
 [#webcpp-0-1-0-compilers-tested]
 == Compilers tested

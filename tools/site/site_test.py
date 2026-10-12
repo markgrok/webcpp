@@ -11,13 +11,13 @@ of the pages `b2 doc -sWEBCPP_INDEX=site` writes, it writes bin/site/ whole, the
 the root, the docs index at docs/, every library's page under the site's header, the report's page
 saying no results were given, the indexing files, every link checked; run with -sWEBCPP_SITE_REPORT
 naming a report written from tools/report/samples/, as the CI's site job names the Report job's,
-its matrices pass valid-html; a page deleted from the site's pages/ between two runs is gone from
-the second bin/site/, its card and its line of llms.txt with it. The preview, the default channel,
-is never indexed: every page carries noindex, and it writes no sitemap.xml, which its robots.txt
-does not name; the release (-sWEBCPP_SITE=release) has its sitemap, named by its robots.txt, and
-no page with noindex; both write llms.txt and libraries.json. -sWEBCPP_SITE=release without
--sWEBCPP_SITE_VERSION fails, naming the option, and so does any channel but preview and release,
-naming the two.
+its matrices and the page of a failed test pass valid-html; a page deleted from the site's pages/
+between two runs is gone from the second bin/site/, its card and its line of llms.txt with it. The
+preview, the default channel, is never indexed: every page carries noindex, and it writes no
+sitemap.xml, which its robots.txt does not name; the release (-sWEBCPP_SITE=release) has its
+sitemap, named by its robots.txt, and no page with noindex; both write llms.txt and libraries.json.
+-sWEBCPP_SITE=release without -sWEBCPP_SITE_VERSION fails, naming the option, and so does any
+channel but preview and release, naming the two.
 
 It needs b2, node and npm, and the site checked out at site/; without the site there is nothing
 to build, which it says, and passes. The site's node packages are linked into the copy from the
@@ -395,25 +395,34 @@ def test_valid_html_accepts_a_report_with_results(scratch: Path) -> None:
     # Without -sWEBCPP_SITE_REPORT the report's page only says that no results were given; the
     # CI's site job gives it the Report job's pages, whose matrices are tables. valid-html's strict
     # pass reads them as it reads every page outside docs/ and libs/, so they are built here from
-    # the samples of tools/report/samples/, demo's, with demo in libs/ as the samples have it,
-    # whose page the report links.
+    # the samples of tools/report/samples/: demo's, passing, and component_demo's served test
+    # failing in its own lane, whose page holds what b2 captured, with its lines that end in
+    # spaces, under a title naming the test and a lane longer than any target's. Both libraries
+    # are in libs/, as the samples have them, whose pages the report links.
     root = superproject(scratch)
-    shutil.copytree(ROOT / 'tools/test/fixtures/demo', root / 'libs/demo', ignore=IGNORED)
+    for library in ('demo', 'component_demo'):
+        shutil.copytree(ROOT / 'tools/test/fixtures' / library, root / 'libs' / library,
+                        ignore=IGNORED)
     git(root, 'add', '-A')
-    git(root, 'commit', '-q', '-m', 'demo')
+    git(root, 'commit', '-q', '-m', 'demo and component_demo')
     docs = docs_fixture(scratch, root)
     report = scratch / 'report'
     samples = ROOT / 'tools/report/samples'
+    own = 'wasip2.component_demo.served'
     written = subprocess.run([sys.executable, str(ROOT / 'tools/report/report.py'),
                               '--lane', f'native={samples / "native-pass.xml"}',
                               '--lane', f'wasip2={samples / "wasip2-pass.xml"}',
+                              '--lane', f'{own}={samples / "wasip2-served-failure.xml"}',
                               '--out', str(report)], capture_output=True, text=True, check=False)
-    assert written.returncode == 0, (written.stdout, written.stderr)
+    assert written.returncode == 1, (written.stdout, written.stderr)
+    failed = report / f'output/{own}/component_demo/test-answers.html'
+    assert failed.is_file(), sorted(path.name for path in report.rglob('*.html'))
     result = b2(root, '-a', 'site', f'-sWEBCPP_SITE_DOCS={docs}', f'-sWEBCPP_SITE_REPORT={report}')
     assert result.returncode == 0, (result.returncode, result.stdout[-6000:], result.stderr[-2000:])
     site = root / 'bin/site/report'
-    for name in ('index.html', 'demo.html'):
+    for name in ('index.html', 'demo.html', 'component_demo.html'):
         assert '<table class="matrix"' in (site / name).read_text(), name
+    assert '+HTTP/1.1 404 Not Found' in (site / failed.relative_to(report)).read_text()
 
 
 def test_a_channel_is_preview_or_release(scratch: Path) -> None:

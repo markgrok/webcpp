@@ -19,9 +19,11 @@ failure. One case uses lanes.py and pages.py alone; one checks that no sample na
 temporary directory, and one that none holds what Emscripten says of its cache; a last one records
 every sample afresh, untrimmed, and checks that the report reads it as it reads the committed one.
 Every page written is checked to be self-contained, to link only to the report's own pages, to the
-site it is served in (its index and each library's page) and to github.com/webcpporg, and to name
-its lane on every lane cell, which a phone shows as a chip. Run with the names of some cases to run
-only those."""
+site it is served in (its index and each library's page) and to github.com/webcpporg, to name its
+lane on every lane cell, which a phone shows as a chip, and to pass two rules of the site's
+valid-html that a failure's page can break: a title of at most 70 characters, and no line that ends
+in whitespace.
+Run with the names of some cases to run only those."""
 
 from __future__ import annotations
 
@@ -63,6 +65,10 @@ OWN_SITE = 'https://github.com/webcpporg/'
 # U+2014, written as a code point so that this file never contains it.
 EM_DASH = chr(0x2014)
 
+# The longest title html-validate's long-title accepts, as the site's valid-html runs it on every
+# page of the report (site/.htmlvalidate.json).
+LONGEST_TITLE = 70
+
 
 def sample(name: str) -> Path:
     return SAMPLES / f'{name}.xml'
@@ -100,13 +106,16 @@ class Cell:
 
 
 class Page(HTMLParser):
-    """A page's tables, each a list of rows of cells; its links; and its text, unescaped."""
+    """A page's tables, each a list of rows of cells; its links; its title and its text,
+    unescaped."""
 
     def __init__(self, path: Path) -> None:
         super().__init__()
         self.tables: list[list[list[Cell]]] = []
         self.links: list[str] = []
         self.text = ''
+        self.title = ''
+        self.in_title = False
         self.cell: Cell | None = None
         self.source = path.read_text(encoding='utf-8')
         self.feed(self.source)
@@ -118,7 +127,9 @@ class Page(HTMLParser):
             value = attributes.get(name)
             if value is not None:
                 self.links.append(value)
-        if tag == 'table':
+        if tag == 'title':
+            self.in_title = True
+        elif tag == 'table':
             self.tables.append([])
         elif tag == 'tr' and self.tables:
             self.tables[-1].append([])
@@ -129,12 +140,16 @@ class Page(HTMLParser):
             self.cell.href = attributes.get('href')
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == 'title':
+            self.in_title = False
         if tag in ('td', 'th') and self.cell is not None:
             self.cell.text = self.cell.text.strip()
             self.cell = None
 
     def handle_data(self, data: str) -> None:
         self.text += data
+        if self.in_title:
+            self.title += data
         if self.cell is not None:
             self.cell.text += data
 
@@ -212,6 +227,11 @@ def check_pages(out: Path) -> None:
             assert banned not in lowered, (path, banned)
         assert FOOTER in page.text, path
         assert EM_DASH not in page.source, path
+        # What valid-html refuses on any page of the site's own: a title longer than long-title
+        # accepts, and a line that ends in a space or a tab, which a test's output may print.
+        assert page.title and len(page.title) <= LONGEST_TITLE, (path, page.title)
+        trailing = [line for line in page.source.splitlines() if line != line.rstrip(' \t')]
+        assert not trailing, (path, trailing[:3])
         # A name breaks at an empty span.wbr, whose zero-width space the style generates, never
         # at a <wbr>, after which WebKit paints a part twice at some widths, and never at a
         # U+200B of the text, which a copy would carry.
@@ -603,6 +623,12 @@ def test_an_own_lane_is_named_after_its_target_and_library(root: Path) -> None:
     assert result.returncode == 1, outcome(result)
     assert result.stderr.splitlines() == [f'report: {own}: component_demo/answers: run'], (
         outcome(result))
+    # Its failure's page, whose subject with the report's name is longer than a title may be,
+    # is titled with the test and the lane alone.
+    component = matrix(root / 'fails/component_demo.html')
+    output = linked(root / 'fails/component_demo.html', component.cells[('answers', own)].href)
+    assert output.title == f'component_demo/answers on {own}', output.title
+    check_pages(root / 'fails')
     # The target its name begins with is the one its toolset builds for, and the library it
     # names is the only one whose tests it lists.
     served = sample('wasip2-served')
@@ -658,6 +684,15 @@ def test_a_failure_outside_every_test_fails_the_lane(root: Path) -> None:
     assert demo.cells[('fails', 'wasip2')].attributes.get('data-note') == 'outside failure'
     output = linked(out / 'demo.html', demo.cells[('parses_json', 'wasip2')].href)
     assert 'boost_json.o' in output.text, output.text
+    check_pages(out)
+    # In an own lane, whose name is longer, the page of the failures outside every test is titled
+    # with the lane and what it lists, and the report's name only where it fits.
+    own = 'wasip2.demo.dependency'
+    out = root / 'own'
+    result = report(out, (own, sample('wasip2-dependency')))
+    assert result.returncode == 1, outcome(result)
+    outside = Page(out / f'output/{own}/outside.html')
+    assert outside.title == f'{own}: failures outside every test and example', outside.title
     check_pages(out)
 
 

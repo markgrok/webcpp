@@ -38,6 +38,10 @@ NOT_BUILT = ("Not built in this lane, as when it does not declare the lane's tar
 
 OUTSIDE = 'outside failure'
 
+# The longest title the site's valid-html accepts on a page of the report: html-validate's
+# long-title, which site/.htmlvalidate.json leaves at its default.
+LONGEST_TITLE = 70
+
 # html-validate's directive, before a matrix inside its .scroll: no-redundant-role is off from
 # there to the end of that block, the matrix alone (table, below).
 REDUNDANT_ROLES = ('<!-- [html-validate-disable-block no-redundant-role: the explicit roles keep '
@@ -223,6 +227,22 @@ def e(text: str) -> str:
 
 def plural(count: int, word: str) -> str:
     return f'{count} {word}' if count == 1 else f'{count} {word}s'
+
+
+def title(subject: str, *shorter: str) -> str:
+    """A page's title within LONGEST_TITLE: subject and the report's name, else subject alone,
+    else the first of shorter that fits, else the last of them cut short with an ellipsis."""
+    candidates = [f'{subject} - webcpp test matrix', subject, *shorter]
+    for candidate in candidates:
+        if len(candidate) <= LONGEST_TITLE:
+            return candidate
+    return candidates[-1][:LONGEST_TITLE - 1] + '\u2026'
+
+
+def preformatted(text: str) -> str:
+    """text for a <pre>, each line without the whitespace it ends in, which no reader sees and the
+    site's valid-html refuses (no-trailing-whitespace): a test's output may print it."""
+    return '\n'.join(line.rstrip() for line in text.split('\n'))
 
 
 def page_of(library: str) -> str:
@@ -437,7 +457,7 @@ def library_page(library: str, lanes: list[Lane], library_rows: list[Row]) -> st
     body += lane_problems(lanes)
     body += table(['Test', 'Type'], lanes, rows)
     body += legend()
-    return page(f'{library} - webcpp test matrix', [(library, None)], '', body)
+    return page(title(library), [(library, None)], '', body)
 
 
 def action_lines(action: Action, file: str) -> list[str]:
@@ -451,8 +471,9 @@ def action_lines(action: Action, file: str) -> list[str]:
             f'<dt>File</dt><dd><code>{e(file)}</code></dd>',
             '</dl>',
             '<h3>Output</h3>',
-            f'<pre>{e(output)}</pre>',
-            f'<details><summary>Command</summary><pre>{e(action.command or "(none)")}</pre>'
+            f'<pre>{e(preformatted(output))}</pre>',
+            '<details><summary>Command</summary>'
+            f'<pre>{e(preformatted(action.command or "(none)"))}</pre>'
             '</details>']
 
 
@@ -484,7 +505,7 @@ def output_page(lane: Lane, row: Row) -> str:
                         'lane was likely not built from scratch.</p>')
         body.append('</section>')
     crumbs = [(row.library, page_of(row.library)), (f'{row.name} on {lane.name}', None)]
-    return page(f'{row.id} on {lane.name} - webcpp test matrix', crumbs, '../../../', body)
+    return page(title(f'{row.id} on {lane.name}', row.id), crumbs, '../../../', body)
 
 
 def outside_page(lane: Lane) -> str:
@@ -497,8 +518,8 @@ def outside_page(lane: Lane) -> str:
                  f'<code>{e(posixpath.basename(action.path))}</code></h2>',
                  *action_lines(action, action.path), '</section>']
     crumbs = [(f'{lane.name}: outside every test and example', None)]
-    return page(f'{lane.name}: failures outside every test and example - webcpp test matrix',
-                crumbs, '../../', body)
+    return page(title(f'{lane.name}: failures outside every test and example'), crumbs, '../../',
+                body)
 
 
 def write(lanes: list[Lane], out: Path) -> None:
