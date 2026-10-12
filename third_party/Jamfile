@@ -49,3 +49,32 @@ alias json-schema-test-suite : : <conditional>@suite-checked-out : :
     <dependency>$(.suite-files) ;
 
 explicit json-schema-test-suite ;
+
+# nativejson-benchmark (MIT), miloyip/nativejson-benchmark: Milo Yip's JSON
+# benchmark, whose three files, data/canada.json, data/citm_catalog.json and
+# data/twitter.json, document's benchmarks read (libs/document/bench); test
+# data, never compiled into a program, and its own submodules never checked
+# out. A program that names nativejson-benchmark reads the files at run time
+# from the directory WEBCPP_TEST_NATIVEJSON_BENCHMARK names, the checkout's,
+# as json-schema-test-suite gives its own, wasmtime given it too
+# (webcpp.data), and runs again when one of them changes.
+path-constant NATIVEJSON_BENCHMARK : libs/nativejson-benchmark ;
+.nativejson = [ regex.replace $(NATIVEJSON_BENCHMARK) "\\\\" "/" ] ;
+.nativejson-files = [ glob libs/nativejson-benchmark/data/*.json ] ;
+
+rule nativejson-checked-out ( properties * )
+{
+    if ! [ path.exists $(NATIVEJSON_BENCHMARK)/data/canada.json ]
+    {
+        errors.user-error "third_party/libs/nativejson-benchmark is not checked out: it"
+            "holds no data/canada.json. Check it out with `git submodule update --init"
+            "third_party/libs/nativejson-benchmark`." ;
+    }
+}
+
+alias nativejson-benchmark : : <conditional>@nativejson-checked-out : :
+    <define>"\"WEBCPP_TEST_NATIVEJSON_BENCHMARK=\\\"$(.nativejson)\\\"\""
+    [ webcpp.data $(NATIVEJSON_BENCHMARK) ]
+    <dependency>$(.nativejson-files) ;
+
+explicit nativejson-benchmark ;

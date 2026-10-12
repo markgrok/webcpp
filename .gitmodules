@@ -22,3 +22,6 @@
 [submodule "libs/config"]
 	path = libs/config
 	url = ../config.git
+[submodule "third_party/libs/nativejson-benchmark"]
+	path = third_party/libs/nativejson-benchmark
+	url = https://github.com/miloyip/nativejson-benchmark.git
