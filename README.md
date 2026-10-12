@@ -26,6 +26,7 @@ system.
 | [xstate](https://github.com/webcpporg/xstate) | A header-only port of XState's state machines and actors: machines read from XState's JSON config, stepped by XState's pure functions or run as actors on xactor. Ports XState 5.33.2, and is proven against it. | native, wasip2, wasip3 |
 | [pratt](https://github.com/webcpporg/pratt) | A header-only Pratt parser engine, generic through concepts, with a calculator built on it, exact in decimal by default; a library of webcpp's own. | native, emscripten, wasip2, wasip3 |
 | [wasi](https://github.com/webcpporg/wasi) | Header-only helpers for C++ built as WebAssembly components: the HTTP handler a component exports on wasip2 and wasip3, and the macros a program writes its main between; a library of webcpp's own. | wasip2, wasip3 (its response also natively) |
+| [document](https://github.com/webcpporg/document) | A header-only JSON document that behaves as JavaScript does: the same key order, `JSON.stringify`'s bytes and the array methods, exact in decimal, in one relocatable image the same on every target; proven against Node, a library of webcpp's own. | native, wasip2, wasip3, emscripten |
 | [trystero](https://github.com/webcpporg/trystero) | Serverless WebRTC rooms, wire compatible with Trystero: peers meet over public Nostr relays, natively over libdatachannel and in the browser over its own WebRTC. Ports Trystero 0.26.0, and is proven against it. | native, emscripten |
 
 Each library's page, with its API reference, and the test matrix of every
