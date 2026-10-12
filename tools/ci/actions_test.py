@@ -197,6 +197,9 @@ def boost_archive(scratch: Path) -> Path:
                        ('libs/url/src/url.cpp', '// url\n'),
                        ('libs/url/src/detail/pattern.hpp', '// pattern\n'),
                        ('libs/json/src/src.cpp', '// json\n'),
+                       ('libs/charconv/src/from_chars.cpp', '// charconv\n'),
+                       ('libs/locale/src/message.cpp', '// locale\n'),
+                       ('libs/cobalt/src/this_thread.cpp', '// cobalt\n'),
                        ('libs/url/doc/index.html', '<p>not kept</p>\n')):
         (tree / path).parent.mkdir(parents=True, exist_ok=True)
         (tree / path).write_text(text)
@@ -256,8 +259,10 @@ def test_boost_install_fails_when_the_prefix_is_incomplete(scratch: Path) -> Non
 # boost/version.hpp and every libs/<library>/src, and the marker that says the action wrote the
 # tree, nothing else.
 MARKER = '.webcpp-boost-source'
-KEPT_SOURCES = [MARKER, 'boost/version.hpp', 'libs/json/src/src.cpp',
-                'libs/url/src/detail/pattern.hpp', 'libs/url/src/url.cpp']
+KEPT_SOURCES = [MARKER, 'boost/version.hpp', 'libs/charconv/src/from_chars.cpp',
+                'libs/cobalt/src/this_thread.cpp', 'libs/json/src/src.cpp',
+                'libs/locale/src/message.cpp', 'libs/url/src/detail/pattern.hpp',
+                'libs/url/src/url.cpp']
 
 # Where source runs: no runner around it.
 NO_RUNNER = {'RUNNER_OS': '', 'RUNNER_TEMP': '', 'GITHUB_PATH': ''}
@@ -292,6 +297,24 @@ def test_boost_keeps_the_sources_of_its_compiled_libraries(scratch: Path) -> Non
     assert result.returncode == 0, (result.returncode, result.stderr)
     config = (scratch / '.local/user-config.jam').read_text()
     assert f'modules.poke : BOOST_SOURCE : "{prefix}/source" ;\n' in config, config
+
+
+def test_boost_configure_refuses_a_cached_prefix_with_stale_sources(scratch: Path) -> None:
+    # A prefix cached before install kept the sources of every compiled library, or before it
+    # wrote its marker, passes the headers and b2 but must not reach a build that needs them.
+    script, runner = boost_install_tree(scratch)
+    prefix = scratch / 'prefix'
+    result = run(script, 'install', prefix, env=runner)
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    for stale in ((prefix / 'source' / MARKER), (prefix / 'source/libs/cobalt/src')):
+        kept = scratch / 'kept'
+        shutil.move(stale, kept)
+        result = subprocess.run(['bash', str(script), 'configure', str(prefix)],
+                                capture_output=True, text=True, check=False, cwd=scratch,
+                                env={**os.environ, **runner})
+        assert result.returncode == 1, (stale, result.returncode, result.stderr)
+        assert 'holds no Boost headers, no b2 or no sources' in result.stderr, result.stderr
+        shutil.move(kept, stale)
 
 
 def test_boost_source_fills_a_directory_alone(scratch: Path) -> None:
@@ -1695,6 +1718,7 @@ CASES: list[Callable[[Path], None]] = [
     test_boost_installs_b2_and_the_headers_where_configure_finds_them,
     test_boost_install_fails_when_the_prefix_is_incomplete,
     test_boost_keeps_the_sources_of_its_compiled_libraries,
+    test_boost_configure_refuses_a_cached_prefix_with_stale_sources,
     test_boost_source_fills_a_directory_alone,
     test_boost_source_refuses_a_directory_it_did_not_write,
     test_boost_source_that_fails_leaves_the_tree_and_no_files,

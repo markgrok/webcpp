@@ -95,7 +95,9 @@ local rule define-line ( header : macro )
 rule boost-version ( directory )
 {
     local header = $(directory)/boost/version.hpp ;
-    if [ path.exists $(header) ]
+    # Native: path.make gives a Windows path a leading slash, /D:/a/boost, which
+    # path.exists, a call on the file system, does not read.
+    if [ path.exists [ path.native $(header) ] ]
     {
         local line = [ define-line $(header) : BOOST_VERSION ] ;
         line = $(line[1]) ;

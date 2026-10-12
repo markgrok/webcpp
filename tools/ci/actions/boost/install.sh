@@ -173,13 +173,27 @@ install() {
 }
 
 # Whether prefix holds what configure uses: Boost's headers in <prefix>/include/boost, b2 in
-# <prefix>/bin, and the sources of Boost's compiled libraries in <prefix>/source.
+# <prefix>/bin, and in <prefix>/source the tree keep_sources writes for this archive (its marker
+# names the archive's SHA-256) with the sources of each compiled library the Jamroot builds
+# (tools/boost/Jamfile). So a prefix cached before it kept them, or before it kept one of them, is
+# refused here, and not at the first build that needs them.
 check() {
     local prefix="$1"
     local b2="${prefix}/bin/b2"
-    [ "${RUNNER_OS}" != Windows ] || b2="${b2}.exe"
+    [ "${RUNNER_OS-}" != Windows ] || b2="${b2}.exe"
+    local missing=
     if [ ! -f "${prefix}/include/boost/version.hpp" ] || [ ! -x "${b2}" ] \
         || [ ! -f "${prefix}/source/boost/version.hpp" ]; then
+        missing=1
+    elif ! grep -q "^sha256=${sha256}\$" "${prefix}/source/${marker}" 2>/dev/null; then
+        missing=1
+    else
+        local library
+        for library in url charconv locale cobalt; do
+            [ -d "${prefix}/source/libs/${library}/src" ] || missing=1
+        done
+    fi
+    if [ -n "${missing}" ]; then
         printf 'install.sh: %s holds no Boost headers, no b2 or no sources\n' "${prefix}" >&2
         exit 1
     fi
