@@ -310,7 +310,21 @@ def test_a_shard_runs_its_slice_of_the_cases(root):
     assert chosen == [] and 'z' in error, error
 
 
+def test_no_git_packs_a_scratch_repository_in_the_background(root):
+    """Every git a test runs, its own or a tool's under test, sees gc.auto 0 and maintenance.auto
+    false: a background `git gc --auto` would still be writing into .git when the case removes its
+    copy, and the removal would fail (Directory not empty: '.git')."""
+    repository = root / 'scratch-git'
+    repository.mkdir()
+    subprocess.run(['git', 'init', '-q', str(repository)], check=True)
+    for key, value in (('gc.auto', '0'), ('maintenance.auto', 'false')):
+        seen = subprocess.run(['git', '-C', str(repository), 'config', '--get', key],
+                              capture_output=True, text=True, check=False).stdout.strip()
+        assert seen == value, (key, seen)
+
+
 CASES = [
+    test_no_git_packs_a_scratch_repository_in_the_background,
     test_a_shard_runs_its_slice_of_the_cases,
     test_every_b2_gets_one_environment,
     test_emscripten_cache_is_the_shells_else_one_per_run,

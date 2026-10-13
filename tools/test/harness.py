@@ -28,7 +28,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Hashable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, MutableMapping, Sequence
 from pathlib import Path
 from typing import TypeVar
 
@@ -37,6 +37,25 @@ FIXTURES = ROOT / 'tools/test/fixtures'
 
 # A shell with any of these (Homebrew sets CPATH) puts its headers before the configured Boost.
 COMPILER_PATHS = ('CPATH', 'CPLUS_INCLUDE_PATH', 'C_INCLUDE_PATH')
+
+# No git of a test, its own or one a tool under test starts, packs a scratch repository in the
+# background: a `git gc --auto` still writing into .git when a case removes its copy fails the
+# removal (Directory not empty: '.git'). Git reads these from the environment of every process,
+# after any configuration the environment already gives.
+QUIET_GIT = (('gc.auto', '0'), ('maintenance.auto', 'false'))
+
+
+def quiet_git(environ: MutableMapping[str, str]) -> None:
+    """Appends QUIET_GIT to the configuration that environ gives every git it starts."""
+    count = int(environ.get('GIT_CONFIG_COUNT', '0') or '0')
+    for key, value in QUIET_GIT:
+        environ[f'GIT_CONFIG_KEY_{count}'] = key
+        environ[f'GIT_CONFIG_VALUE_{count}'] = value
+        count += 1
+    environ['GIT_CONFIG_COUNT'] = str(count)
+
+
+quiet_git(os.environ)
 
 # Left out of a copy at its top: the repository, the machine-local tools and the real libraries;
 # what git ignores there is left out too (ignored_by_git). site/ is left out for the same reason
