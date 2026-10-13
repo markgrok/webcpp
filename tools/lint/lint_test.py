@@ -1929,6 +1929,25 @@ def test_path_exists_takes_a_native_path(root):
                  spared=(at(root, path, '/native ]'), at(root, path, 'may name')))
 
 
+def test_octal_escape_runs_into_a_digit(root):
+    prepare(root)
+    # MSVC's warning C4125, an error under /WX: an octal escape of a string or character literal
+    # followed by a decimal digit. C++ reads "\\2200" as "\\220" and "0", which MSVC refuses.
+    path = 'libs/demo/test/generated/vectors.ipp'
+    write(root, path, CPP + '\n'
+          'auto a = "\\303\\240.\\327\\2200 digit_after"sv;\n'
+          'auto b = "\\1\\0099 short_escape"sv;\n'
+          'auto c = "\\220\\060 escaped_digit"sv;\n'
+          'auto d = R"(\\2200 raw)"sv;\n'
+          'auto e = "\\\\2200 escaped_backslash"sv;\n'
+          'auto f = "\\x412 hex"sv;\n')
+    expect_alone(lint(root), 'octal escapes',
+                 [f'{at(root, path, "digit_after")} an octal escape runs into the digit 0',
+                  at(root, path, 'short_escape')],
+                 spared=(at(root, path, 'escaped_digit'), at(root, path, ' raw)'),
+                         at(root, path, 'escaped_backslash'), at(root, path, ' hex')))
+
+
 def test_shards_split_clang_tidy(root):
     prepare(root)
     total = TIDY_CLEAN.search(lint(root).stdout)
@@ -2050,6 +2069,7 @@ CASES = [
     test_python_blank_lines,
     test_jam_comment_width,
     test_path_exists_takes_a_native_path,
+    test_octal_escape_runs_into_a_digit,
     test_shards_split_clang_tidy,
 ]
 

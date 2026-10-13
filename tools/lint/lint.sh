@@ -633,6 +633,16 @@ else
     fail 'path.exists is given a path in b2'"'"'s form, which names no file on Windows'
 fi
 
+# 14b. An octal escape of a C or C++ literal is never followed by a decimal digit: MSVC's warning
+#      C4125, an error under /WX, refuses "\2200", which C++ reads as "\220" and "0"
+#      (tools/lint/rules.py).
+rule 'octal escapes'
+if python3 tools/lint/rules.py octal-escapes < "${work_directory}/files"; then
+    printf 'no octal escape runs into a decimal digit\n'
+else
+    fail 'an octal escape runs into a decimal digit, which MSVC refuses'
+fi
+
 # 15. A library's include boundaries: libs/<name>/meta/include-boundaries.json, when a library
 #     has one, names boundaries, each a set of headers (a headers glob, less an except glob,
 #     each anchored to the whole path relative to libs/<name>/ and matched segment by segment

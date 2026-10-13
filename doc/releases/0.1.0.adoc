@@ -58,6 +58,10 @@ wasip3 does; whether a program uses them is its developer's choice.
 tests, link-only programs and driven tests, in CI and in own lanes.
 * Added the lint rule `bare-throw`: a library header raises only through
 `boost::throw_exception`.
+* Added the lint rule `path.exists native`: a Jam file's `path.exists` takes
+a native path, which Windows needs.
+* Added the lint rule `octal escapes`: no octal escape of a {cpp} literal
+runs into a digit, which MSVC refuses.
 * Changed the lint to analyse every aggregate, test and example without
 exceptions too, so a library keeps compiling without them.
 * Changed CI to run one own-lane job per library, lane and target,

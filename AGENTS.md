@@ -970,6 +970,7 @@ with `lint: failed: <rule>` for each rule that failed.
 | Python line length | a Python line over 100 columns |
 | Python blank lines | a top-level `def` or `class` without two blank lines before it, its decorators and the comments just above it |
 | Jam comment width | a comment line of a Jam file (`.jam`, `Jamroot`, `Jamfile`) over 80 columns, the width Jam comments are wrapped at |
+| octal escapes | an octal escape of a C or C++ literal followed by a decimal digit (`"\\2200"`), which C++ reads as `"\\220"` and `"0"` and MSVC's warning C4125 refuses under `/WX` |
 | path.exists native | a `path.exists` of a Jam file given a path other than `[ path.native ... ]`: b2's builtin asks the system about the path as written, and b2's form of a Windows path, `/D:/a/...`, names no file there |
 | include boundaries | an `#include` that crosses a boundary the library declares in its `meta/include-boundaries.json` (below), at its line, with the boundary's reason; and a malformed file, or a glob that matches no file of the library |
 | bare throw | a `throw` expression in a library's public header (`libs/*/include/**`), outside comments and literals, at its line: inside `#ifndef WEBCPP_<NAME>_NO_EXCEPTIONS` too, in a template that nothing instantiates, which clang-tidy's analysis without exceptions does not see, and as a rethrow, `throw;`; `boost::throw_exception` is the one way to raise, `std::rethrow_exception` the one way to rethrow (above) |
@@ -2455,8 +2456,9 @@ superproject's new `main`. `main` is the only branch.
   ```
 
   The lint checks each of these.
-- **History.** Every repository starts from one import commit; the history of
-  the code it was moved from is not carried over.
+- **History.** A repository whose code was moved from elsewhere starts from one
+  import commit; the history of the code it was moved from is not carried
+  over.
 - **Outward actions** belong to the owner: no push to a webcpporg
   repository, no merge, no remote repository created, no GitHub setting
   changed, no SSH key or credential touched by an agent. An external

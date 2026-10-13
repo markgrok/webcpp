@@ -30,6 +30,8 @@ Exit 0 when there is none, 1 when there is one, 2 on a usage error.
   jam-comments        no comment line of a Jam file is longer than 80 columns, the width Jam
                       comments are wrapped at;
   native-exists       every path.exists of a Jam file is given [ path.native ... ];
+  octal-escapes       no octal escape of a C or C++ literal is followed by a decimal digit, which
+                      MSVC's warning C4125 refuses;
   changelog           a library's changelog and a version's release notes keep AGENTS.md
                       chapter 11's form, every line a bullet in it;
   include-boundaries  a library keeps to the include boundaries its own
@@ -524,6 +526,39 @@ def jam_comments(path: str, text: str) -> Iterator[Finding]:
                    'for a comment')
 
 
+C_FAMILY = ('.cpp', '.hpp', '.ipp', '.h', '.c')
+
+# The digits of an octal escape, each of which an empty slice is not.
+OCTAL = tuple('01234567')
+
+
+def octal_escapes(path: str, text: str) -> Iterator[Finding]:
+    """No octal escape of a string or character literal runs into a decimal digit: C++ reads
+    "\\2200" as "\\220" and "0", and MSVC's warning C4125, an error under /WX, refuses it. A raw
+    literal holds no escape."""
+    if not path.endswith(C_FAMILY):
+        return
+    for kind, token, line in cpp_tokens(text):
+        if kind != 'literal' or RAW_STRING.match(token):
+            continue
+        position = 0
+        while position < len(token):
+            if token[position] != '\\':
+                position += 1
+                continue
+            digits = 0
+            while digits < 3 and token[position + 1 + digits:position + 2 + digits] in OCTAL:
+                digits += 1
+            if digits == 0:
+                position += 2
+                continue
+            following = token[position + 1 + digits:position + 2 + digits]
+            if following.isdigit():
+                yield (path, line, f'an octal escape runs into the digit {following}; write the '
+                       'digit as an escape too, or end the literal there')
+            position += 1 + digits
+
+
 def native_exists(path: str, text: str) -> Iterator[Finding]:
     """Every path.exists of a Jam file is given [ path.native ... ]: b2's builtin asks the system
     about the path as it is written, and b2's own form of a Windows path, /D:/a/..., names no
@@ -674,6 +709,7 @@ PER_FILE_RULES: dict[str, Callable[[str, str], Iterator[Finding]]] = {
     'blank-lines': blank_lines,
     'jam-comments': jam_comments,
     'native-exists': native_exists,
+    'octal-escapes': octal_escapes,
     'changelog': changelog_lines,
 }
 
