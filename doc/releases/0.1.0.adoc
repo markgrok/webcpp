@@ -19,6 +19,12 @@ from R.
 * link:{library-pages}document/{library-page}[document]: a header-only JSON
 document for {cpp}20 that behaves as JavaScript does, exact in decimal, in one
 relocatable binary image, with a JavaScript module, from R.
+* link:{library-pages}formats/{library-page}[formats]: header-only
+validators of JSON Schema's string formats for {cpp}20, allocating nothing,
+each also a Boost.URL grammar rule, from R.
+* link:{library-pages}idna/{library-page}[idna]: a header-only library of
+internationalized domain names for {cpp}20: Punycode, UTS 46 and IDNA2008
+validity over Unicode 17.0.0 tables, from R.
 * link:{library-pages}pratt/{library-page}[pratt]: a header-only
 Pratt-parsing engine for {cpp}20, with a decimal calculator built on it,
 from R.

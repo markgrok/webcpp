@@ -73,6 +73,8 @@ for web developers and for AI developers (chapter 13).
 | pratt | a Pratt parser engine, generic through concepts, with a calculator built on it, webcpp's own | native, emscripten, wasip2, wasip3 | a submodule at `libs/pratt`; born with the allocation rule (chapter 6) |
 | wasi | header-only helpers for C++ built as WebAssembly components: the HTTP handler a component exports, webcpp's own | wasip2, wasip3 (`response.hpp` also natively); its own lanes `http`, the components wasmtime serves | a submodule at `libs/wasi`; the first library built as components (chapter 9) |
 | document | a JSON document that behaves as JavaScript does (key order, `JSON.stringify`'s bytes, the array methods), exact in decimal, in one relocatable image; webcpp's own; its parser is Boost.JSON's | native, wasip2, wasip3, emscripten; its oracle lane | a submodule at `libs/document`; its core never throws (chapter 6) |
+| idna | internationalized domain names: Punycode, UTS 46's ToASCII and ToUnicode, conformant to IdnaTestV2, and IDNA2008's validity, over Unicode 17.0.0 tables generated into its headers; webcpp's own | native, wasip2, wasip3, emscripten; its own lane `tables` | a submodule at `libs/idna`; its errors are values, and its span forms allocate nothing |
+| formats | the string formats JSON Schema names (date-time, email, hostname, ipv4/ipv6, uri, iri, uri-template, json-pointer, uuid, regex), each a validator that allocates nothing and a Boost.URL grammar rule; regex is an ECMA-262 syntax validator of its own, checked against V8; depends on idna and Boost.URL; webcpp's own | native, wasip2, wasip3, emscripten; its own lanes `generated` and `oracle` | a submodule at `libs/formats` |
 | trystero | a port of Trystero 0.26.0, serverless WebRTC rooms | native, emscripten; its own lanes `oracle` and `interop` | a submodule at `libs/trystero`; born with the allocation rule through `std::pmr` |
 
 ### The layout
@@ -89,7 +91,7 @@ webcpp/
   .clang-tidy         clang-tidy's checks, every repository's
   pyrightconfig.json  Pyright's settings for every Python file
   libs/<name>/        a library: a repository of its own, a submodule here (config, xactor,
-                      xstate, pratt, wasi, trystero, document)
+                      xstate, pratt, wasi, trystero, document, idna, formats)
   third_party/        third-party code the libraries and their tests use, not webcpp's: each
                       a submodule under third_party/libs/, pinned at a commit and keeping its
                       own licence, and the Jamfile that declares it as

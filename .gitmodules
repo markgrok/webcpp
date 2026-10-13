@@ -28,3 +28,9 @@
 [submodule "libs/document"]
 	path = libs/document
 	url = ../document.git
+[submodule "libs/idna"]
+	path = libs/idna
+	url = ../idna.git
+[submodule "libs/formats"]
+	path = libs/formats
+	url = ../formats.git
