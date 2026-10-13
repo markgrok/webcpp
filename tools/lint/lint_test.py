@@ -727,7 +727,7 @@ def test_a_compiled_boost_library_s_sources_are_not_analysed(root):
     for source, ours in (('libs/demo/test/parses_url.cpp', True),
                          ('.local/boost-source/libs/url/src/url.cpp', False),
                          (str(root / '.local/boost-source/libs/url/src/url.cpp'), False),
-                         ('third_party/libs/srell/single-header/srell.hpp', False),
+                         ('third_party/libs/nativejson-benchmark/src/config.h', False),
                          (str(root.parent / 'boost source/libs/url/src/url.cpp'), False)):
         assert compile_commands.of_the_tree(str(root), source) == ours, (source, ours)
     expect_clean(lint(root))

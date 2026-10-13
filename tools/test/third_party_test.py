@@ -129,7 +129,7 @@ def test_a_changed_suite_file_runs_the_test_again(root: Path) -> None:
     again = harness.run_b2(root, 'libs/suite_reader/test')
     harness.expect(again, True)
     assert passed(again) == set(), again.stdout[-4000:]
-    # A file of tests/, then one of remotes/, which json_schema reads too: each runs it again.
+    # A file of tests/, then one of remotes/: each runs it again.
     # Each file gets its date back afterwards, and a run then finds the test up to date, so that
     # the next file is the one that runs it again, not a date still in the future.
     for changed in ('tests/draft2020-12/type.json', 'remotes/integer.json'):

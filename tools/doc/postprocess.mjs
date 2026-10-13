@@ -45,7 +45,7 @@
 // The style gives the element a zero-width space as generated content, which
 // breaks the line where it stands and which no copy and no search reads. Not a
 // `<wbr>`: WebKit paints the part after one twice at some widths, `hpp` of
-// `include/webcpp/idna/options.hpp:` at the end of one line and at the start
+// `include/webcpp/document/stream.hpp:` at the end of one line and at the start
 // of the next at 375px. Not a U+200B in the text, which WebKit lays out
 // without fault but which a reader would copy with the name.
 

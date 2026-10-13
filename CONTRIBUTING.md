@@ -48,9 +48,9 @@ Each line is a rule of AGENTS.md, named by its chapter.
   the reason in its documentation. Within Boost, the newest library of a
   kind (Coroutine2, Variant2, Hash2). A library from outside is wrapped
   behind an interface that follows its standard or Boost counterpart, so
-  that it can be replaced (webcpp::regex hides SRELL behind `std::regex`'s
-  interface). The aim is that every library carries the quality and the peer
-  review of Boost and the standard (chapter 6).
+  that it can be replaced (webcpp::trystero hides libdatachannel behind its
+  backend interface). The aim is that every library carries the quality and
+  the peer review of Boost and the standard (chapter 6).
 - **Written for the web.** Memory, I/O and scheduling are the user's to
   customize, and on emscripten a library uses what the browser offers
   (chapter 6).

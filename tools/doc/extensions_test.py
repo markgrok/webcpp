@@ -604,18 +604,18 @@ def test_style_keeps_part_breaks_to_a_phone(_: None) -> None:
 
 def test_breaks_are_never_wbr_and_never_copied(_: None) -> None:
     # WebKit paints a part of a name twice where a line breaks at a <wbr> at some widths
-    # (options.hpp: then hpp: at 375px), and a U+200B in the text, which does not, is copied with
+    # (stream.hpp: then hpp: at 375px), and a U+200B in the text, which does not, is copied with
     # the name. So no break is a <wbr>, in a heading, inline code or a URL: each is an empty
     # element whose zero-width space is the style's generated content, which breaks the line and
     # which no copy and no search reads. The text holds no U+200B of its own.
     page = convert('[#webcpp-demo-a_long_snake_case_name]\n'
                    '== webcpp::link:#x[demo]::a_long_snake_case_name\n\n'
-                   'Edit `include/webcpp/idna/options.hpp`: `unicode_version`, with\n'
-                   '`idna::options{.verify_dns_length = false}`, as\n'
+                   'Edit `include/webcpp/document/stream.hpp`: `framing`, with\n'
+                   '`document::stream_options{.on_error = on_error::skip}`, as\n'
                    'https://webcpporg.github.io/webcpp/report/ shows.\n')
     html = body(page)
     assert '<wbr' not in page, page
-    assert parts('include/|webcpp/|idna/|options.|hpp') in html, html
+    assert parts('include/|webcpp/|document/|stream.|hpp') in html, html
     assert '\u200b' not in page and '&#8203;' not in page.lower(), page
     # The zero-width space has empty alternative text, so that a screen reader reads the name
     # whole; an engine that does not know the alternative keeps the first declaration.

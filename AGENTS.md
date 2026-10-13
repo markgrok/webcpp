@@ -44,7 +44,7 @@ repository of its own, checked out here as a submodule under `libs/<name>`.
 webcpp builds infrastructure for every developer, in both directions. It
 brings the best of C++ within easy reach of the web: the libraries of
 highest quality, compiled to WebAssembly. And it brings to C++ the libraries
-web developers use most (zod, a JavaScript interpreter, trystero, libp2p,
+web developers use most (a JavaScript interpreter, trystero, libp2p,
 HTTP fetch), so that programs written in C++ and compiled to WebAssembly
 have them. It speaks to C++ developers, crypto developers and AI developers
 who want to build decentralized applications for the web. AI agents are
@@ -717,7 +717,7 @@ than leave it green on the rest.
   because it is the standard of its field). The same order governs each
   function an implementation of its own writes: it builds on those bases
   first, and follows their standards. So a hash is Boost.Hash2's before
-  anything else, and a regular expression is webcpp::regex's.
+  anything else, and a JSON parser is Boost.JSON's.
 - **Written for the web.** Every library is written to be taken to the web:
   its memory, its I/O and its scheduling are its user's to customize (the
   allocators below; the executors and schedulers it runs on), and on the
@@ -731,9 +731,9 @@ than leave it green on the rest.
 - **A library from outside is wrapped,** behind an interface that follows its
   counterpart in the standard library or in Boost as closely as it can, so
   that the outside library is an implementation detail the user never names
-  and another implementation can replace it: as webcpp::regex hides SRELL
-  behind `std::regex`'s interface, with Boost.Regex and `std::regex` as other
-  backends.
+  and another implementation can replace it: as webcpp::trystero hides
+  libdatachannel behind its backend interface, with the browser's WebRTC as
+  the other backend.
 - **Types of a fixed meaning.** An integer whose width matters is one of the
   fixed-width types of `<cstdint>` (`std::uint8_t`, `std::int64_t`,
   `std::uint32_t`), as Boost.Config's `<boost/cstdint.hpp>` guidelines give
@@ -758,14 +758,13 @@ than leave it green on the rest.
 - **Allocation.** A library is to avoid dynamic allocation as far as its job
   allows, and to let its user customize the allocator of what it does
   allocate, so that it can be used with Boost.Interprocess:
-  - **A data structure that makes sense to share** (a compiled regex, a
-    compiled schema, a parsed JSON document, a state machine's definition)
-    takes an `Allocator` template parameter, allocates through
-    `std::allocator_traits` of it, and holds every pointer as the
-    allocator's `pointer` type (Boost.Interprocess's `offset_ptr`) or as an
-    offset, never an absolute address, a vtable or a `std::function`: it can
-    be built in a shared segment and used in place by another process that
-    maps it elsewhere.
+  - **A data structure that makes sense to share** (a parsed JSON document,
+    a state machine's definition) takes an `Allocator` template parameter,
+    allocates through `std::allocator_traits` of it, and holds every pointer
+    as the allocator's `pointer` type (Boost.Interprocess's `offset_ptr`) or
+    as an offset, never an absolute address, a vtable or a `std::function`: it
+    can be built in a shared segment and used in place by another process
+    that maps it elsewhere.
   - **Everything else** (run-time objects: actors, rooms, sockets, handlers)
     routes every allocation through an allocator its user gives, a template
     parameter or a `std::pmr::memory_resource`, with no requirement to live
@@ -2639,9 +2638,8 @@ What webcpp does not have yet, and the chapters that mention it:
   data channels on both; authenticated encryption and randomness in C++ on
   every target. trystero then holds only its protocol. Their specifications
   are in review.
-- **The libraries web developers use most,** brought to C++: zod (on
-  webcpp::json_schema), a JavaScript interpreter (QuickJS), libp2p, HTTP
-  fetch.
+- **The libraries web developers use most,** brought to C++: a JavaScript
+  interpreter (QuickJS), libp2p, HTTP fetch.
 - **The site, increments 2 to 8.** Increment 1 is done: the site's
   repository and `b2 site`, the landing, the list of libraries and the three
   doors (C++, JavaScript, AI), the libraries' pages and the report under the

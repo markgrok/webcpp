@@ -152,7 +152,8 @@ jobs:
           touch "$site/.nojekyll"
           git -C "$site" init -q -b gh-pages
           git -C "$site" add --all
-          git -C "$site" -c user.name=R -c user.email=github.overboard312@passmail.net \
+          git -C "$site" -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             -c commit.gpgsign=false commit -q -m "The preview of main at $SHA"
           export GIT_SSH_COMMAND="ssh -i '$RUNNER_TEMP/ssh/deploy-key' -o IdentitiesOnly=yes \
             -o UserKnownHostsFile='$RUNNER_TEMP/ssh/known_hosts' -o StrictHostKeyChecking=yes"
