@@ -35,7 +35,7 @@ path-constant JSON_SCHEMA_TEST_SUITE : libs/JSON-Schema-Test-Suite ;
 
 rule suite-checked-out ( properties * )
 {
-    if ! [ path.exists $(JSON_SCHEMA_TEST_SUITE)/tests/draft2020-12 ]
+    if ! [ path.exists [ path.native $(JSON_SCHEMA_TEST_SUITE)/tests/draft2020-12 ] ]
     {
         errors.user-error "third_party/libs/JSON-Schema-Test-Suite is not checked out: it"
             "holds no tests/draft2020-12. Check it out with `git submodule update --init"
@@ -64,7 +64,7 @@ path-constant NATIVEJSON_BENCHMARK : libs/nativejson-benchmark ;
 
 rule nativejson-checked-out ( properties * )
 {
-    if ! [ path.exists $(NATIVEJSON_BENCHMARK)/data/canada.json ]
+    if ! [ path.exists [ path.native $(NATIVEJSON_BENCHMARK)/data/canada.json ] ]
     {
         errors.user-error "third_party/libs/nativejson-benchmark is not checked out: it"
             "holds no data/canada.json. Check it out with `git submodule update --init"

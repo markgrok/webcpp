@@ -29,6 +29,7 @@ Exit 0 when there is none, 1 when there is one, 2 on a usage error.
                       and before its decorators and the comments just above it;
   jam-comments        no comment line of a Jam file is longer than 80 columns, the width Jam
                       comments are wrapped at;
+  native-exists       every path.exists of a Jam file is given [ path.native ... ];
   changelog           a library's changelog and a version's release notes keep AGENTS.md
                       chapter 11's form, every line a bullet in it;
   include-boundaries  a library keeps to the include boundaries its own
@@ -523,6 +524,23 @@ def jam_comments(path: str, text: str) -> Iterator[Finding]:
                    'for a comment')
 
 
+def native_exists(path: str, text: str) -> Iterator[Finding]:
+    """Every path.exists of a Jam file is given [ path.native ... ]: b2's builtin asks the system
+    about the path as it is written, and b2's own form of a Windows path, /D:/a/..., names no
+    file there. A path already native passes through path.native unchanged."""
+    name = PurePosixPath(path).name
+    if not (name.endswith('.jam') or name in ('Jamroot', 'Jamfile')):
+        return
+    tokens = list(jam_tokens(text))
+    for index, (word, line) in enumerate(tokens):
+        if word != 'path.exists':
+            continue
+        following = [token for token, _ in tokens[index + 1:index + 3]]
+        if following != ['[', 'path.native']:
+            yield (path, line, 'path.exists is given a path in b2\'s form, which names no file on '
+                   'Windows; give it [ path.native ... ]')
+
+
 # The config a library's meta/include-boundaries.json may hold, and what each of its boundaries
 # may hold. "except" is the only optional key of a boundary.
 CONFIG_KEYS = {'boundaries'}
@@ -655,6 +673,7 @@ PER_FILE_RULES: dict[str, Callable[[str, str], Iterator[Finding]]] = {
     'line-length': line_length,
     'blank-lines': blank_lines,
     'jam-comments': jam_comments,
+    'native-exists': native_exists,
     'changelog': changelog_lines,
 }
 

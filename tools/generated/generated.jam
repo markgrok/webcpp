@@ -69,7 +69,7 @@ rule generated ( found + : name : script : arguments * : outputs + )
             "file; a generator is a Python script, run with the build's Python" ;
     }
     local file = [ path.root [ path.make $(script) ] $(found[2]) ] ;
-    if ! [ path.exists $(file) ]
+    if ! [ path.exists [ path.native $(file) ] ]
     {
         errors.user-error "webcpp.generated $(name): $(key)/$(script) does not exist; it is"
             "the generator that $(found[4]) names" ;

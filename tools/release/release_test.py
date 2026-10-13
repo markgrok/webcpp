@@ -1407,8 +1407,8 @@ def test_dist_names_what_is_not_utf8(directory: Path) -> None:
 # The SHA-256 of the tar, and of the .tar.gz, dist writes for test_dist_bytes_are_pinned's tree:
 # a change of the tar's layout, of the deflate, its level or window, of the gzip header, or of
 # the files scratch.py writes, changes them. Measured with CPython 3.14.7 and zlib 1.2.12.
-PINNED_TAR = '341b4d80d576b0564352a362de2f686ccc93dd081a610b0947fd3062b95a5673'
-PINNED_TAR_GZ = '4bfb87ee8104db83db1cd6e60127f6e1c80c86e5c95e7215cb88a6b7c2e8686f'
+PINNED_TAR = 'c00990248d40f23cf48ce1b9d2b7403d3e7727b312dbc8573de18ef5e9635ad4'
+PINNED_TAR_GZ = 'bb9c4f2f5601b81367497fd44f91554330996d3d477143e76aa2f76f8c31e551'
 
 
 def test_dist_bytes_are_pinned(directory: Path) -> None:

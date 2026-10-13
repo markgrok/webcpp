@@ -140,7 +140,7 @@ rule boost-unusable ( properties * )
         status = "Boost 1.92 or newer was not found: no `using boost` names its"
             "location, and none is on the compiler's default include path" ;
     }
-    else if ! [ path.exists $(.boost-include)/boost/version.hpp ]
+    else if ! [ path.exists [ path.native $(.boost-include)/boost/version.hpp ] ]
     {
         status = "Boost 1.92 or newer was not found:"
             "$(.boost-include)/boost/version.hpp does not exist" ;
@@ -211,7 +211,7 @@ rule boost-check ( properties * )
     if ! <webcpp-boost-check>off in $(properties)
     {
         if $(.boost-include) && ! $(.boost-found)
-            && [ path.exists $(.boost-include)/boost/version.hpp ]
+            && [ path.exists [ path.native $(.boost-include)/boost/version.hpp ] ]
         {
             errors.user-error "Boost 1.92 or newer is required, and the version of the"
                 "Boost in $(.boost-include) cannot be read: its boost/version.hpp has no"
@@ -451,7 +451,7 @@ if $(.emsdk-given)
 local rule emscripten-version-text ( )
 {
     local file = [ path.native $(.emsdk)/upstream/emscripten/emscripten-version.txt ] ;
-    if ! [ path.exists $(file) ]
+    if ! [ path.exists [ path.native $(file) ] ]
     {
         return ;
     }
@@ -467,7 +467,7 @@ rule emsdk-found ( properties * )
     local linked = [ path.native $(.emsdk-local) ] ;
     for local tool in upstream/emscripten/em++ upstream/bin/clang++
     {
-        if ! [ path.exists $(.emsdk)/$(tool) ]
+        if ! [ path.exists [ path.native $(.emsdk)/$(tool) ] ]
         {
             local looked = "no -sWEBCPP_EMSDK=<dir> was given, and $(linked) holds none" ;
             if $(.emsdk-given)

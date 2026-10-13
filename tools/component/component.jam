@@ -285,14 +285,14 @@ local rule wit ( key : version )
     local given = [ given $(variable) ] ;
     if $(given)
     {
-        if ! [ path.exists $(given[1]) ] || [ CHECK_IF_FILE $(given[1]) ]
+        if ! [ path.exists [ path.native $(given[1]) ] ] || [ CHECK_IF_FILE $(given[1]) ]
         {
             errors.user-error $(what) "-s$(variable)=$(given[2]) is not a directory. It is"
                 "looked for at -s$(variable)=<dir>, else at $(installed)." ;
         }
         return $(given[1]) ;
     }
-    if ! [ path.exists $(installed) ]
+    if ! [ path.exists [ path.native $(installed) ] ]
     {
         errors.user-error $(what) "no -s$(variable)=<dir> was given, and there is none at"
             "$(installed). Install there the wit/deps directory of the crate of WASI's"

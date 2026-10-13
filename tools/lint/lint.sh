@@ -623,6 +623,16 @@ else
     fail 'a Jam comment is longer than 80 columns; wrap it as its neighbours are'
 fi
 
+# 14a. path.exists, b2's builtin, asks the system about the path as it is written, and b2's own
+#      form of a Windows path, /D:/a/..., names no file there: every call is given
+#      [ path.native ... ] (tools/lint/rules.py).
+rule 'path.exists native'
+if python3 tools/lint/rules.py native-exists < "${work_directory}/files"; then
+    printf 'every path.exists is given a native path\n'
+else
+    fail 'path.exists is given a path in b2'"'"'s form, which names no file on Windows'
+fi
+
 # 15. A library's include boundaries: libs/<name>/meta/include-boundaries.json, when a library
 #     has one, names boundaries, each a set of headers (a headers glob, less an except glob,
 #     each anchored to the whole path relative to libs/<name>/ and matched segment by segment

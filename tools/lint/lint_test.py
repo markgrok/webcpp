@@ -1912,6 +1912,23 @@ def test_jam_comment_width(root):
                  spared=(at(root, path, 'xxx'), at(root, path, 'qqq')))
 
 
+def test_path_exists_takes_a_native_path(root):
+    prepare(root)
+    # path.exists, b2's builtin, asks the system about the path as it is written: b2's own form,
+    # /D:/a/... on Windows, names no file there, so every call gives it [ path.native ... ]. b2
+    # never loads this file, which no Jamfile imports.
+    path = 'libs/demo/test/exists.jam'
+    write(root, path, HASH + '\n'
+          'if [ path.exists $(here)/b2_form ] { }\n'
+          'if ! [ path.exists $(found[2])/also_b2_form ] { }\n'
+          'if [ path.exists [ path.native $(here)/native ] ] { }\n'
+          '# A comment may name [ path.exists $(x) ].\n')
+    expect_alone(lint(root), 'path.exists native',
+                 [f'{at(root, path, "/b2_form ]")} path.exists is given a path in b2\'s form',
+                  at(root, path, 'also_b2_form')],
+                 spared=(at(root, path, '/native ]'), at(root, path, 'may name')))
+
+
 def test_shards_split_clang_tidy(root):
     prepare(root)
     total = TIDY_CLEAN.search(lint(root).stdout)
@@ -2032,6 +2049,7 @@ CASES = [
     test_python_line_length,
     test_python_blank_lines,
     test_jam_comment_width,
+    test_path_exists_takes_a_native_path,
     test_shards_split_clang_tidy,
 ]
 

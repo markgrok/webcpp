@@ -284,7 +284,7 @@ local rule guard ( name : found + : cases : expected )
             "is inside it, and update-expected removes it; give another expected directory in"
             "$(found[4])" ;
     }
-    if ! [ path.exists $(cases) ]
+    if ! [ path.exists [ path.native $(cases) ] ]
     {
         local missing = [ shown $(cases) : $(found[5]) ] ;
         errors.user-error "webcpp.cases $(name): $(missing) does not exist; it is the cases"

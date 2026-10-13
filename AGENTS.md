@@ -970,6 +970,7 @@ with `lint: failed: <rule>` for each rule that failed.
 | Python line length | a Python line over 100 columns |
 | Python blank lines | a top-level `def` or `class` without two blank lines before it, its decorators and the comments just above it |
 | Jam comment width | a comment line of a Jam file (`.jam`, `Jamroot`, `Jamfile`) over 80 columns, the width Jam comments are wrapped at |
+| path.exists native | a `path.exists` of a Jam file given a path other than `[ path.native ... ]`: b2's builtin asks the system about the path as written, and b2's form of a Windows path, `/D:/a/...`, names no file there |
 | include boundaries | an `#include` that crosses a boundary the library declares in its `meta/include-boundaries.json` (below), at its line, with the boundary's reason; and a malformed file, or a glob that matches no file of the library |
 | bare throw | a `throw` expression in a library's public header (`libs/*/include/**`), outside comments and literals, at its line: inside `#ifndef WEBCPP_<NAME>_NO_EXCEPTIONS` too, in a template that nothing instantiates, which clang-tidy's analysis without exceptions does not see, and as a rethrow, `throw;`; `boost::throw_exception` is the one way to raise, `std::rethrow_exception` the one way to rethrow (above) |
 | changelog form | a library's changelog or a version's release notes out of chapter 11's form: a section or a region missing or out of order, a line that starts with no verb of the list, a cross-reference, more than ten lines for a library and a version, text outside a bullet |
