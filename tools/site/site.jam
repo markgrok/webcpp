@@ -151,7 +151,7 @@ local rule given-directory ( variable )
     {
         value = $(value:J=" ") ;
         local directory = [ path.native [ path.root [ path.make $(value) ] [ path.pwd ] ] ] ;
-        if ! [ path.exists $(directory) ]
+        if ! [ path.exists [ path.native $(directory) ] ]
         {
             errors.user-error "-s$(variable)=$(value) does not exist" ;
         }
