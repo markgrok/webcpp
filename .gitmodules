@@ -31,6 +31,6 @@
 [submodule "libs/idna"]
 	path = libs/idna
 	url = ../idna.git
-[submodule "libs/formats"]
-	path = libs/formats
-	url = ../formats.git
+[submodule "libs/lexical"]
+	path = libs/lexical
+	url = ../lexical.git

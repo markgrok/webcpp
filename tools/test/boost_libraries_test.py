@@ -41,7 +41,7 @@ URLS_JAMFILE = ('import webcpp ;\n'
                 'webcpp.run urls : urls.cpp : <library>/webcpp//boost_url ;\n')
 
 # ipv4_address(bytes_type) and to_bytes() are defined in Boost.URL's compiled sources alone, which
-# is why formats needs the library (WEBCPP_FORMATS_SPEC section 8.2).
+# is why lexical needs the library (WEBCPP_FORMATS_SPEC section 8.2).
 URLS_SOURCE = r'''#include <boost/url/ipv4_address.hpp>
 #include <boost/url/parse.hpp>
 
