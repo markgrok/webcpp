@@ -8,6 +8,11 @@ only what is specific to that library: the original and its version, how its
 oracle drives the original, its particular cautions. Read this file first,
 then the library's.
 
+Agent skills, short playbooks that point into this file for recurring
+tasks, are in `.agents/skills/<name>/SKILL.md`: the library's conventions, a
+port, the build and its lanes, the documentation and the site, and text and
+commits. They never replace a rule here; where one disagrees, this file wins.
+
 This file describes the tree as it is. What is still to come is listed in
 the roadmap (chapter 13), to which every other mention of it refers. Every
 command below runs from the superproject's root, in a shell where `CPATH`,
