@@ -1,6 +1,6 @@
 ---
 name: webcpp-docs-site-release
-description: Write a library's page and Doc Comments, build the site, or prepare a release of webcpp.
+description: "Write a library's page and Doc Comments, build the site, or prepare a release of webcpp."
 ---
 
 # Docs, site and releases

@@ -1,6 +1,6 @@
 ---
 name: webcpp-library-conventions
-description: Create, review or specify a webcpp library: its names, layout, configuration header, errors and exceptions, and the checklist of a new library.
+description: "Create, review or specify a webcpp library: its names, layout, configuration header, errors and exceptions, and the checklist of a new library."
 ---
 
 # A webcpp library's conventions

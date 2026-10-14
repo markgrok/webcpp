@@ -1,6 +1,6 @@
 ---
 name: webcpp-text-and-commits
-description: Before writing any file, commit message or proposal text for a webcpporg repository: the rules on language, forbidden text, commit form and outward actions.
+description: "Before writing any file, commit message or proposal text for a webcpporg repository: the rules on language, forbidden text, commit form and outward actions."
 ---
 
 # Text and commits in webcpp

@@ -1,6 +1,6 @@
 ---
 name: webcpp-port-methodology
-description: Port a library from another language into webcpp, or specify such a port: choosing and pinning the original, its licence, the oracle and twins, and fidelity.
+description: "Port a library from another language into webcpp, or specify such a port: choosing and pinning the original, its licence, the oracle and twins, and fidelity."
 ---
 
 # Porting a library

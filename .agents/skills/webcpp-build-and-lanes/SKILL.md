@@ -1,6 +1,6 @@
 ---
 name: webcpp-build-and-lanes
-description: Build and test webcpp: targets (native, wasip2, wasip3, emscripten), a library's lanes and own lanes, the Jamfile rules, the report, CI, and what counts as green.
+description: "Build and test webcpp: targets (native, wasip2, wasip3, emscripten), a library's lanes and own lanes, the Jamfile rules, the report, CI, and what counts as green."
 ---
 
 # Building and testing webcpp
@@ -11,7 +11,8 @@ facts). The CI is `.github/workflows/library.yml`, which `ci.yml` and each libra
 
 ## Iterating on one library
 ```
-env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH b2 libs/<name>/test libs/<name>/example
+unset CPATH CPLUS_INCLUDE_PATH C_INCLUDE_PATH
+b2 libs/<name>/test libs/<name>/example
 b2 toolset=clang-wasip2 testing.launcher=wasmtime libs/<name>/test libs/<name>/example   # and clang-wasip3
 b2 toolset=emscripten libs/<name>/test libs/<name>/example                                 # no launcher
 b2 declared-targets -d0 && b2 declared-lanes -d0                                           # what CI will run

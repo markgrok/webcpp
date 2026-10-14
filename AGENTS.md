@@ -2462,7 +2462,9 @@ superproject's new `main`. `main` is the only branch.
   -->
   ```
 
-  The lint checks each of these.
+  The lint checks each of these. Markdown files, including `SKILL.md`, do
+  not need this source-file notice; upstream licence and attribution
+  notices are preserved.
 - **History.** A repository whose code was moved from elsewhere starts from one
   import commit; the history of the code it was moved from is not carried
   over.

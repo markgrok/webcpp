@@ -52,6 +52,7 @@ None.
 [#webcpp-0-1-0-tools-and-build]
 == Tools and build
 
+* Added agent skills with validated metadata for common contributor workflows.
 * *Breaking change:* changed wasip2 programs to build with exceptions, as
 wasip3 does; whether a program uses them is its developer's choice.
 * Added emscripten as a tested target (Emscripten 6.0.11 under Node):
