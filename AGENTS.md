@@ -2404,14 +2404,16 @@ superproject's new `main`. `main` is the only branch.
 
 ## 11. Commits and text
 
-- **Identity.** A maintainer's commits, and those of the maintainer's
-  agents, are made as `R <github.overboard312@passmail.net>`; an external
-  contributor commits under their own name and address (CONTRIBUTING.md).
-  Either way, with no trailer of any kind (no `Co-authored-by`, no
-  `Signed-off-by`, no agent name):
+- **Identity.** Every contributor, human or agent, maintainer or external,
+  commits under their own git identity: a name and an e-mail address they
+  control, of which a GitHub noreply address
+  (`<id>+<login>@users.noreply.github.com`) is one. An agent commits under
+  the identity of the account it acts for or of its own account, never under
+  another person's; these rules fix no address. Either way, with no trailer
+  of any kind (no `Co-authored-by`, no `Signed-off-by`, no agent name):
 
   ```
-  git -c user.name=R -c user.email=github.overboard312@passmail.net commit -- <paths>
+  git -c user.name=<name> -c user.email=<address> commit -- <paths>
   ```
 
   Stage and commit with explicit paths, never `git add -A`. A subject is
